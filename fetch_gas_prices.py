@@ -79,8 +79,8 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
         with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
             for uat_id, uat_name, lat, lon in uat_bar:
                 uat_bar.set_description(uat_name[:30])
-                all_stations = {}
-                uat_prices = []
+                all_stations = {}  # keyed by id for dedup / summary
+                uat_prices = 0
 
                 for fuel_id in FUEL_IDS:
                     key = f"{uat_id}:{fuel_id}"
@@ -102,33 +102,34 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
                         continue
 
                     stations, prices = parse_gas_items(root, fetched_at)
+
+                    # Commit before saving checkpoint so resume never loses data
                     for s in stations:
                         all_stations[s["id"]] = s
-                    uat_prices.extend(prices)
+                        upsert_gas_station(
+                            conn, s["id"], s["name"], s["addr"],
+                            s["lat"], s["lon"], s["uat_id"],
+                            s["network_id"], s["zipcode"], s["update_date"],
+                        )
+                    for p in prices:
+                        insert_gas_price(
+                            conn,
+                            p["product_id"], p["station_id"], p["price"],
+                            p["price_date"], p["fetched_at"],
+                        )
+                    conn.commit()
+                    uat_prices += len(prices)
 
                     done.add(key)
                     _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
 
                     time.sleep(SLEEP_BETWEEN)
 
-                for s in all_stations.values():
-                    upsert_gas_station(
-                        conn, s["id"], s["name"], s["addr"],
-                        s["lat"], s["lon"], s["uat_id"],
-                        s["network_id"], s["zipcode"], s["update_date"],
-                    )
-                for p in uat_prices:
-                    insert_gas_price(
-                        conn,
-                        p["product_id"], p["station_id"], p["price"],
-                        p["price_date"], p["fetched_at"],
-                    )
-                conn.commit()
-                total_prices += len(uat_prices)
+                total_prices += uat_prices
                 uats_done += 1
                 uat_bar.set_postfix(stations=len(all_stations), total=total_prices)
                 tqdm.write(
-                    f"  {uat_name}: {len(all_stations)} stations, {len(uat_prices)} prices"
+                    f"  {uat_name}: {len(all_stations)} stations, {uat_prices} prices"
                 )
 
         _clear_checkpoint(CHECKPOINT_PATH)
