@@ -116,6 +116,10 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [ ] UI
     - [ ] Monitor price variations
 - [x] Do [carburanți](docs/carburanti/readme.md)
+- [ ] check against https://ro.openfoodfacts.org/  and similar?
+- [ ] check against other countries prices?
+- [ ] remove branduri dedicate - find existing brands
+- [ ] duplicates? different names, same product?
 
 ### Questions
 - Same network/shop has different prices for different stores?
