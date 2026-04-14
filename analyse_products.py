@@ -2,14 +2,17 @@
 Analyse product names and brands from the prices DB.
 
 Outputs:
-  data/brands.csv        — normalized brands with all raw variants, counts,
-                           and parent categories they appear in
-  data/product_words.csv — most common words and bigrams in product names,
-                           diacritic-insensitive grouping, with parent categories
+  data/brands.csv              — normalized brands with all raw variants, counts,
+                                 and parent categories they appear in
+  data/product_words.csv       — most common words and bigrams in product names,
+                                 diacritic-insensitive grouping, with parent categories
+  data/category_anomalies.csv  — products whose brand is dominant in one category
+                                 but the product itself is assigned to a different one
 
 Usage:
   python analyse_products.py
   python analyse_products.py --db path/to/prices.db --top 200
+  python analyse_products.py --anomaly-threshold 0.85
 """
 import argparse
 import csv
@@ -174,7 +177,75 @@ def analyse_words(conn, cat_lookup: dict, top: int) -> list[dict]:
     return results
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Category anomaly detection ────────────────────────────────────────────────
+
+def detect_category_anomalies(conn, cat_lookup: dict, threshold: float = 0.80) -> list[dict]:
+    """
+    For each brand, compute its category distribution across all products.
+    If one top-level category accounts for >= threshold of the brand's products,
+    flag any product from that brand assigned to a different category.
+
+    Returns rows sorted by brand canonical name, then product name.
+    """
+    # brand_key → {top_level_cat → product count}
+    brand_cat_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    # brand_key → canonical brand name
+    brand_canon: dict[str, str] = {}
+
+    rows = conn.execute(
+        """SELECT pr.brand, p.id, p.name, p.categ_id
+           FROM prices pr
+           JOIN products p ON pr.product_id = p.id
+           WHERE pr.brand IS NOT NULL AND pr.brand != ''
+             AND pr.brand != '-' AND pr.brand != '1'
+           GROUP BY pr.brand, p.id"""
+    ).fetchall()
+
+    # First pass: build brand → category counts and canonical names
+    brand_variants: dict[str, Counter[str]] = defaultdict(Counter)
+    for brand, prod_id, prod_name, categ_id in rows:
+        key = normalize_key(brand)
+        if not key:
+            continue
+        brand_variants[key][brand] += 1
+        cat = top_level(categ_id, cat_lookup) if categ_id else None
+        if cat:
+            brand_cat_counts[key][cat] += 1
+
+    for key, variants in brand_variants.items():
+        brand_canon[key] = canonical(list(variants.items()))
+
+    # Second pass: flag products whose category doesn't match brand's dominant
+    anomalies = []
+    for brand, prod_id, prod_name, categ_id in rows:
+        key = normalize_key(brand)
+        if not key or key not in brand_cat_counts:
+            continue
+        cat_counts = brand_cat_counts[key]
+        total = sum(cat_counts.values())
+        if total < 5:  # too few products to make a meaningful judgement
+            continue
+        dominant_cat, dominant_cnt = cat_counts.most_common(1)[0]
+        dominant_share = dominant_cnt / total
+        if dominant_share < threshold:
+            continue  # brand is legitimately spread across categories
+
+        prod_cat = top_level(categ_id, cat_lookup) if categ_id else None
+        if prod_cat and prod_cat != dominant_cat:
+            anomalies.append({
+                "brand": brand_canon[key],
+                "product_id": prod_id,
+                "product_name": prod_name,
+                "product_category": prod_cat,
+                "dominant_brand_category": dominant_cat,
+                "dominant_share_pct": round(dominant_share * 100, 1),
+            })
+
+    anomalies.sort(key=lambda x: (x["brand"], x["product_name"]))
+    return anomalies
+
+
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -183,6 +254,8 @@ def main():
     parser.add_argument("--db", default="data/prices.db")
     parser.add_argument("--top", type=int, default=150,
                         help="top N entries per output (default: 150)")
+    parser.add_argument("--anomaly-threshold", type=float, default=0.80,
+                        help="min share for brand's dominant category to trigger anomaly flag (default: 0.80)")
     args = parser.parse_args()
 
     conn = init_db(args.db)
@@ -214,6 +287,18 @@ def main():
         w.writerows(words)
     print(f"Words  → {out_words}  ({len(words)} entries)")
 
+    # Category anomalies
+    anomalies = detect_category_anomalies(conn, cat_lookup, args.anomaly_threshold)
+    out_anomalies = "data/category_anomalies.csv"
+    with open(out_anomalies, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=[
+            "brand", "product_id", "product_name",
+            "product_category", "dominant_brand_category", "dominant_share_pct",
+        ])
+        w.writeheader()
+        w.writerows(anomalies)
+    print(f"Anomalies → {out_anomalies}  ({len(anomalies)} entries)")
+
     # Quick preview
     print("\n── Top 20 brands ──────────────────────────────────")
     for b in brands[:20]:
@@ -230,6 +315,17 @@ def main():
     for w in [x for x in words if x["ngram"] == 2][:20]:
         cats = f"  ({w['categories']})" if w["categories"] else ""
         print(f"  {w['count']:5d}  {w['canonical']}{cats}")
+
+    if anomalies:
+        print(f"\n── Category anomalies (threshold={args.anomaly_threshold}) ────")
+        for a in anomalies[:30]:
+            print(
+                f"  {a['brand']:<20s}  {a['product_name'][:40]:<40s}"
+                f"  {a['product_category']:<30s}  (dominant: {a['dominant_brand_category']}"
+                f"  {a['dominant_share_pct']}%)"
+            )
+        if len(anomalies) > 30:
+            print(f"  ... and {len(anomalies) - 30} more — see {out_anomalies}")
 
     conn.close()
 
