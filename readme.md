@@ -26,11 +26,14 @@ python fetch_reference.py path/to/db.db    # custom DB path
 ```
 
 #### `fetch_prices.py`
-Fetches current prices for all UAT × product combinations. Requires reference data — run `fetch_reference.py` first.
+Fetches current prices for all UAT × product combinations. Saves progress to `data/retail_checkpoint.json` so interrupted runs resume automatically. Requires reference data — run `fetch_reference.py` first.
+
+Prices are stored with `fetched_at` (original insert time) and `last_checked_at` (updated on every re-check, even when price hasn't changed).
 
 ```bash
 python fetch_prices.py                                      # full run → data/prices.db
 python fetch_prices.py --limit-uats 3 --limit-products 90  # quick smoke test
+python fetch_prices.py --fresh                              # ignore checkpoint, start clean
 python fetch_prices.py path/to/db.db                        # custom DB path
 ```
 
@@ -47,11 +50,14 @@ python fetch_gas_reference.py path/to/db  # custom DB path
 ```
 
 #### `fetch_gas_prices.py`
-Fetches current fuel prices for all UATs. One request per UAT covers all fuel types — much faster than retail. Requires UAT data (run `fetch_reference.py` or `fetch_gas_reference.py` first).
+Fetches current fuel prices for all UATs. One request per fuel type per UAT. Saves progress to `data/gas_checkpoint.json` so interrupted runs resume automatically. Requires UAT data (run `fetch_reference.py` or `fetch_gas_reference.py` first).
+
+Same `fetched_at` / `last_checked_at` tracking as retail.
 
 ```bash
 python fetch_gas_prices.py                         # full run → data/prices.db
 python fetch_gas_prices.py --limit-uats 3          # quick smoke test
+python fetch_gas_prices.py --fresh                 # ignore checkpoint, start clean
 python fetch_gas_prices.py path/to/db              # custom DB path
 ```
 
@@ -97,9 +103,10 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [x] Store to DB
 - [ ] Check price differences per UAT — maybe it doesn't make sense to always fetch all stores?
     - Maybe check distributed UATs, top 50, bottom 50, and some in the middle, also geographically distributed?
+- [x] Resume interrupted runs (checkpoint files)
+- [x] Track last-checked time per price (`last_checked_at`)
 - [ ] Automated fetching
     - [ ] Make list of relevant products? — fetch those more often?
-    - [ ] Only save if updated
 - [ ] UI
     - [ ] Monitor price variations
 - [ ] Do [carburanți](docs/carburanti/readme.md)

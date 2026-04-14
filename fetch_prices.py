@@ -6,8 +6,11 @@ Requires reference data (run fetch_reference.py first).
 Options:
   --limit-uats N      process only the first N UATs
   --limit-products N  use only the first N products per UAT
+  --fresh             ignore any saved checkpoint and start a clean run
 """
 import argparse
+import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -20,6 +23,7 @@ BATCH_SIZE = 30
 SLEEP_BETWEEN = 0.5  # seconds between requests
 # API silently returns 0 results for buffer > ~5000 m; 50 stores max per call
 BUFFER_M = 5000
+CHECKPOINT_PATH = "data/retail_checkpoint.json"
 
 
 def _batches(lst, n):
@@ -27,9 +31,36 @@ def _batches(lst, n):
         yield lst[i : i + n]
 
 
-def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
+def _load_checkpoint(path):
+    if os.path.exists(path):
+        with open(path) as f:
+            data = json.load(f)
+        data["done"] = set(data["done"])
+        return data
+    return None
+
+
+def _save_checkpoint(path, fetched_at, done):
+    with open(path, "w") as f:
+        json.dump({"fetched_at": fetched_at, "done": sorted(done)}, f)
+
+
+def _clear_checkpoint(path):
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def main(db_path="data/prices.db", limit_uats=None, limit_products=None, fresh=False):
     conn = init_db(db_path)
-    fetched_at = datetime.now(timezone.utc).isoformat()
+
+    cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
+    if cp:
+        fetched_at = cp["fetched_at"]
+        done = cp["done"]
+        tqdm.write(f"Resuming from checkpoint ({len(done)} work units already done)  fetched_at={fetched_at}")
+    else:
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        done = set()
 
     uats = conn.execute(
         "SELECT id, name, center_lat, center_lon FROM uats"
@@ -37,10 +68,10 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
     prod_ids = [row[0] for row in conn.execute("SELECT id FROM products")]
 
     if not uats:
-        print("No UATs found – run fetch_reference.py first.")
+        tqdm.write("No UATs found – run fetch_reference.py first.")
         return
     if not prod_ids:
-        print("No products found – run fetch_reference.py first.")
+        tqdm.write("No products found – run fetch_reference.py first.")
         return
 
     if limit_uats:
@@ -66,8 +97,13 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
 
             uat_prices = 0
             with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
-                for batch in batch_bar:
-                    csv_ids = ",".join(str(i) for i in batch)
+                for i, batch in enumerate(batch_bar):
+                    key = f"{uat_id}:{i}"
+                    if key in done:
+                        batch_bar.set_postfix(status="resumed")
+                        continue
+
+                    csv_ids = ",".join(str(p) for p in batch)
                     url = (
                         f"{BASE}/GetStoresForProductsByLatLon"
                         f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
@@ -93,12 +129,17 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
                     conn.commit()
                     uat_prices += len(prices)
                     batch_bar.set_postfix(prices=uat_prices)
+
+                    done.add(key)
+                    _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+
                     time.sleep(SLEEP_BETWEEN)
 
             tqdm.write(f"  {uat_name}: {uat_prices} price records")
             total_prices += uat_prices
             uat_bar.set_postfix(total_prices=total_prices)
 
+    _clear_checkpoint(CHECKPOINT_PATH)
     tqdm.write(f"\nDone. {total_prices} price records inserted.")
     conn.close()
 
@@ -112,5 +153,7 @@ if __name__ == "__main__":
                         help="process only the first N UATs")
     parser.add_argument("--limit-products", type=int, default=None,
                         help="use only the first N products per UAT")
+    parser.add_argument("--fresh", action="store_true",
+                        help="ignore saved checkpoint and start a clean run")
     args = parser.parse_args()
-    main(args.db, args.limit_uats, args.limit_products)
+    main(args.db, args.limit_uats, args.limit_products, args.fresh)

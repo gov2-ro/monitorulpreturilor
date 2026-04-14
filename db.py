@@ -52,6 +52,7 @@ def init_db(path="data/prices.db"):
         retail_categ_id  TEXT,
         retail_categ_name TEXT,
         fetched_at       TEXT,
+        last_checked_at  TEXT,
         UNIQUE(product_id, store_id, price_date)
     );
     CREATE TABLE IF NOT EXISTS gas_networks (
@@ -76,15 +77,26 @@ def init_db(path="data/prices.db"):
         update_date TEXT
     );
     CREATE TABLE IF NOT EXISTS gas_prices (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_id INTEGER,
-        station_id INTEGER,
-        price      REAL,
-        price_date TEXT,
-        fetched_at TEXT,
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id      INTEGER,
+        station_id      TEXT,
+        price           REAL,
+        price_date      TEXT,
+        fetched_at      TEXT,
+        last_checked_at TEXT,
         UNIQUE(product_id, station_id, price_date)
     );
     """)
+    conn.commit()
+    # Migrate existing DBs that predate last_checked_at columns
+    for ddl in [
+        "ALTER TABLE prices ADD COLUMN last_checked_at TEXT",
+        "ALTER TABLE gas_prices ADD COLUMN last_checked_at TEXT",
+    ]:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     return conn
 
@@ -125,14 +137,18 @@ def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
 
 
 def insert_price(conn, product_id, store_id, price, price_date, promo,
-                 brand, unit, retail_categ_id, retail_categ_name, fetched_at):
+                 brand, unit, retail_categ_id, retail_categ_name, fetched_at,
+                 last_checked_at=None):
     conn.execute(
-        """INSERT OR IGNORE INTO prices
+        """INSERT INTO prices
            (product_id, store_id, price, price_date, promo, brand, unit,
-            retail_categ_id, retail_categ_name, fetched_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            retail_categ_id, retail_categ_name, fetched_at, last_checked_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(product_id, store_id, price_date)
+           DO UPDATE SET last_checked_at = excluded.last_checked_at""",
         (product_id, store_id, price, price_date, promo, brand, unit,
-         retail_categ_id, retail_categ_name, fetched_at),
+         retail_categ_id, retail_categ_name, fetched_at,
+         last_checked_at if last_checked_at is not None else fetched_at),
     )
 
 
@@ -162,10 +178,14 @@ def upsert_gas_station(conn, id, name, addr, lat, lon, uat_id, network_id,
     )
 
 
-def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at):
+def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at,
+                     last_checked_at=None):
     conn.execute(
-        """INSERT OR IGNORE INTO gas_prices
-           (product_id, station_id, price, price_date, fetched_at)
-           VALUES (?,?,?,?,?)""",
-        (product_id, station_id, price, price_date, fetched_at),
+        """INSERT INTO gas_prices
+           (product_id, station_id, price, price_date, fetched_at, last_checked_at)
+           VALUES (?,?,?,?,?,?)
+           ON CONFLICT(product_id, station_id, price_date)
+           DO UPDATE SET last_checked_at = excluded.last_checked_at""",
+        (product_id, station_id, price, price_date, fetched_at,
+         last_checked_at if last_checked_at is not None else fetched_at),
     )
