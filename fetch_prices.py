@@ -1,9 +1,13 @@
 """
 Fetch current prices for all UAT × product batches.
-Run daily. Writes to prices.db. Requires reference data to exist (run
-fetch_reference.py first).
+Run daily. Writes to data/prices.db.
+Requires reference data (run fetch_reference.py first).
+
+Options:
+  --limit-uats N      process only the first N UATs
+  --limit-products N  use only the first N products per UAT
 """
-import sys
+import argparse
 import time
 from datetime import datetime, timezone
 
@@ -21,7 +25,7 @@ def _batches(lst, n):
         yield lst[i : i + n]
 
 
-def main(db_path="prices.db"):
+def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
     conn = init_db(db_path)
     fetched_at = datetime.now(timezone.utc).isoformat()
 
@@ -37,10 +41,15 @@ def main(db_path="prices.db"):
         print("No products found – run fetch_reference.py first.")
         return
 
+    if limit_uats:
+        uats = uats[:limit_uats]
+    if limit_products:
+        prod_ids = prod_ids[:limit_products]
+
     n_batches = (len(prod_ids) + BATCH_SIZE - 1) // BATCH_SIZE
     print(
         f"Fetching prices: {len(uats)} UATs × {len(prod_ids)} products "
-        f"({n_batches} batches/UAT)  fetched_at={fetched_at}"
+        f"({n_batches} batch{'es' if n_batches != 1 else ''}/UAT)  fetched_at={fetched_at}"
     )
 
     total_prices = 0
@@ -88,5 +97,13 @@ def main(db_path="prices.db"):
 
 
 if __name__ == "__main__":
-    db_path = sys.argv[1] if len(sys.argv) > 1 else "prices.db"
-    main(db_path)
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("db", nargs="?", default="data/prices.db",
+                        help="path to SQLite DB (default: data/prices.db)")
+    parser.add_argument("--limit-uats", type=int, default=None,
+                        help="process only the first N UATs")
+    parser.add_argument("--limit-products", type=int, default=None,
+                        help="use only the first N products per UAT")
+    args = parser.parse_args()
+    main(args.db, args.limit_uats, args.limit_products)

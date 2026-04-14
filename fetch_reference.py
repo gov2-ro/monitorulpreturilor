@@ -1,7 +1,11 @@
 """
 Fetch slow-changing reference data: networks, UATs, categories, products.
-Run once (or weekly). Writes to prices.db.
+Run once (or weekly). Writes to data/prices.db.
+
+Options:
+  --limit N   fetch products for only the first N categories (for testing)
 """
+import argparse
 import sys
 
 from api import BASE, fetch_xml, parse_categories, parse_networks, parse_products, parse_uats
@@ -14,7 +18,7 @@ from db import (
 )
 
 
-def main(db_path="prices.db"):
+def main(db_path="data/prices.db", limit=None):
     conn = init_db(db_path)
 
     # Networks
@@ -52,7 +56,12 @@ def main(db_path="prices.db"):
 
     # Products – one request per category
     categ_ids = [row[0] for row in conn.execute("SELECT id FROM categories")]
-    print(f"Fetching products for {len(categ_ids)} categories...")
+    if limit:
+        categ_ids = categ_ids[:limit]
+        print(f"Fetching products for {limit} categories (limited)...")
+    else:
+        print(f"Fetching products for {len(categ_ids)} categories...")
+
     total = 0
     for i, cid in enumerate(categ_ids, 1):
         print(f"  [{i}/{len(categ_ids)}] categ {cid}...", end=" ", flush=True)
@@ -60,7 +69,8 @@ def main(db_path="prices.db"):
         prods = parse_products(root)
         for p in prods:
             # API returns empty Prodcateg/Id; fall back to the queried category
-            upsert_product(conn, p["id"], p["name"], p["categ_id"] if p["categ_id"] is not None else cid)
+            upsert_product(conn, p["id"], p["name"],
+                           p["categ_id"] if p["categ_id"] is not None else cid)
         conn.commit()
         total += len(prods)
         print(len(prods))
@@ -70,5 +80,11 @@ def main(db_path="prices.db"):
 
 
 if __name__ == "__main__":
-    db_path = sys.argv[1] if len(sys.argv) > 1 else "prices.db"
-    main(db_path)
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("db", nargs="?", default="data/prices.db",
+                        help="path to SQLite DB (default: data/prices.db)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="fetch products for only the first N categories")
+    args = parser.parse_args()
+    main(args.db, args.limit)

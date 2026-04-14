@@ -7,13 +7,16 @@ Fetch data from monitorulpreturilor.info api
 
 ## Roadmap
 - [x] figure out api
-- [ ] create fetching scripts
-- [ ] store to db
+- [x] create fetching scripts
+- [x] store to db
+- [ ] check price differences per UAT, mamybe it doesn't make sense to always fetch all stores?
+    - maybe check distributed UATs, top 50, bottom 50, and some in the middle, also geographically distributed?
 - [ ] automated fetching
-    - [ ] make list of relevnt products? - fetch those more often?
+    - [ ] make list of relevant products? - fetch those more often?
+    - [ ] only save if updated 
 - [ ] UI
     - [ ] monitor price variations
-
+- [ ] do [carburanți](docs/carburanti/readme.md)
 
 ### Questions
 - same network/shop has different prices for different stores?

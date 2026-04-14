@@ -1,7 +1,7 @@
 import sqlite3
 
 
-def init_db(path="prices.db"):
+def init_db(path="data/prices.db"):
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript("""
