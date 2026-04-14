@@ -36,18 +36,32 @@ def _load_checkpoint(path):
 
 def _save_checkpoint(path, fetched_at, done):
     with open(path, "w") as f:
-        json.dump({"fetched_at": fetched_at, "done": sorted(done)}, f)
+        json.dump({"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}, f)
 
 
-def _clear_checkpoint(path):
-    if os.path.exists(path):
-        os.remove(path)
+def _finish_checkpoint(path, fetched_at, done):
+    """Mark checkpoint as completed so same-day re-runs exit immediately."""
+    with open(path, "w") as f:
+        json.dump({"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}, f)
 
 
 def main(db_path="data/prices.db", limit_uats=None, fresh=False):
     conn = init_db(db_path)
 
     cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
+    if cp:
+        today = datetime.now(timezone.utc).date()
+        cp_date = datetime.fromisoformat(cp["fetched_at"]).date()
+        status = cp.get("status", "in_progress")
+
+        if status == "completed" and cp_date == today:
+            tqdm.write(f"Already completed today (fetched_at={cp['fetched_at']}). Nothing to do.")
+            conn.close()
+            return
+        elif status == "completed" and cp_date != today:
+            tqdm.write(f"Previous run completed on {cp_date}, starting fresh for today.")
+            cp = None
+
     if cp:
         fetched_at = cp["fetched_at"]
         done = cp["done"]
@@ -132,7 +146,7 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
                     f"  {uat_name}: {len(all_stations)} stations, {uat_prices} prices"
                 )
 
-        _clear_checkpoint(CHECKPOINT_PATH)
+        _finish_checkpoint(CHECKPOINT_PATH, fetched_at, done)
         finish_run(conn, run_id, "completed", uats_done, total_prices)
         tqdm.write(f"\nDone. {total_prices} gas price records inserted.")
     except KeyboardInterrupt:

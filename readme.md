@@ -28,6 +28,12 @@ python fetch_reference.py path/to/db.db    # custom DB path
 #### `fetch_prices.py`
 Fetches current prices for all UAT × product combinations. Saves progress to `data/retail_checkpoint.json` so interrupted runs resume automatically. Requires reference data — run `fetch_reference.py` first.
 
+Checkpoint behaviour:
+- **Interrupted run** → resumes from last saved position on next run (regardless of how old the checkpoint is)
+- **Completed run, same day** → exits immediately — no redundant API calls
+- **Completed run, new day** → starts a fresh run automatically
+- **`--fresh`** → ignores any checkpoint and starts clean
+
 Prices are stored with `fetched_at` (original insert time) and `last_checked_at` (updated on every re-check, even when price hasn't changed).
 
 ```bash
@@ -52,7 +58,7 @@ python fetch_gas_reference.py path/to/db  # custom DB path
 #### `fetch_gas_prices.py`
 Fetches current fuel prices for all UATs. One request per fuel type per UAT. Saves progress to `data/gas_checkpoint.json` so interrupted runs resume automatically. Requires UAT data (run `fetch_reference.py` or `fetch_gas_reference.py` first).
 
-Same `fetched_at` / `last_checked_at` tracking as retail.
+Same checkpoint behaviour and `fetched_at` / `last_checked_at` tracking as retail (see above).
 
 ```bash
 python fetch_gas_prices.py                         # full run → data/prices.db

@@ -43,3 +43,13 @@
 - Added checkpoint/resume to both price fetch scripts: progress saved to `data/retail_checkpoint.json` / `data/gas_checkpoint.json` after each work unit; `--fresh` flag forces a clean run; checkpoint deleted on clean completion
 - Added `runs` table (`script, started_at, finished_at, status, uats_processed, records_written, notes`) to log every pipeline execution
 - Added `start_run()` / `finish_run()` helpers in `db.py`; both price scripts wrapped in try/except/finally so status (`completed`, `interrupted`, `error`) is always recorded
+
+### 2026-04-14 — Smarter checkpoint lifecycle (never re-fetch unless `--fresh`)
+
+- On successful completion, checkpoint is now kept with `status: "completed"` instead of being deleted
+- Same-day re-runs (e.g. cron re-trigger after a perceived failure) exit immediately — no redundant API calls
+- New-day runs detect the date change and start fresh automatically
+- Interrupted (`in_progress`) checkpoints always resume regardless of age — supports multi-day rate-limit recovery
+- `--fresh` remains the explicit escape hatch to force a clean start
+- Backward-compatible: checkpoints without a `status` field are treated as `in_progress`
+- Updated `readme.md` to document checkpoint behaviour for both fetch scripts
