@@ -1,50 +1,75 @@
 # monitorulpreturilor.info
 
-Fetch data from monitorulpreturilor.info api
+Fetch and store food price data from the Romanian government price monitor API.
 
 > Proiectul *Monitorul Prețurilor* produselor alimentare își propune să acorde consumatorilor posibilitatea de a compara prețul aferent coșului de produse a cărui achiziție intenționează să o realizeze.
 
+## Setup
+
+```bash
+source ~/devbox/envs/240826/bin/activate
+```
+
+## Scripts
+
+### `fetch_reference.py`
+Fetches slow-changing reference data: retail networks, UATs, product categories, and products. Run once, or weekly to pick up new products.
+
+```bash
+python fetch_reference.py                  # full run → data/prices.db
+python fetch_reference.py --limit 5        # first 5 categories only (for testing)
+python fetch_reference.py path/to/db.db    # custom DB path
+```
+
+### `fetch_prices.py`
+Fetches current prices for all UAT × product combinations. Requires reference data — run `fetch_reference.py` first.
+
+```bash
+python fetch_prices.py                                      # full run → data/prices.db
+python fetch_prices.py --limit-uats 3 --limit-products 90  # quick smoke test
+python fetch_prices.py path/to/db.db                        # custom DB path
+```
+
+> **Note:** `GetUATByName` (no params) returns only ~20 top UATs. Full city coverage requires searching by name. See backlog.
+
+### `db.py`
+Not run directly. Provides `init_db()` and upsert helpers used by both fetch scripts. Default DB path: `data/prices.db`.
+
+### `api.py`
+Not run directly. Wraps all HTTP calls (`fetch_xml` with retry/backoff) and XML parsers for each endpoint.
+
+## API
+
+Base: `https://monitorulpreturilor.info/pmonsvc/Retail`  
+Format: XML, no auth required.  
+⚠ `GetStoresForProductsByLatLon` returns 0 results for `buffer > 5000` and caps at 50 stores per call.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /GetRetailNetworks` | All retail chains (Kaufland, Lidl, etc.) |
+| `GET /GetUATByName` | Top UATs (cities/municipalities); add `?uatname=` to search |
+| `GET /GetProductCategoriesNetwork` | Product category tree |
+| `GET /GetProductCategoriesNetworkOUG` | OUG (emergency ordinance) categories |
+| `GET /GetCatalogProductsByNameNetwork?prodname=` | Search products by name |
+| `GET /GetCatalogProductsByNameNetwork?CSVcategids=` | Products by category ID(s) |
+| `GET /GetCatalogProductsById?csvcatprodids=` | Products by ID(s) |
+| `GET /GetStoresForProductsByLatLon?lat=&lon=&buffer=&csvprodids=&OrderBy=price` | Stores + prices near a coordinate |
+
+Sample responses: [`docs/reference/sampleResponses/`](docs/reference/sampleResponses/)
 
 ## Roadmap
-- [x] figure out api
-- [x] create fetching scripts
-- [x] store to db
-- [ ] check price differences per UAT, mamybe it doesn't make sense to always fetch all stores?
-    - maybe check distributed UATs, top 50, bottom 50, and some in the middle, also geographically distributed?
-- [ ] automated fetching
-    - [ ] make list of relevant products? - fetch those more often?
-    - [ ] only save if updated 
+
+- [x] Figure out API
+- [x] Create fetching scripts
+- [x] Store to DB
+- [ ] Check price differences per UAT — maybe it doesn't make sense to always fetch all stores?
+    - Maybe check distributed UATs, top 50, bottom 50, and some in the middle, also geographically distributed?
+- [ ] Automated fetching
+    - [ ] Make list of relevant products? — fetch those more often?
+    - [ ] Only save if updated
 - [ ] UI
-    - [ ] monitor price variations
-- [ ] do [carburanți](docs/carburanti/readme.md)
+    - [ ] Monitor price variations
+- [ ] Do [carburanți](docs/carburanti/readme.md)
 
 ### Questions
-- same network/shop has different prices for different stores?
-
-## API endpoints
-
-https://monitorulpreturilor.info/pmonsvc/Retail/GetRetailNetworks
-https://monitorulpreturilor.info/pmonsvc/Retail/GetUATByName
-https://monitorulpreturilor.info/pmonsvc/Retail/GetUATByName?uatname={uatName}
-https://monitorulpreturilor.info/pmonsvc/Retail/GetProductCategoriesNetwork
-https://monitorulpreturilor.info/pmonsvc/Retail/GetProductCategoriesNetworkOUG
-https://monitorulpreturilor.info/pmonsvc/Retail/GetCatalogProductsByNameNetwork?prodname={search}
-https://monitorulpreturilor.info/pmonsvc/Retail/GetCatalogProductsById?csvcatprodids={?}
-https://monitorulpreturilor.info/pmonsvc/Retail/GetStoresForProductsByLatLon?lat={lat}}&lon={long}&buffer={?}&csvprodids={ids}&OrderBy=price
-
-
-### Sample urls
-
-see responses in [docs/reference](docs/reference/sampleResponses/)
-
-- https://monitorulpreturilor.info/pmonsvc/Retail/GetCatalogProductsByNameNetwork?CSVcategids=127
-- https://monitorulpreturilor.info/pmonsvc/Retail/GetStoresForProductsByLatLon?lat=45.65445813094587&lon=25.64496517181396&buffer=2300&csvprodids=1418315,1268286,1023523,1044471,1026063,1341915&OrderBy=price
-- https://monitorulpreturilor.info/pmonsvc/Retail/GetCatalogProductsByNameNetwork?prodname=cafea
-- https://monitorulpreturilor.info/pmonsvc/Retail/GetCatalogProductsById?csvcatprodids=1028135
-
-
-
-## Notes
-
-- Use this env: ` ~/devbox/envs/240826
-- Use `npx playwright` (Playwright already installed) when needed to test or debug the final results.`
+- Same network/shop has different prices for different stores?
