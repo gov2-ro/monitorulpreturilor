@@ -4,6 +4,8 @@ Fetch and store food price data from the Romanian government price monitor API.
 
 > Proiectul *Monitorul Prețurilor* produselor alimentare își propune să acorde consumatorilor posibilitatea de a compara prețul aferent coșului de produse a cărui achiziție intenționează să o realizeze.
 
+start with [Retail](https://monitorulpreturilor.info/Home/Retail). See also [Gas](https://monitorulpreturilor.info/Home/Gas)
+
 ## Setup
 
 ```bash
