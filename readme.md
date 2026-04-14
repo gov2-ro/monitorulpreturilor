@@ -6,11 +6,17 @@ Fetch data from monitorulpreturilor.info api
 
 
 ## Roadmap
-- [ ] figure out api
+- [x] figure out api
 - [ ] create fetching scripts
 - [ ] store to db
 - [ ] automated fetching
+    - [ ] make list of relevnt products? - fetch those more often?
 - [ ] UI
+    - [ ] monitor price variations
+
+
+### Questions
+- same network/shop has different prices for different stores?
 
 ## API endpoints
 
