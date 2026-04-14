@@ -120,6 +120,7 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [ ] check against other countries prices?
 - [ ] remove branduri dedicate - find existing brands
 - [ ] duplicates? different names, same product?
+- [ ] check how much the dev project costed - explain why it's not worthy! - app Ultima actualizare 7 apr. 2023 - fb.com/monitorulpreturilor page, last post, march 2022
 
 ### Questions
 - Same network/shop has different prices for different stores?
