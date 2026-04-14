@@ -109,7 +109,7 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
     - [ ] Make list of relevant products? — fetch those more often?
 - [ ] UI
     - [ ] Monitor price variations
-- [ ] Do [carburanți](docs/carburanti/readme.md)
+- [x] Do [carburanți](docs/carburanti/readme.md)
 
 ### Questions
 - Same network/shop has different prices for different stores?
