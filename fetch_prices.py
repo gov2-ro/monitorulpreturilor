@@ -11,6 +11,8 @@ import argparse
 import time
 from datetime import datetime, timezone
 
+from tqdm import tqdm
+
 from api import BASE, fetch_xml, parse_stores_and_prices
 from db import init_db, insert_price, upsert_store
 
@@ -47,52 +49,57 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None):
         prod_ids = prod_ids[:limit_products]
 
     n_batches = (len(prod_ids) + BATCH_SIZE - 1) // BATCH_SIZE
-    print(
+    tqdm.write(
         f"Fetching prices: {len(uats)} UATs × {len(prod_ids)} products "
         f"({n_batches} batch{'es' if n_batches != 1 else ''}/UAT)  fetched_at={fetched_at}"
     )
 
     total_prices = 0
-    for uat_idx, (uat_id, uat_name, lat, lon) in enumerate(uats, 1):
-        if lat is None or lon is None:
-            print(f"  [{uat_idx}/{len(uats)}] {uat_name}: skipped (no centroid)")
-            continue
+    batches_list = list(_batches(prod_ids, BATCH_SIZE))
 
-        print(f"  [{uat_idx}/{len(uats)}] {uat_name}...", flush=True)
-        uat_prices = 0
+    with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
+        for uat_id, uat_name, lat, lon in uat_bar:
+            uat_bar.set_description(uat_name[:30])
+            if lat is None or lon is None:
+                tqdm.write(f"  {uat_name}: skipped (no centroid)")
+                continue
 
-        for batch in _batches(prod_ids, BATCH_SIZE):
-            csv_ids = ",".join(str(i) for i in batch)
-            url = (
-                f"{BASE}/GetStoresForProductsByLatLon"
-                f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
-                f"&csvprodids={csv_ids}&OrderBy=price"
-            )
-            root = fetch_xml(url)
-            stores, prices = parse_stores_and_prices(root, fetched_at)
+            uat_prices = 0
+            with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
+                for batch in batch_bar:
+                    csv_ids = ",".join(str(i) for i in batch)
+                    url = (
+                        f"{BASE}/GetStoresForProductsByLatLon"
+                        f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
+                        f"&csvprodids={csv_ids}&OrderBy=price"
+                    )
+                    root = fetch_xml(url)
+                    stores, prices = parse_stores_and_prices(root, fetched_at)
 
-            for s in stores:
-                upsert_store(
-                    conn, s["id"], s["name"], s["addr"],
-                    s["lat"], s["lon"], s["uat_id"],
-                    s["network_id"], s["zipcode"],
-                )
-            for p in prices:
-                insert_price(
-                    conn,
-                    p["product_id"], p["store_id"], p["price"],
-                    p["price_date"], p["promo"], p["brand"], p["unit"],
-                    p["retail_categ_id"], p["retail_categ_name"],
-                    p["fetched_at"],
-                )
-            conn.commit()
-            uat_prices += len(prices)
-            time.sleep(SLEEP_BETWEEN)
+                    for s in stores:
+                        upsert_store(
+                            conn, s["id"], s["name"], s["addr"],
+                            s["lat"], s["lon"], s["uat_id"],
+                            s["network_id"], s["zipcode"],
+                        )
+                    for p in prices:
+                        insert_price(
+                            conn,
+                            p["product_id"], p["store_id"], p["price"],
+                            p["price_date"], p["promo"], p["brand"], p["unit"],
+                            p["retail_categ_id"], p["retail_categ_name"],
+                            p["fetched_at"],
+                        )
+                    conn.commit()
+                    uat_prices += len(prices)
+                    batch_bar.set_postfix(prices=uat_prices)
+                    time.sleep(SLEEP_BETWEEN)
 
-        print(f"    {uat_prices} price records")
-        total_prices += uat_prices
+            tqdm.write(f"  {uat_name}: {uat_prices} price records")
+            total_prices += uat_prices
+            uat_bar.set_postfix(total_prices=total_prices)
 
-    print(f"\nDone. {total_prices} price records inserted.")
+    tqdm.write(f"\nDone. {total_prices} price records inserted.")
     conn.close()
 
 
