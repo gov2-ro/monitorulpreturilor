@@ -86,6 +86,16 @@ def init_db(path="data/prices.db"):
         last_checked_at TEXT,
         UNIQUE(product_id, station_id, price_date)
     );
+    CREATE TABLE IF NOT EXISTS runs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        script          TEXT,
+        started_at      TEXT,
+        finished_at     TEXT,
+        status          TEXT,
+        uats_processed  INTEGER,
+        records_written INTEGER,
+        notes           TEXT
+    );
     """)
     conn.commit()
     # Migrate existing DBs that predate last_checked_at columns
@@ -176,6 +186,33 @@ def upsert_gas_station(conn, id, name, addr, lat, lon, uat_id, network_id,
         "INSERT OR REPLACE INTO gas_stations VALUES (?,?,?,?,?,?,?,?,?)",
         (id, name, addr, lat, lon, uat_id, network_id, zipcode, update_date),
     )
+
+
+# ---------------------------------------------------------------------------
+# Run log helpers
+# ---------------------------------------------------------------------------
+
+def start_run(conn, script, started_at):
+    """Insert a 'running' row and return its id."""
+    cur = conn.execute(
+        "INSERT INTO runs (script, started_at, status) VALUES (?,?,'running')",
+        (script, started_at),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def finish_run(conn, run_id, status, uats_processed, records_written, notes=None):
+    """Update the run row with final status and counts."""
+    from datetime import datetime, timezone
+    conn.execute(
+        """UPDATE runs
+           SET finished_at=?, status=?, uats_processed=?, records_written=?, notes=?
+           WHERE id=?""",
+        (datetime.now(timezone.utc).isoformat(),
+         status, uats_processed, records_written, notes, run_id),
+    )
+    conn.commit()
 
 
 def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at,

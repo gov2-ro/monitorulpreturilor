@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
-from db import init_db, insert_price, upsert_store
+from db import init_db, insert_price, upsert_store, start_run, finish_run
 
 BATCH_SIZE = 30
 SLEEP_BETWEEN = 0.5  # seconds between requests
@@ -62,6 +62,8 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None, fresh=F
         fetched_at = datetime.now(timezone.utc).isoformat()
         done = set()
 
+    run_id = start_run(conn, "fetch_prices", fetched_at)
+
     uats = conn.execute(
         "SELECT id, name, center_lat, center_lon FROM uats"
     ).fetchall()
@@ -86,62 +88,74 @@ def main(db_path="data/prices.db", limit_uats=None, limit_products=None, fresh=F
     )
 
     total_prices = 0
+    uats_done = 0
     batches_list = list(_batches(prod_ids, BATCH_SIZE))
 
-    with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
-        for uat_id, uat_name, lat, lon in uat_bar:
-            uat_bar.set_description(uat_name[:30])
-            if lat is None or lon is None:
-                tqdm.write(f"  {uat_name}: skipped (no centroid)")
-                continue
+    try:
+        with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
+            for uat_id, uat_name, lat, lon in uat_bar:
+                uat_bar.set_description(uat_name[:30])
+                if lat is None or lon is None:
+                    tqdm.write(f"  {uat_name}: skipped (no centroid)")
+                    continue
 
-            uat_prices = 0
-            with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
-                for i, batch in enumerate(batch_bar):
-                    key = f"{uat_id}:{i}"
-                    if key in done:
-                        batch_bar.set_postfix(status="resumed")
-                        continue
+                uat_prices = 0
+                with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
+                    for i, batch in enumerate(batch_bar):
+                        key = f"{uat_id}:{i}"
+                        if key in done:
+                            batch_bar.set_postfix(status="resumed")
+                            continue
 
-                    csv_ids = ",".join(str(p) for p in batch)
-                    url = (
-                        f"{BASE}/GetStoresForProductsByLatLon"
-                        f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
-                        f"&csvprodids={csv_ids}&OrderBy=price"
-                    )
-                    root = fetch_xml(url)
-                    stores, prices = parse_stores_and_prices(root, fetched_at)
-
-                    for s in stores:
-                        upsert_store(
-                            conn, s["id"], s["name"], s["addr"],
-                            s["lat"], s["lon"], s["uat_id"],
-                            s["network_id"], s["zipcode"],
+                        csv_ids = ",".join(str(p) for p in batch)
+                        url = (
+                            f"{BASE}/GetStoresForProductsByLatLon"
+                            f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
+                            f"&csvprodids={csv_ids}&OrderBy=price"
                         )
-                    for p in prices:
-                        insert_price(
-                            conn,
-                            p["product_id"], p["store_id"], p["price"],
-                            p["price_date"], p["promo"], p["brand"], p["unit"],
-                            p["retail_categ_id"], p["retail_categ_name"],
-                            p["fetched_at"],
-                        )
-                    conn.commit()
-                    uat_prices += len(prices)
-                    batch_bar.set_postfix(prices=uat_prices)
+                        root = fetch_xml(url)
+                        stores, prices = parse_stores_and_prices(root, fetched_at)
 
-                    done.add(key)
-                    _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+                        for s in stores:
+                            upsert_store(
+                                conn, s["id"], s["name"], s["addr"],
+                                s["lat"], s["lon"], s["uat_id"],
+                                s["network_id"], s["zipcode"],
+                            )
+                        for p in prices:
+                            insert_price(
+                                conn,
+                                p["product_id"], p["store_id"], p["price"],
+                                p["price_date"], p["promo"], p["brand"], p["unit"],
+                                p["retail_categ_id"], p["retail_categ_name"],
+                                p["fetched_at"],
+                            )
+                        conn.commit()
+                        uat_prices += len(prices)
+                        batch_bar.set_postfix(prices=uat_prices)
 
-                    time.sleep(SLEEP_BETWEEN)
+                        done.add(key)
+                        _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
 
-            tqdm.write(f"  {uat_name}: {uat_prices} price records")
-            total_prices += uat_prices
-            uat_bar.set_postfix(total_prices=total_prices)
+                        time.sleep(SLEEP_BETWEEN)
 
-    _clear_checkpoint(CHECKPOINT_PATH)
-    tqdm.write(f"\nDone. {total_prices} price records inserted.")
-    conn.close()
+                tqdm.write(f"  {uat_name}: {uat_prices} price records")
+                total_prices += uat_prices
+                uats_done += 1
+                uat_bar.set_postfix(total_prices=total_prices)
+
+        _clear_checkpoint(CHECKPOINT_PATH)
+        finish_run(conn, run_id, "completed", uats_done, total_prices)
+        tqdm.write(f"\nDone. {total_prices} price records inserted.")
+    except KeyboardInterrupt:
+        finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+        tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
+        raise
+    except Exception as exc:
+        finish_run(conn, run_id, "error", uats_done, total_prices, notes=str(exc))
+        raise
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

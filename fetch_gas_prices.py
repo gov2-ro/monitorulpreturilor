@@ -17,7 +17,7 @@ import requests
 from tqdm import tqdm
 
 from api import GAS_BASE, fetch_xml, parse_gas_items
-from db import init_db, insert_gas_price, upsert_gas_station
+from db import init_db, insert_gas_price, upsert_gas_station, start_run, finish_run
 
 SLEEP_BETWEEN = 0.3  # seconds between requests
 # API only accepts one product ID per request (CSV returns 500)
@@ -71,64 +71,78 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
         f"Fetching gas prices: {len(uats)} UATs  fetched_at={fetched_at}"
     )
 
+    run_id = start_run(conn, "fetch_gas_prices", fetched_at)
     total_prices = 0
-    with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
-        for uat_id, uat_name, lat, lon in uat_bar:
-            uat_bar.set_description(uat_name[:30])
-            all_stations = {}
-            uat_prices = []
+    uats_done = 0
 
-            for fuel_id in FUEL_IDS:
-                key = f"{uat_id}:{fuel_id}"
-                if key in done:
-                    continue
+    try:
+        with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
+            for uat_id, uat_name, lat, lon in uat_bar:
+                uat_bar.set_description(uat_name[:30])
+                all_stations = {}
+                uat_prices = []
 
-                url = (
-                    f"{GAS_BASE}/GetGasItemsByUat"
-                    f"?UatId={uat_id}&CSVGasCatalogProductIds={fuel_id}&OrderBy=dist"
-                )
-                try:
-                    root = fetch_xml(url)
-                except requests.HTTPError as exc:
-                    # API returns 500 when no stations carry this fuel in this UAT
-                    tqdm.write(f"  {uat_name} fuel={fuel_id}: skipped ({exc.response.status_code})")
-                    time.sleep(SLEEP_BETWEEN)
+                for fuel_id in FUEL_IDS:
+                    key = f"{uat_id}:{fuel_id}"
+                    if key in done:
+                        continue
+
+                    url = (
+                        f"{GAS_BASE}/GetGasItemsByUat"
+                        f"?UatId={uat_id}&CSVGasCatalogProductIds={fuel_id}&OrderBy=dist"
+                    )
+                    try:
+                        root = fetch_xml(url)
+                    except requests.HTTPError as exc:
+                        # API returns 500 when no stations carry this fuel in this UAT
+                        tqdm.write(f"  {uat_name} fuel={fuel_id}: skipped ({exc.response.status_code})")
+                        time.sleep(SLEEP_BETWEEN)
+                        done.add(key)
+                        _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+                        continue
+
+                    stations, prices = parse_gas_items(root, fetched_at)
+                    for s in stations:
+                        all_stations[s["id"]] = s
+                    uat_prices.extend(prices)
+
                     done.add(key)
                     _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
-                    continue
 
-                stations, prices = parse_gas_items(root, fetched_at)
-                for s in stations:
-                    all_stations[s["id"]] = s
-                uat_prices.extend(prices)
+                    time.sleep(SLEEP_BETWEEN)
 
-                done.add(key)
-                _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
-
-                time.sleep(SLEEP_BETWEEN)
-
-            for s in all_stations.values():
-                upsert_gas_station(
-                    conn, s["id"], s["name"], s["addr"],
-                    s["lat"], s["lon"], s["uat_id"],
-                    s["network_id"], s["zipcode"], s["update_date"],
+                for s in all_stations.values():
+                    upsert_gas_station(
+                        conn, s["id"], s["name"], s["addr"],
+                        s["lat"], s["lon"], s["uat_id"],
+                        s["network_id"], s["zipcode"], s["update_date"],
+                    )
+                for p in uat_prices:
+                    insert_gas_price(
+                        conn,
+                        p["product_id"], p["station_id"], p["price"],
+                        p["price_date"], p["fetched_at"],
+                    )
+                conn.commit()
+                total_prices += len(uat_prices)
+                uats_done += 1
+                uat_bar.set_postfix(stations=len(all_stations), total=total_prices)
+                tqdm.write(
+                    f"  {uat_name}: {len(all_stations)} stations, {len(uat_prices)} prices"
                 )
-            for p in uat_prices:
-                insert_gas_price(
-                    conn,
-                    p["product_id"], p["station_id"], p["price"],
-                    p["price_date"], p["fetched_at"],
-                )
-            conn.commit()
-            total_prices += len(uat_prices)
-            uat_bar.set_postfix(stations=len(all_stations), total=total_prices)
-            tqdm.write(
-                f"  {uat_name}: {len(all_stations)} stations, {len(uat_prices)} prices"
-            )
 
-    _clear_checkpoint(CHECKPOINT_PATH)
-    tqdm.write(f"\nDone. {total_prices} gas price records inserted.")
-    conn.close()
+        _clear_checkpoint(CHECKPOINT_PATH)
+        finish_run(conn, run_id, "completed", uats_done, total_prices)
+        tqdm.write(f"\nDone. {total_prices} gas price records inserted.")
+    except KeyboardInterrupt:
+        finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+        tqdm.write(f"\nInterrupted. {total_prices} gas price records written so far.")
+        raise
+    except Exception as exc:
+        finish_run(conn, run_id, "error", uats_done, total_prices, notes=str(exc))
+        raise
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
