@@ -35,5 +35,6 @@
 
 - [ ] Build UI — monitor price variations for both retail and gas
 - [ ] Set up automated daily fetch (cron / launchd) for both pipelines
+- [ ] **Plan GitHub Actions workflow** — evaluate using GH Actions (free tier cron) as an alternative to local cron/launchd for daily fetching; consider artifact/DB storage strategy (commit DB to repo vs. upload to object storage vs. keep local only)
 - [ ] Analyse price data — cheapest basket per city, price trends over time
 - [ ] Add `get_uats(conn)` read helper to `db.py` — both `fetch_prices.py` and `fetch_gas_prices.py` run the same `SELECT id, name, center_lat, center_lon FROM uats` query inline; moving it to `db.py` keeps DB queries in one place

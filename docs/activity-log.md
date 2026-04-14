@@ -31,3 +31,15 @@
 - Implemented `fetch_gas_reference.py` — fetches gas networks and fuel product types
 - Implemented `fetch_gas_prices.py` — fetches prices per UAT (single request covers all 6 fuel types)
 - Gas API is simpler than retail: no batching needed, one request per UAT returns all stations + prices
+
+---
+
+## General
+
+### 2026-04-14 — Checkpoint/resume, last_checked_at, and run logging
+
+- Added `last_checked_at TEXT` column to `prices` and `gas_prices` tables; `init_db()` migrates existing DBs via `ALTER TABLE` with try/except
+- Changed `insert_price` and `insert_gas_price` from `INSERT OR IGNORE` to UPSERT: new rows get `fetched_at == last_checked_at`; re-checks update only `last_checked_at`, preserving the original insert timestamp
+- Added checkpoint/resume to both price fetch scripts: progress saved to `data/retail_checkpoint.json` / `data/gas_checkpoint.json` after each work unit; `--fresh` flag forces a clean run; checkpoint deleted on clean completion
+- Added `runs` table (`script, started_at, finished_at, status, uats_processed, records_written, notes`) to log every pipeline execution
+- Added `start_run()` / `finish_run()` helpers in `db.py`; both price scripts wrapped in try/except/finally so status (`completed`, `interrupted`, `error`) is always recorded
