@@ -54,6 +54,36 @@ def init_db(path="data/prices.db"):
         fetched_at       TEXT,
         UNIQUE(product_id, store_id, price_date)
     );
+    CREATE TABLE IF NOT EXISTS gas_networks (
+        id       TEXT PRIMARY KEY,
+        name     TEXT,
+        logo_url TEXT
+    );
+    CREATE TABLE IF NOT EXISTS gas_products (
+        id       INTEGER PRIMARY KEY,
+        name     TEXT,
+        logo_url TEXT
+    );
+    CREATE TABLE IF NOT EXISTS gas_stations (
+        id          TEXT PRIMARY KEY,
+        name        TEXT,
+        addr        TEXT,
+        lat         REAL,
+        lon         REAL,
+        uat_id      INTEGER,
+        network_id  TEXT,
+        zipcode     TEXT,
+        update_date TEXT
+    );
+    CREATE TABLE IF NOT EXISTS gas_prices (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER,
+        station_id INTEGER,
+        price      REAL,
+        price_date TEXT,
+        fetched_at TEXT,
+        UNIQUE(product_id, station_id, price_date)
+    );
     """)
     conn.commit()
     return conn
@@ -103,4 +133,39 @@ def insert_price(conn, product_id, store_id, price, price_date, promo,
            VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (product_id, store_id, price, price_date, promo, brand, unit,
          retail_categ_id, retail_categ_name, fetched_at),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gas helpers
+# ---------------------------------------------------------------------------
+
+def upsert_gas_network(conn, id, name, logo_url):
+    conn.execute(
+        "INSERT OR REPLACE INTO gas_networks VALUES (?,?,?)",
+        (id, name, logo_url),
+    )
+
+
+def upsert_gas_product(conn, id, name, logo_url):
+    conn.execute(
+        "INSERT OR REPLACE INTO gas_products VALUES (?,?,?)",
+        (id, name, logo_url),
+    )
+
+
+def upsert_gas_station(conn, id, name, addr, lat, lon, uat_id, network_id,
+                       zipcode, update_date):
+    conn.execute(
+        "INSERT OR REPLACE INTO gas_stations VALUES (?,?,?,?,?,?,?,?,?)",
+        (id, name, addr, lat, lon, uat_id, network_id, zipcode, update_date),
+    )
+
+
+def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at):
+    conn.execute(
+        """INSERT OR IGNORE INTO gas_prices
+           (product_id, station_id, price, price_date, fetched_at)
+           VALUES (?,?,?,?,?)""",
+        (product_id, station_id, price, price_date, fetched_at),
     )

@@ -11,35 +11,45 @@ source ~/devbox/envs/240826/bin/activate
 
 ## Running the pipeline
 
+### Retail
 ```bash
 python fetch_reference.py        # one-shot: fetch networks, UATs, categories, products
 python fetch_prices.py           # daily: fetch current prices for all UAT × product batches
 ```
 
+### Gas
+```bash
+python fetch_gas_reference.py    # one-shot: fetch gas networks + fuel product types
+python fetch_gas_prices.py       # daily: fetch current fuel prices per UAT
+```
+
 Verify results:
 ```bash
-sqlite3 prices.db "SELECT s.name, p.price, p.price_date FROM prices p JOIN stores s ON p.store_id=s.id LIMIT 20;"
+sqlite3 data/prices.db "SELECT s.name, p.price, p.price_date FROM prices p JOIN stores s ON p.store_id=s.id LIMIT 20;"
+sqlite3 data/prices.db "SELECT n.name, pr.name, gp.price FROM gas_prices gp JOIN gas_stations s ON gp.station_id=s.id JOIN gas_networks n ON s.network_id=n.id JOIN gas_products pr ON gp.product_id=pr.id LIMIT 20;"
 ```
 
 Use `npx playwright` when testing or debugging UI/browser interaction.
 
 ## Architecture
 
-Four Python modules, stdlib + `requests` + `sqlite3` only:
+Six Python modules, stdlib + `requests` + `sqlite3` + `tqdm` only:
 
 | File | Role |
 |------|------|
-| `db.py` | `init_db(path)` creates all tables; upsert helpers for every table |
-| `api.py` | `fetch_xml(url)` with retry/backoff; parsers for each endpoint; `centroid_from_wkt(wkt)` |
-| `fetch_reference.py` | Run once (or weekly) to populate slow-changing reference tables |
-| `fetch_prices.py` | Run daily; iterates UATs × product batches of 30; sleeps 0.5 s between requests |
+| `db.py` | `init_db(path)` creates all tables; upsert helpers for retail and gas |
+| `api.py` | `fetch_xml(url)` with retry/backoff; all parsers; `centroid_from_wkt(wkt)` |
+| `fetch_reference.py` | Retail: run once/weekly — networks, UATs, categories, products |
+| `fetch_prices.py` | Retail: run daily — iterates UATs × product batches of 30; 0.5 s sleep |
+| `fetch_gas_reference.py` | Gas: run once/weekly — gas networks + fuel product types |
+| `fetch_gas_prices.py` | Gas: run daily — one request per UAT covers all 6 fuel types; 0.3 s sleep |
 
-### Database (`prices.db`)
+### Retail database tables (`data/prices.db`)
 
 ```sql
 retail_networks (id TEXT PK, name, logo_url)
-uats            (id INT PK, name, route_id, wkt, center_lat, center_lon)
-categories      (id INT PK, name, parent_id, logo_url, source TEXT)  -- 'network' or 'oug'
+uats            (id INT PK, name, route_id, wkt, center_lat, center_lon)  -- shared with gas
+categories      (id INT PK, name, parent_id, logo_url, source TEXT)
 products        (id INT PK, name, categ_id)
 stores          (id INT PK, name, addr, lat, lon, uat_id, network_id, zipcode)
 prices          (id AUTOINCREMENT PK, product_id, store_id, price, price_date, promo,
@@ -47,17 +57,32 @@ prices          (id AUTOINCREMENT PK, product_id, store_id, price, price_date, p
                  UNIQUE(product_id, store_id, price_date))
 ```
 
-Reference tables use `INSERT OR REPLACE`; prices use `INSERT OR IGNORE` (unique on `product_id + store_id + price_date`).
+### Gas database tables (`data/prices.db`)
+
+```sql
+gas_networks  (id TEXT PK, name, logo_url)
+gas_products  (id INTEGER PK, name, logo_url)  -- 6 fuel types
+gas_stations  (id INTEGER PK, name, addr, lat, lon, uat_id, network_id, zipcode, update_date)
+gas_prices    (id AUTOINCREMENT PK, product_id, station_id, price, price_date, fetched_at,
+               UNIQUE(product_id, station_id, price_date))
+```
+
+Reference tables use `INSERT OR REPLACE`; price tables use `INSERT OR IGNORE`.
 
 ## API
 
-- **Base:** `https://monitorulpreturilor.info/pmonsvc/Retail`
-- **Format:** XML, namespace `http://schemas.datacontract.org/2004/07/pmonsvc.Models.Protos`
-- **Auth:** none (public API)
-- **Key endpoint:** `GetStoresForProductsByLatLon?lat=&lon=&buffer=20000&csvprodids=...&OrderBy=price`
-  — requires UAT centroid (derived from WKT bounding box average) and comma-separated product IDs
+Both APIs share the same XML namespace: `http://schemas.datacontract.org/2004/07/pmonsvc.Models.Protos`
 
-Sample responses for all endpoints are in `docs/reference/sampleResponses/`.
+### Retail — base `https://monitorulpreturilor.info/pmonsvc/Retail`
+- **Key endpoint:** `GetStoresForProductsByLatLon?lat=&lon=&buffer=5000&csvprodids=...&OrderBy=price`
+- Products batched 30 at a time; buffer capped at 5000 m (API returns empty above that)
+
+### Gas — base `https://monitorulpreturilor.info/pmonsvc/Gas`
+- **Key endpoint:** `GetGasItemsByUat?UatId={id}&CSVGasCatalogProductIds={single_id}&OrderBy=dist`
+- **One product ID per request** — CSV returns 500; loop over each of the 6 fuel IDs per UAT
+- API also returns 500 (not empty) for UATs with no stations for that fuel — skip gracefully
+
+Sample responses: `docs/reference/sampleResponses/` (retail), `docs/carburanti/reference/` (gas).
 
 
 ## Persona
@@ -95,8 +120,8 @@ When refactoring large files break work into logical, independently functional c
 
 ## Project tracking
 
-- When detecting things that need to be addressed later, add to `docs/BACKLOG.md`. Use a checkbox `- [ ]` entry with a clear title and enough context to act on it later.
-- After completing any meaningful work, add an entry to `docs/activity-history.md` under a `## YYYY-MM-DD — Short Title` heading. Include what was done, why, and any non-obvious decisions.
+- When detecting things that need to be addressed later, add to `docs/backlog.md` under the relevant section (Retail / Gas / General). Use a checkbox `- [ ]` entry with a clear title and enough context to act on it later.
+- After completing any meaningful work, add an entry to `docs/activity-log.md` under the relevant section heading with a `### YYYY-MM-DD — Short Title` entry. Include what was done, why, and any non-obvious decisions.
 
 When running Python commands, always first activate the following venv `~/devbox/envs/240826/` (/Users/pax/devbox/envs/240826/bin/activate)
 

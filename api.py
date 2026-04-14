@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 BASE = "https://monitorulpreturilor.info/pmonsvc/Retail"
+GAS_BASE = "https://monitorulpreturilor.info/pmonsvc/Gas"
 NS = "http://schemas.datacontract.org/2004/07/pmonsvc.Models.Protos"
 
 
@@ -200,3 +201,103 @@ def parse_stores_and_prices(root, fetched_at):
         }
 
     return list(stores.values()), prices
+
+
+# ---------------------------------------------------------------------------
+# Gas parsers
+# ---------------------------------------------------------------------------
+
+def parse_gas_networks(root):
+    results = []
+    for el in root.findall(f".//{{{NS}}}GasNetwork"):
+        logo = el.find(f"{{{NS}}}Logo")
+        logo_url = _t(logo, "Logouri") if logo is not None else ""
+        results.append({
+            "id": _t(el, "Id"),
+            "name": _t(el, "Name"),
+            "logo_url": logo_url,
+        })
+    return results
+
+
+def parse_gas_products(root):
+    results = []
+    for el in root.findall(f".//{{{NS}}}GasCatalogProduct"):
+        prod_id = _t(el, "Id")
+        if not prod_id:
+            continue
+        logo = el.find(f"{{{NS}}}Logo")
+        logo_url = _t(logo, "Logouri") if logo is not None else ""
+        results.append({
+            "id": int(prod_id),
+            "name": _t(el, "Name"),
+            "logo_url": logo_url,
+        })
+    return results
+
+
+def parse_gas_items(root, fetched_at):
+    """Return (stations_list, prices_list) from a GetGasItemsByUat response.
+
+    Stations are parsed from GasItems/Stations; prices from GasItems/Products.
+    Skips prices where Price is 0 or empty.
+    price_date is taken from the corresponding station's Updatedate field.
+    """
+    # Build station dict first (needed to resolve price_date)
+    stations = {}
+    for st_el in root.findall(f".//{{{NS}}}GasStation"):
+        st_id = _t(st_el, "Id")  # may be "P343" or "39" — keep as string
+        if not st_id:
+            continue
+        addr_el = st_el.find(f"{{{NS}}}Addr")
+        addr = lat = lon = uat_id = zipcode = None
+        if addr_el is not None:
+            addr = _t(addr_el, "Addrstring")
+            zipcode = _t(addr_el, "Zipcode")
+            uat_id_str = _t(addr_el, "Uatid")
+            uat_id = int(uat_id_str) if uat_id_str else None
+            loc = addr_el.find(f"{{{NS}}}Location")
+            if loc is not None:
+                lat_s = _t(loc, "Lat")
+                lon_s = _t(loc, "Lon")
+                lat = float(lat_s) if lat_s else None
+                lon = float(lon_s) if lon_s else None
+        net_el = st_el.find(f"{{{NS}}}Network")
+        network_id = _t(net_el, "Id") if net_el is not None else None
+        update_date = _t(st_el, "Updatedate")
+        stations[st_id] = {
+            "id": st_id,
+            "name": _t(st_el, "Name"),
+            "addr": addr,
+            "lat": lat,
+            "lon": lon,
+            "uat_id": uat_id,
+            "network_id": network_id,
+            "zipcode": zipcode,
+            "update_date": update_date,
+        }
+
+    prices = []
+    for prod_el in root.findall(f".//{{{NS}}}GasProduct"):
+        price_str = _t(prod_el, "Price")
+        if not price_str or price_str == "0":
+            continue
+        st_id = _t(prod_el, "Stationid")  # keep as string (matches gas_stations.id)
+        if not st_id:
+            continue
+        catprod = prod_el.find(f"{{{NS}}}Catprod")
+        if catprod is None:
+            continue
+        fuel_id_str = _t(catprod, "Id")
+        if not fuel_id_str:
+            continue
+        price_date = stations.get(st_id, {}).get("update_date", "")
+        prices.append({
+            "product_id": int(fuel_id_str),
+            "station_id": st_id,
+            "price": float(price_str),
+            "price_date": price_date,
+            "fetched_at": fetched_at,
+        })
+
+    return list(stations.values()), prices
