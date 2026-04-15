@@ -4,6 +4,11 @@
 
 ## Retail
 
+### 2026-04-15 — fetch_prices: --resume flag + generate_map.py
+
+- Added `--resume` flag to `fetch_prices.py`: bypasses the "already completed today" guard while keeping the existing checkpoint's `done` set, so only newly added stores are fetched and old store×batch keys are skipped.
+- Added `generate_map.py`: regenerates `docs/stores_map.html` from `data/prices.db` (stores + network JOIN); assigns colors per network; updates legend counts. Run with `python generate_map.py` after any store discovery run.
+
 ### 2026-04-15 — per-store price fetching pipeline + stores map
 
 - Rewrote `fetch_prices.py` to iterate individual stores instead of UATs; each store is queried from its own lat/lon, guaranteeing it always appears in results.

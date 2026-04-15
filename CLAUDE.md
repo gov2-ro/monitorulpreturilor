@@ -14,7 +14,9 @@ source ~/devbox/envs/240826/bin/activate
 ### Retail
 ```bash
 python fetch_reference.py        # one-shot: fetch networks, UATs, categories, products
-python fetch_prices.py           # daily: fetch current prices for all UAT × product batches
+python fetch_prices.py           # daily: fetch current prices for all stores × product batches
+python fetch_prices.py --resume  # re-run after adding new stores; skips already-fetched store×batch keys
+python generate_map.py           # regenerate docs/stores_map.html from DB (run after store discovery)
 ```
 
 ### Gas
