@@ -17,6 +17,8 @@ Options:
   --order population|geographic
   --limit-stores N    process only the first N stores
   --limit-products N  use only the first N products per store
+  --store-ids-file PATH   newline-separated store IDs; overrides --order/--limit-stores
+  --product-ids-file PATH newline-separated product IDs; overrides --limit-products
   --fresh             ignore saved checkpoint and start a clean run
   --resume            continue a completed run (e.g. after adding new stores);
                       already-processed store×batch keys are skipped
@@ -35,9 +37,9 @@ from api import BASE, fetch_xml, parse_stores_and_prices
 from db import init_db, insert_price, upsert_store, start_run, finish_run
 
 BATCH_SIZE = 30
-SLEEP_BETWEEN = 0.5
+# SLEEP_BETWEEN = 0.5
+SLEEP_BETWEEN = 0.25
 BUFFER_M = 5000
-CHECKPOINT_PATH = "data/prices_checkpoint.json"
 
 # Romania bounding box for geographic ordering
 _RO_LAT_MIN, _RO_LAT_MAX = 43.6, 48.3
@@ -108,11 +110,24 @@ def _finish_checkpoint(path, fetched_at, done):
 # Main
 # ---------------------------------------------------------------------------
 
+def _load_ids_file(path):
+    """Return a list of integer IDs from a newline-separated file."""
+    with open(path) as f:
+        return [int(line.strip()) for line in f if line.strip()]
+
+
 def main(db_path="data/prices.db", order="population", limit_stores=None,
-         limit_products=None, fresh=False, resume=False):
+         limit_products=None, store_ids_file=None, product_ids_file=None,
+         fresh=False, resume=False, max_runtime=0):
+    if store_ids_file and (limit_stores is not None):
+        raise ValueError("--store-ids-file and --limit-stores are mutually exclusive")
+    if product_ids_file and (limit_products is not None):
+        raise ValueError("--product-ids-file and --limit-products are mutually exclusive")
+
+    checkpoint_path = db_path.replace(".db", "_checkpoint.json")
     conn = init_db(db_path)
 
-    cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
+    cp = None if fresh else _load_checkpoint(checkpoint_path)
     if cp:
         today = datetime.now(timezone.utc).date()
         cp_date = datetime.fromisoformat(cp["fetched_at"]).date()
@@ -155,15 +170,35 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
         conn.close()
         return
 
-    stores = _order_stores(stores_raw, order)
+    if store_ids_file:
+        allowed = set(_load_ids_file(store_ids_file))
+        stores = [s for s in stores_raw if s[0] in allowed]
+        tqdm.write(f"Store filter: {len(stores)} stores from {store_ids_file}")
+    else:
+        stores = _order_stores(stores_raw, order)
+        if limit_stores:
+            stores = stores[:limit_stores]
 
-    if limit_stores:
-        stores = stores[:limit_stores]
-    if limit_products:
+    if product_ids_file:
+        allowed_prods = set(_load_ids_file(product_ids_file))
+        prod_ids = [p for p in prod_ids if p in allowed_prods]
+        tqdm.write(f"Product filter: {len(prod_ids)} products from {product_ids_file}")
+    elif limit_products:
         prod_ids = prod_ids[:limit_products]
 
     batches_list = list(_batches(prod_ids, BATCH_SIZE))
     n_batches = len(batches_list)
+
+    # Pre-filter stores that are fully done (all batches in checkpoint)
+    if done:
+        stores_skipped = [(sid, name, lat, lon, pop)
+                          for sid, name, lat, lon, pop in stores
+                          if all(f"{sid}:{i}" in done for i in range(n_batches))]
+        stores = [(sid, name, lat, lon, pop)
+                  for sid, name, lat, lon, pop in stores
+                  if not all(f"{sid}:{i}" in done for i in range(n_batches))]
+        if stores_skipped:
+            tqdm.write(f"Skipping {len(stores_skipped)} fully-done stores from checkpoint.")
 
     tqdm.write(
         f"Fetching prices: {len(stores)} stores × {len(prod_ids)} products "
@@ -174,10 +209,17 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
     run_id = start_run(conn, "fetch_prices", fetched_at)
     total_prices = 0
     stores_done = 0
+    t_start = time.monotonic()
 
     try:
         with tqdm(stores, desc="stores", unit="store") as store_bar:
             for store_id, name, lat, lon, pop in store_bar:
+                if max_runtime and (time.monotonic() - t_start) >= max_runtime:
+                    elapsed = int(time.monotonic() - t_start)
+                    tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
+                               f"Checkpoint saved — resume with next run.")
+                    finish_run(conn, run_id, "interrupted", stores_done, total_prices)
+                    return  # finally block closes conn
                 store_bar.set_description(name[:30])
 
                 store_prices = 0
@@ -216,7 +258,7 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
                         batch_bar.set_postfix(prices=store_prices)
 
                         done.add(key)
-                        _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+                        _save_checkpoint(checkpoint_path, fetched_at, done)
                         time.sleep(SLEEP_BETWEEN)
 
                 tqdm.write(f"  {name}: {store_prices} price records")
@@ -224,7 +266,7 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
 
-        _finish_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+        _finish_checkpoint(checkpoint_path, fetched_at, done)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
 
@@ -251,9 +293,17 @@ if __name__ == "__main__":
                         help="process only the first N stores")
     parser.add_argument("--limit-products", type=int, default=None,
                         help="use only the first N products per store")
+    parser.add_argument("--store-ids-file", default=None,
+                        help="newline-separated store IDs to fetch (overrides --order/--limit-stores)")
+    parser.add_argument("--product-ids-file", default=None,
+                        help="newline-separated product IDs to fetch (overrides --limit-products)")
     parser.add_argument("--fresh", action="store_true",
                         help="ignore saved checkpoint and start a clean run")
     parser.add_argument("--resume", action="store_true",
                         help="continue a completed today run (process only new stores/batches)")
+    parser.add_argument("--max-runtime", type=int, default=0, metavar="SECONDS",
+                        help="stop gracefully after N seconds (checkpoint saved; resume on next run)")
     args = parser.parse_args()
-    main(args.db, args.order, args.limit_stores, args.limit_products, args.fresh, args.resume)
+    main(args.db, args.order, args.limit_stores, args.limit_products,
+         args.store_ids_file, args.product_ids_file, args.fresh, args.resume,
+         args.max_runtime)

@@ -2,6 +2,17 @@
 
 ---
 
+## General
+
+### 2026-04-15 — GitHub Actions CI pipeline + SQL queries
+
+- Added `.github/workflows/ci_prices.yml`: daily cron (05:00 UTC) + manual dispatch; shallow checkout; weekly reference refresh on Mondays; commits `data/prices_ci.db` back to repo.
+- Created `build_ci_subset.py`: generates `data/ci_stores.txt` and `data/ci_products.txt` from the DB. Store selection = top 10 per network by population ∪ 50 middle-pop stores spread by Z-order (Romania grid). Product selection = top 50 overall ∪ top 20 per category, both ranked by blended store-coverage + record-count score.
+- Extended `fetch_prices.py` with `--store-ids-file` and `--product-ids-file` flags: load a newline-separated ID list and filter stores/products accordingly; mutually exclusive with `--limit-stores`/`--limit-products`.
+- Extended `docs/queries.md` with new sections: product popularity (top N overall, top N per category), CI store selection (top-per-network, middle-pop geo batch), data quality checks (store coverage, products with no prices, records per fetch date, stores fetched today).
+- Updated `.gitignore` to allow committing `data/prices_ci.db`, `data/ci_stores.txt`, `data/ci_products.txt`.
+- Decision: DB committed to repo (not GitHub Artifacts) for simplicity; CI DB is separate from local `data/prices.db` to avoid conflicts.
+
 ## Retail
 
 ### 2026-04-15 — fetch_prices: --resume flag + generate_map.py
