@@ -116,7 +116,7 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [ ] UI
     - [ ] Monitor price variations
 - [x] Do [carburanți](docs/carburanti/readme.md)
-- [ ] check against https://ro.openfoodfacts.org/  and similar?
+- [ ] check against https://ro.openfoodfacts.org/  and similar? [suntfrugal](https://www.suntfrugal.com/)
 - [ ] check against other countries prices?
 - [ ] remove branduri dedicate - find existing brands
 - [ ] duplicates? different names, same product?

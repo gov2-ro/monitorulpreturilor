@@ -4,6 +4,15 @@
 
 ## Retail
 
+### 2026-04-15 — discover_stores.py: population-based store discovery
+
+- Rewrote `discover_stores.py` to probe `GetStoresForProductsByLatLon` using lat/lon from `data/reference/geonames-RO.xlsx` (788 Romanian populated places ≥ 5,000 pop), instead of the previous approach that was limited to the 20 UATs already in the DB.
+- Deduplication: greedy haversine within 4km radius → 727 probe points; ensures no two adjacent cities trigger the same 5km API buffer twice.
+- Checkpoint/resume via `data/discover_stores_checkpoint.json`; safe to interrupt and restart.
+- `--dry-run` prints probe points without API calls; `--limit N` for testing; `--debug` for verbose output.
+- Confirmed live: 3 probes → 51 new stores; 0 errors.
+- Decision: using GeoNames lat/lon directly (no UAT ID matching) keeps the script simple and independent of the UATs table.
+
 ### 2026-04-14 — Initial pipeline implementation
 
 - Explored API by reading sample XML responses in `docs/reference/sampleResponses/`

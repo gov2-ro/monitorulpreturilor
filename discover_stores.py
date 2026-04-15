@@ -1,22 +1,27 @@
 """
-Discover retail stores by sampling populated UAT centroids.
+Discover retail stores by probing the API from populated locality centroids.
+
+Source: GeoNames Romania (data/reference/geonames-RO.xlsx), which contains
+~788 populated places with population >= 5 000 and their lat/lon coordinates.
+No UAT matching needed — the API endpoint accepts any lat/lon directly.
 
 Algorithm:
-  1. Load UATs from DB + join with population spreadsheet
-  2. Filter by --pop-threshold (default 10000)
-  3. For large UATs (bbox diagonal > 10km): tile with 8km grid
-  4. Globally deduplicate sampling points within 4km
-  5. For each point: fetch stores via GetStoresForProductsByLatLon
-  6. Upsert stores into DB (prices are NOT written)
+  1. Load localities from GeoNames Excel filtered by --min-pop
+  2. Deduplicate points within 4 km (greedy haversine) to avoid redundant probes
+  3. For each point: GET GetStoresForProductsByLatLon with a small product batch
+  4. Upsert all returned stores into DB (prices are NOT written)
+  5. Checkpoint after every probe; resume on restart
 
-Prerequisite: run fetch_reference.py first to populate the uats + products tables.
+Prerequisite: run fetch_reference.py first to populate the products table.
 
 Usage:
-  python discover_stores.py [--pop-threshold 10000] [--debug] [--dry-run]
+  python discover_stores.py [--min-pop 5000] [--limit N] [--debug] [--dry-run] [--fresh]
 """
 
 import argparse
+import json
 import math
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,18 +32,21 @@ from tqdm import tqdm
 from api import BASE, fetch_xml, parse_stores_and_prices
 from db import init_db, upsert_store
 
-BUFFER = 5000          # metres — API silently returns empty above ~5000
-GRID_SPACING_KM = 8.0  # adjacent circles overlap ~1km at 5km radius
-DEDUP_RADIUS_KM = 4.0  # drop a point if a kept point is this close
+# --- config ------------------------------------------------------------------
+
+BUFFER_M = 5000        # API buffer; returns up to 50 nearest stores
+PROBE_BATCH = 30       # product IDs per discovery probe
+DEDUP_RADIUS_KM = 4.0  # drop a point if a kept point is within this distance
 SLEEP = 0.5            # seconds between API calls
 
+GEONAMES_XLSX = Path("data/reference/geonames-RO.xlsx")
+CHECKPOINT_PATH = "data/discover_stores_checkpoint.json"
 
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
+
+# --- geometry ----------------------------------------------------------------
 
 def haversine_km(lat1, lon1, lat2, lon2):
-    """Great-circle distance in km (fast approximation)."""
+    """Great-circle distance in km."""
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -48,204 +56,216 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def bbox_from_wkt(wkt):
-    """POLYGON((lon lat, …)) → (min_lat, min_lon, max_lat, max_lon)."""
-    start = wkt.index("((") + 2
-    end = wkt.rindex("))")
-    pairs = [p.strip().split() for p in wkt[start:end].split(",") if p.strip()]
-    lons = [float(p[0]) for p in pairs]
-    lats = [float(p[1]) for p in pairs]
-    return min(lats), min(lons), max(lats), max(lons)
-
-
-def tile_bbox(min_lat, min_lon, max_lat, max_lon, spacing_km):
-    """Grid of (lat, lon) points covering the bbox at spacing_km intervals."""
-    lat_step = spacing_km / 111.0
-    center_lat = (min_lat + max_lat) / 2
-    lon_step = spacing_km / (111.0 * math.cos(math.radians(center_lat)))
-    points = []
-    lat = min_lat
-    while lat <= max_lat + lat_step / 2:
-        lon = min_lon
-        while lon <= max_lon + lon_step / 2:
-            points.append((lat, lon))
-            lon += lon_step
-        lat += lat_step
-    return points
-
-
-# ---------------------------------------------------------------------------
-# Core logic
-# ---------------------------------------------------------------------------
-
-def load_population(xlsx_path):
-    """Return {siruta_id: population} from the reference spreadsheet."""
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    ws = wb.active
-    pop = {}
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            continue  # skip header
-        siruta, population = row[1], row[4]
-        if siruta is not None and population is not None:
-            pop[int(siruta)] = int(population)
-    wb.close()
-    return pop
-
-
-def generate_sampling_points(uats, pop_map, pop_threshold, debug=False):
-    """
-    Returns list of (lat, lon, uat_name).
-    UATs below threshold are skipped.
-    Large UATs (bbox diagonal > 10km) get a grid; small ones use centroid.
-    """
-    points = []
-    skipped_pop = skipped_no_coord = 0
-
-    for u in uats:
-        uat_pop = pop_map.get(u["id"])
-        if uat_pop is None or uat_pop < pop_threshold:
-            skipped_pop += 1
-            continue
-
-        wkt = u.get("wkt")
-        lat, lon = u["center_lat"], u["center_lon"]
-
-        if not wkt or lat is None or lon is None:
-            skipped_no_coord += 1
-            continue
-
-        min_lat, min_lon, max_lat, max_lon = bbox_from_wkt(wkt)
-        diag = haversine_km(min_lat, min_lon, max_lat, max_lon)
-
-        if diag <= 10.0:
-            points.append((lat, lon, u["name"]))
-            if debug:
-                print(f"  {u['name']} (pop {uat_pop:,}) → centroid  diag={diag:.1f}km")
-        else:
-            grid = tile_bbox(min_lat, min_lon, max_lat, max_lon, GRID_SPACING_KM)
-            for glat, glon in grid:
-                points.append((glat, glon, u["name"]))
-            if debug:
-                print(f"  {u['name']} (pop {uat_pop:,}) → {len(grid)} grid pts  diag={diag:.1f}km")
-
-    if debug or True:  # always print summary
-        print(f"  UATs included: {len({p[2] for p in points})}")
-        print(f"  Skipped (below threshold or no pop data): {skipped_pop}")
-        print(f"  Skipped (no coords/WKT): {skipped_no_coord}")
-    return points
-
-
 def deduplicate_points(points, radius_km, debug=False):
     """
     Greedy dedup: keep a point only if no already-kept point is within radius_km.
-    O(n²) — fine for the expected hundreds of points in V1.
+    Expects input sorted by population desc so the most-populated locality wins.
+    O(n²) — fine for a few hundred points.
     """
     kept = []
-    for lat, lon, label in points:
+    for name, lat, lon, pop in points:
         if not any(haversine_km(lat, lon, klat, klon) < radius_km
-                   for klat, klon, _ in kept):
-            kept.append((lat, lon, label))
+                   for _, klat, klon, _ in kept):
+            kept.append((name, lat, lon, pop))
     if debug:
-        print(f"  Dedup: {len(points)} → {len(kept)} points (radius {radius_km}km)")
+        tqdm.write(f"[debug] Dedup: {len(points)} → {len(kept)} points "
+                   f"(radius={radius_km}km)")
     return kept
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# --- data loading ------------------------------------------------------------
+
+def load_localities(xlsx_path, min_pop, debug=False):
+    """
+    Return list of (name, lat, lon, population) from GeoNames Excel,
+    filtered to populated places (feature_class='P') with pop >= min_pop,
+    sorted by population descending.
+
+    GeoNames column layout (0-indexed):
+      0  geonameid  4  latitude  5  longitude  6  feature_class  14  population
+    """
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    ws = wb.active
+    places = []
+    for row in ws.iter_rows(values_only=True):
+        if row[6] != "P":
+            continue
+        pop = row[14]
+        if not pop or pop < min_pop:
+            continue
+        lat, lon = row[4], row[5]
+        if lat is None or lon is None:
+            continue
+        places.append((row[1], float(lat), float(lon), int(pop)))
+    wb.close()
+    places.sort(key=lambda x: -x[3])
+    if debug:
+        tqdm.write(f"[debug] {len(places)} places loaded with pop >= {min_pop:,}")
+    return places
+
+
+# --- checkpoint helpers ------------------------------------------------------
+
+def _load_checkpoint(path):
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    data["done"] = set(data["done"])
+    return data
+
+
+def _save_checkpoint(path, started_at, done, stores_seen):
+    with open(path, "w") as f:
+        json.dump({
+            "started_at": started_at,
+            "status": "in_progress",
+            "done": sorted(done),
+            "stores_seen": stores_seen,
+        }, f)
+
+
+def _finish_checkpoint(path, started_at, done, stores_seen):
+    with open(path, "w") as f:
+        json.dump({
+            "started_at": started_at,
+            "status": "completed",
+            "done": sorted(done),
+            "stores_seen": stores_seen,
+        }, f)
+
+
+# --- main --------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--db", default="data/prices.db",
                         help="SQLite DB path (default: data/prices.db)")
-    parser.add_argument("--pop-threshold", type=int, default=10_000,
-                        help="Minimum UAT population to sample (default: 10000)")
+    parser.add_argument("--min-pop", type=int, default=5_000,
+                        help="minimum locality population to probe (default: 5000)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="probe only first N localities — for testing")
+    parser.add_argument("--fresh", action="store_true",
+                        help="ignore saved checkpoint and start fresh")
     parser.add_argument("--debug", action="store_true",
-                        help="Verbose per-UAT output")
+                        help="verbose logging")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Print sampling points, skip API calls")
+                        help="print probe points without making API calls")
     args = parser.parse_args()
 
     conn = init_db(args.db)
 
-    # ---- population reference ----
-    xlsx = Path("data/reference/populatie romania siruta coords.xlsx")
-    print(f"Loading population data from {xlsx}...")
-    pop_map = load_population(xlsx)
-    print(f"  {len(pop_map):,} entries loaded")
-
-    # ---- UATs from DB ----
-    rows = conn.execute(
-        "SELECT id, name, wkt, center_lat, center_lon FROM uats"
-    ).fetchall()
-    uats = [
-        {"id": r[0], "name": r[1], "wkt": r[2], "center_lat": r[3], "center_lon": r[4]}
-        for r in rows
-    ]
-    print(f"  {len(uats)} UATs in DB")
-    if len(uats) < 100:
-        print("  WARNING: UAT count is low — run fetch_reference.py first")
-
-    # ---- product IDs for discovery queries ----
-    prod_ids = [r[0] for r in conn.execute("SELECT id FROM products LIMIT 30").fetchall()]
+    # Product IDs used as the discovery probe (just enough to trigger store results)
+    prod_ids = [r[0] for r in conn.execute(
+        "SELECT id FROM products LIMIT ?", (PROBE_BATCH,)
+    ).fetchall()]
     if not prod_ids:
-        print("ERROR: No products in DB — run fetch_reference.py first")
+        print("ERROR: No products in DB — run fetch_reference.py first.")
         conn.close()
         return
     csv_prods = ",".join(str(p) for p in prod_ids)
     if args.debug:
-        print(f"  Using {len(prod_ids)} product IDs for discovery")
+        tqdm.write(f"[debug] Probing with {len(prod_ids)} product IDs")
 
-    # ---- sampling points ----
-    print(f"\nGenerating sampling points (pop >= {args.pop_threshold:,})...")
-    raw_points = generate_sampling_points(uats, pop_map, args.pop_threshold, debug=args.debug)
-    print(f"  {len(raw_points)} raw points")
-    deduped = deduplicate_points(raw_points, DEDUP_RADIUS_KM, debug=True)
+    # Load and deduplicate probe points
+    places = load_localities(GEONAMES_XLSX, args.min_pop, debug=args.debug)
+    points = deduplicate_points(places, DEDUP_RADIUS_KM, debug=args.debug)
+
+    tqdm.write(
+        f"Probe points: {len(points)} "
+        f"(pop >= {args.min_pop:,}, dedup radius={DEDUP_RADIUS_KM}km)"
+    )
+
+    if args.limit:
+        points = points[: args.limit]
+        tqdm.write(f"  Limited to first {args.limit} for testing")
 
     if args.dry_run:
-        print("\n[dry-run] Sampling points:")
-        for lat, lon, label in deduped:
-            print(f"  {lat:.5f}, {lon:.5f}  — {label}")
+        print("\n[dry-run] Probe points (name, lat, lon, pop):")
+        for name, lat, lon, pop in points:
+            print(f"  {lat:.5f}, {lon:.5f}  pop={pop:,}  — {name}")
         conn.close()
         return
 
-    # ---- fetch stores ----
-    before_count = conn.execute("SELECT COUNT(*) FROM stores").fetchone()[0]
-    print(f"\nFetching stores for {len(deduped)} sampling points "
-          f"(currently {before_count} stores in DB)...\n")
+    # Checkpoint
+    cp = None if args.fresh else _load_checkpoint(CHECKPOINT_PATH)
+    if cp and cp.get("status") == "completed":
+        tqdm.write(
+            f"Previous run already completed ({cp['started_at']}). "
+            "Use --fresh to re-run."
+        )
+        conn.close()
+        return
 
-    errors = 0
-    with tqdm(deduped, unit="point") as pbar:
-        for lat, lon, label in pbar:
-            pbar.set_postfix(label=label[:25], errors=errors)
-            url = (
-                f"{BASE}/GetStoresForProductsByLatLon"
-                f"?lat={lat}&lon={lon}&buffer={BUFFER}"
-                f"&csvprodids={csv_prods}&OrderBy=price"
-            )
-            try:
-                fetched_at = datetime.now(timezone.utc).isoformat()
-                root = fetch_xml(url)
-                stores, _ = parse_stores_and_prices(root, fetched_at)
-                for s in stores:
-                    upsert_store(conn, s["id"], s["name"], s["addr"],
-                                 s["lat"], s["lon"], s["uat_id"],
-                                 s["network_id"], s["zipcode"])
-                conn.commit()
-            except Exception as exc:
-                tqdm.write(f"  ERROR at ({lat:.4f}, {lon:.4f}) {label}: {exc}")
-                errors += 1
-            time.sleep(SLEEP)
+    if cp:
+        started_at = cp["started_at"]
+        done = cp["done"]
+        stores_seen = cp.get("stores_seen", 0)
+        tqdm.write(f"Resuming: {len(done)}/{len(points)} probes already done")
+    else:
+        started_at = datetime.now(timezone.utc).isoformat()
+        done = set()
+        stores_seen = 0
 
-    after_count = conn.execute("SELECT COUNT(*) FROM stores").fetchone()[0]
-    print(f"\nDone.")
-    print(f"  Sampling points queried : {len(deduped)}")
-    print(f"  Errors                  : {errors}")
-    print(f"  Stores before           : {before_count}")
-    print(f"  Stores after            : {after_count}  (+{after_count - before_count} new)")
-    conn.close()
+    stores_before = conn.execute("SELECT COUNT(*) FROM stores").fetchone()[0]
+    probes = errors = 0
+
+    try:
+        with tqdm(points, unit="pt") as bar:
+            for name, lat, lon, pop in bar:
+                key = f"{lat:.5f},{lon:.5f}"
+                bar.set_description(name[:28])
+                bar.set_postfix(pop=f"{pop:,}", seen=stores_seen, err=errors)
+
+                if key in done:
+                    continue
+
+                url = (
+                    f"{BASE}/GetStoresForProductsByLatLon"
+                    f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
+                    f"&csvprodids={csv_prods}&OrderBy=price"
+                )
+                if args.debug:
+                    tqdm.write(f"[debug] GET {url}")
+
+                try:
+                    fetched_at = datetime.now(timezone.utc).isoformat()
+                    root = fetch_xml(url)
+                    stores, _ = parse_stores_and_prices(root, fetched_at)
+                    for s in stores:
+                        upsert_store(conn, s["id"], s["name"], s["addr"],
+                                     s["lat"], s["lon"], s["uat_id"],
+                                     s["network_id"], s["zipcode"])
+                    if stores:
+                        conn.commit()
+                    stores_seen += len(stores)
+                    probes += 1
+                    if args.debug and stores:
+                        tqdm.write(f"[debug] {name}: {len(stores)} store(s)")
+                except Exception as exc:
+                    tqdm.write(f"  ERROR ({name}): {exc}")
+                    errors += 1
+
+                done.add(key)
+                _save_checkpoint(CHECKPOINT_PATH, started_at, done, stores_seen)
+                time.sleep(SLEEP)
+
+        _finish_checkpoint(CHECKPOINT_PATH, started_at, done, stores_seen)
+
+    except KeyboardInterrupt:
+        tqdm.write(f"\nInterrupted after {probes} probes — checkpoint saved.")
+        conn.close()
+        raise
+    finally:
+        stores_after = conn.execute("SELECT COUNT(*) FROM stores").fetchone()[0]
+        tqdm.write(
+            f"\nDone. {probes} probes, {errors} errors.\n"
+            f"Stores: {stores_before} → {stores_after} (+{stores_after - stores_before} new)"
+        )
+        conn.close()
 
 
 if __name__ == "__main__":
