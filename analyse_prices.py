@@ -180,6 +180,7 @@ def main(db_path="data/prices.db", min_stores=2, include_selgros=False, debug=Fa
             "product": prod_name,
             "unit": unit_norm,
             "networks": len(net_median),
+            "all_networks": "|".join(sorted(net_median)),
             "spread": round(s["spread"], 2),
             "ratio": round(s["ratio"], 3) if s["ratio"] else "",
             "cheapest_network": cheapest,
@@ -195,7 +196,8 @@ def main(db_path="data/prices.db", min_stores=2, include_selgros=False, debug=Fa
     cross_rows.sort(key=lambda r: -(r["ratio"] if r["ratio"] else 0))
 
     # Dynamic columns: fixed headers + per-network price columns
-    fixed = ["product_id", "product", "unit", "networks", "spread", "ratio",
+    fixed = ["product_id", "product", "unit", "networks", "all_networks",
+             "spread", "ratio",
              "cheapest_network", "cheapest_price", "priciest_network", "priciest_price"]
     net_cols = sorted({k for r in cross_rows for k in r if k.startswith("price_")})
     cross_path = Path("data/price_cross_network.csv")
