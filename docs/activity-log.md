@@ -4,6 +4,17 @@
 
 ## Retail
 
+### 2026-04-15 — per-store price fetching pipeline + stores map
+
+- Rewrote `fetch_prices.py` to iterate individual stores instead of UATs; each store is queried from its own lat/lon, guaranteeing it always appears in results.
+- Two ordering modes: `--order population` (surrounding_population DESC, default) and `--order geographic` (Z-order grid ~50 km cells, snake traversal for national spread).
+- Added `surrounding_population REAL` column to `stores` table (migration in `db.py`).
+- Fixed `upsert_store` in `db.py` to use explicit column names (`INSERT … ON CONFLICT DO UPDATE`) so new columns aren't clobbered on store updates.
+- New `update_store_populations.py`: sums locality populations within 10 km radius for each store using `populatie romania siruta coords.csv`; runs in ~4s for 2,773 stores.
+- Preserved old UAT-based script as `fetch_prices_by_uat.py`.
+- Switched `discover_stores.py` locality source from GeoNames Excel to `populatie romania siruta coords.csv` (3,180 localities, all with coords, zero missing); default `--min-pop` lowered to 2,500 → 1,842 probe points.
+- Added static Leaflet map (`docs/stores_map.html`) + CSV export (`docs/stores.csv`) for all discovered stores; markers coloured by network, clustered, popup with name/address.
+
 ### 2026-04-15 — discover_stores.py: population-based store discovery
 
 - Rewrote `discover_stores.py` to probe `GetStoresForProductsByLatLon` using lat/lon from `data/reference/geonames-RO.xlsx` (788 Romanian populated places ≥ 5,000 pop), instead of the previous approach that was limited to the 20 UATs already in the DB.
