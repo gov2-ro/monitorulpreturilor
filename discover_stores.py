@@ -1,12 +1,12 @@
 """
 Discover retail stores by probing the API from populated locality centroids.
 
-Source: GeoNames Romania (data/reference/geonames-RO.xlsx), which contains
-~788 populated places with population >= 5 000 and their lat/lon coordinates.
+Source: data/reference/populatie romania siruta coords.csv — official Romanian
+administrative dataset, 3 180 localities all with lat/lon and population.
 No UAT matching needed — the API endpoint accepts any lat/lon directly.
 
 Algorithm:
-  1. Load localities from GeoNames Excel filtered by --min-pop
+  1. Load localities from CSV filtered by --min-pop
   2. Deduplicate points within 4 km (greedy haversine) to avoid redundant probes
   3. For each point: GET GetStoresForProductsByLatLon with a small product batch
   4. Upsert all returned stores into DB (prices are NOT written)
@@ -15,10 +15,11 @@ Algorithm:
 Prerequisite: run fetch_reference.py first to populate the products table.
 
 Usage:
-  python discover_stores.py [--min-pop 5000] [--limit N] [--debug] [--dry-run] [--fresh]
+  python discover_stores.py [--min-pop 2500] [--limit N] [--debug] [--dry-run] [--fresh]
 """
 
 import argparse
+import csv
 import json
 import math
 import os
@@ -26,7 +27,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import openpyxl
 from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
@@ -39,7 +39,7 @@ PROBE_BATCH = 30       # product IDs per discovery probe
 DEDUP_RADIUS_KM = 4.0  # drop a point if a kept point is within this distance
 SLEEP = 0.5            # seconds between API calls
 
-GEONAMES_XLSX = Path("data/reference/geonames-RO.xlsx")
+POP_CSV = Path("data/reference/populatie romania siruta coords.csv")
 CHECKPOINT_PATH = "data/discover_stores_checkpoint.json"
 
 
@@ -75,32 +75,29 @@ def deduplicate_points(points, radius_km, debug=False):
 
 # --- data loading ------------------------------------------------------------
 
-def load_localities(xlsx_path, min_pop, debug=False):
+def load_localities(csv_path, min_pop, debug=False):
     """
-    Return list of (name, lat, lon, population) from GeoNames Excel,
-    filtered to populated places (feature_class='P') with pop >= min_pop,
+    Return list of (name, lat, lon, population) from the official Romanian
+    locality CSV (populatie romania siruta coords.csv), filtered by min_pop,
     sorted by population descending.
 
-    GeoNames column layout (0-indexed):
-      0  geonameid  4  latitude  5  longitude  6  feature_class  14  population
+    CSV columns: localitate, judet, cod_judet, siruta, tip_localitate,
+                 lat, long, populatie, namecheck
     """
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    ws = wb.active
     places = []
-    for row in ws.iter_rows(values_only=True):
-        if row[6] != "P":
-            continue
-        pop = row[14]
-        if not pop or pop < min_pop:
-            continue
-        lat, lon = row[4], row[5]
-        if lat is None or lon is None:
-            continue
-        places.append((row[1], float(lat), float(lon), int(pop)))
-    wb.close()
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            pop = int(r["populatie"]) if r["populatie"] else 0
+            if pop < min_pop:
+                continue
+            try:
+                lat, lon = float(r["lat"]), float(r["long"])
+            except (ValueError, TypeError):
+                continue
+            places.append((r["localitate"], lat, lon, pop))
     places.sort(key=lambda x: -x[3])
     if debug:
-        tqdm.write(f"[debug] {len(places)} places loaded with pop >= {min_pop:,}")
+        tqdm.write(f"[debug] {len(places)} localities loaded with pop >= {min_pop:,}")
     return places
 
 
@@ -144,8 +141,8 @@ def main():
     )
     parser.add_argument("--db", default="data/prices.db",
                         help="SQLite DB path (default: data/prices.db)")
-    parser.add_argument("--min-pop", type=int, default=5_000,
-                        help="minimum locality population to probe (default: 5000)")
+    parser.add_argument("--min-pop", type=int, default=2_500,
+                        help="minimum locality population to probe (default: 2500)")
     parser.add_argument("--limit", type=int, default=None,
                         help="probe only first N localities — for testing")
     parser.add_argument("--fresh", action="store_true",
@@ -171,7 +168,7 @@ def main():
         tqdm.write(f"[debug] Probing with {len(prod_ids)} product IDs")
 
     # Load and deduplicate probe points
-    places = load_localities(GEONAMES_XLSX, args.min_pop, debug=args.debug)
+    places = load_localities(POP_CSV, args.min_pop, debug=args.debug)
     points = deduplicate_points(places, DEDUP_RADIUS_KM, debug=args.debug)
 
     tqdm.write(
