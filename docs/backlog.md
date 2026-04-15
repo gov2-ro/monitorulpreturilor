@@ -42,7 +42,7 @@
 
 ### Todo
 
-- [ ] Build UI — monitor price variations for both retail and gas
+- [ ] **Build UI** — see full plan in [`docs/ui-plan.md`](ui-plan.md). Phases: (1) static GitHub Pages with dashboards, maps, price index; (2) standalone app with search, geolocation, saved baskets, alerts, API.
 - [ ] **Stats dashboard + map generation in CI** — currently neither workflow calls `generate_map.py` so `docs/stores_map.html` is never refreshed in CI. Consider: (1) add a `generate_map.py` step to `ci_prices.yml` (or a separate weekly job) that regenerates and commits the map after each fetch; (2) extend the map/UI with basic stats surfaced directly from `prices_ci.db`: store count, product count, last fetch timestamp, cheapest-basket-per-network snapshot, price trend sparklines. UI could be a static HTML page committed to `docs/` and served via GitHub Pages — no server needed.
 - [ ] Set up automated daily fetch (cron / launchd) for both pipelines
 - [ ] **Restore 4× daily CI schedule when store/product set grows** — currently one daily run at 04:00 UTC covers the full subset in ~1h (after spatial clustering). When the CI subset is expanded (more stores or products), a single run may again exceed GH Actions' 2h cap. At that point: (1) restore the 4× daily cron triggers in `ci_prices.yml` (the checkpoint/resume mechanism already supports this); (2) revisit store distribution in `build_ci_subset.py` — currently top-per-network + mid-pop geographic batch; consider whether the geographic spread is still representative as store count grows (check coverage map via `generate_map.py` before committing to a larger subset).
