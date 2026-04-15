@@ -102,6 +102,7 @@ def init_db(path="data/prices.db"):
     for ddl in [
         "ALTER TABLE prices ADD COLUMN last_checked_at TEXT",
         "ALTER TABLE gas_prices ADD COLUMN last_checked_at TEXT",
+        "ALTER TABLE stores ADD COLUMN surrounding_population REAL",
     ]:
         try:
             conn.execute(ddl)
@@ -141,7 +142,12 @@ def upsert_product(conn, id, name, categ_id):
 
 def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
     conn.execute(
-        "INSERT OR REPLACE INTO stores VALUES (?,?,?,?,?,?,?,?)",
+        """INSERT INTO stores (id, name, addr, lat, lon, uat_id, network_id, zipcode)
+           VALUES (?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET
+             name=excluded.name, addr=excluded.addr, lat=excluded.lat,
+             lon=excluded.lon, uat_id=excluded.uat_id,
+             network_id=excluded.network_id, zipcode=excluded.zipcode""",
         (id, name, addr, lat, lon, uat_id, network_id, zipcode),
     )
 
