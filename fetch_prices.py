@@ -4,21 +4,22 @@ Run daily. Writes to data/prices.db.
 Requires reference data (run fetch_reference.py) and store discovery
 (run discover_stores.py + update_store_populations.py) first.
 
-Each store is queried from its own lat/lon, guaranteeing it always appears in
-the API response (unlike the legacy UAT-centroid approach).
+Spatial clustering (default): stores within 5 km are grouped and only one
+anchor per cluster is queried, since the API returns prices for all stores
+in its 5 km buffer.  This reduces anchors from ~3800 to ~680 (~82%).
+Combined with 200-product batches, total requests drop ~95%.
 
 Ordering modes (--order):
-  population  [default] — stores sorted by surrounding_population DESC; fetches
-                          the most commercially dense areas first.
-  geographic            — stores spread across Romania in grid Z-order so every
-                          region gets covered before any area is revisited.
+  population  [default] — anchors sorted by surrounding_population DESC
+  geographic            — anchors spread across Romania in grid Z-order
 
 Options:
   --order population|geographic
-  --limit-stores N    process only the first N stores
+  --limit-stores N    process only the first N stores (before clustering)
   --limit-products N  use only the first N products per store
   --store-ids-file PATH   newline-separated store IDs; overrides --order/--limit-stores
   --product-ids-file PATH newline-separated product IDs; overrides --limit-products
+  --no-cluster        disable spatial clustering (query every store individually)
   --fresh             ignore saved checkpoint and start a clean run
   --resume            continue a completed run (e.g. after adding new stores);
                       already-processed store×batch keys are skipped
@@ -36,9 +37,10 @@ from tqdm import tqdm
 from api import BASE, fetch_xml, parse_stores_and_prices
 from db import init_db, insert_price, upsert_store, start_run, finish_run
 
-BATCH_SIZE = 30
+# BATCH_SIZE = 30
+BATCH_SIZE = 200
 # SLEEP_BETWEEN = 0.5
-SLEEP_BETWEEN = 0.25
+SLEEP_BETWEEN = 0.15
 BUFFER_M = 5000
 
 # Romania bounding box for geographic ordering
@@ -54,6 +56,50 @@ _GRID_DEG = 0.45   # ~50 km per cell
 def _batches(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i: i + n]
+
+
+def _haversine_m(lat1, lon1, lat2, lon2):
+    """Great-circle distance in metres between two points."""
+    R = 6_371_000
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlon / 2) ** 2)
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def _cluster_anchors(stores, radius_m=5000):
+    """Greedy set-cover: pick anchors so every store is within radius_m of some anchor.
+
+    Returns the subset of stores chosen as anchors (same tuple format).
+    """
+    n = len(stores)
+    # Pre-compute neighbor lists (indices within radius)
+    neighbors = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Quick lat/lon pre-filter (~0.05° ≈ 5.5 km)
+            if (abs(stores[i][2] - stores[j][2]) > 0.05
+                    or abs(stores[i][3] - stores[j][3]) > 0.07):
+                continue
+            d = _haversine_m(stores[i][2], stores[i][3],
+                             stores[j][2], stores[j][3])
+            if d <= radius_m:
+                neighbors[i].append(j)
+                neighbors[j].append(i)
+
+    uncovered = set(range(n))
+    anchors = []
+    while uncovered:
+        # Pick store covering the most uncovered neighbors
+        best = max(uncovered,
+                   key=lambda i: sum(1 for j in neighbors[i] if j in uncovered))
+        anchors.append(stores[best])
+        uncovered.discard(best)
+        for j in neighbors[best]:
+            uncovered.discard(j)
+    return anchors
 
 
 def _geo_sort_key(lat, lon):
@@ -118,7 +164,7 @@ def _load_ids_file(path):
 
 def main(db_path="data/prices.db", order="population", limit_stores=None,
          limit_products=None, store_ids_file=None, product_ids_file=None,
-         fresh=False, resume=False, max_runtime=0):
+         fresh=False, resume=False, max_runtime=0, no_cluster=False):
     if store_ids_file and (limit_stores is not None):
         raise ValueError("--store-ids-file and --limit-stores are mutually exclusive")
     if product_ids_file and (limit_products is not None):
@@ -178,6 +224,17 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
         stores = _order_stores(stores_raw, order)
         if limit_stores:
             stores = stores[:limit_stores]
+
+    # Spatial clustering: reduce anchors so every store is within 5 km of one
+    if not no_cluster and not store_ids_file:
+        n_before = len(stores)
+        tqdm.write(f"Clustering {n_before} stores (radius={BUFFER_M}m)...")
+        stores = _cluster_anchors(stores, radius_m=BUFFER_M)
+        stores = _order_stores(stores, order)
+        tqdm.write(
+            f"Clustered {n_before} stores → {len(stores)} anchors "
+            f"({100 * (1 - len(stores) / n_before):.0f}% reduction)"
+        )
 
     if product_ids_file:
         allowed_prods = set(_load_ids_file(product_ids_file))
@@ -303,7 +360,9 @@ if __name__ == "__main__":
                         help="continue a completed today run (process only new stores/batches)")
     parser.add_argument("--max-runtime", type=int, default=0, metavar="SECONDS",
                         help="stop gracefully after N seconds (checkpoint saved; resume on next run)")
+    parser.add_argument("--no-cluster", action="store_true",
+                        help="disable spatial clustering (query every store as its own anchor)")
     args = parser.parse_args()
     main(args.db, args.order, args.limit_stores, args.limit_products,
          args.store_ids_file, args.product_ids_file, args.fresh, args.resume,
-         args.max_runtime)
+         args.max_runtime, args.no_cluster)

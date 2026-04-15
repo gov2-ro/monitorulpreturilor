@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-04-15 — Optimise fetch_prices.py: spatial clustering + larger batches
+
+- Added greedy set-cover spatial clustering to `fetch_prices.py`: groups stores within 5 km and picks one anchor per cluster. Reduces 3,813 stores → 681 anchors (82% fewer API calls).
+- Raised `BATCH_SIZE` from 50 to 200 products/request (API-tested; 500 hits URL-length 404). Cuts batches from 139 to 35 per anchor.
+- Combined effect: 530k → ~24k requests, ~22h → ~1h (95% reduction).
+- Added `--no-cluster` flag as escape hatch to revert to per-store querying.
+- Clustering runs in <1s on 3,813 stores (O(n²) with lat/lon pre-filter).
+- `INSERT OR IGNORE` on prices means overlapping coverage from neighboring anchors is harmless — no data loss or duplication.
+
 ### 2026-04-15 — GitHub Actions CI pipeline + SQL queries
 
 - Added `.github/workflows/ci_prices.yml`: daily cron (05:00 UTC) + manual dispatch; shallow checkout; weekly reference refresh on Mondays; commits `data/prices_ci.db` back to repo.
