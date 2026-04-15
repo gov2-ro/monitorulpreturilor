@@ -1,0 +1,66 @@
+name: CI price fetch
+
+# Runs up to 4× per day so the 1h45m time-limited fetcher can make progress
+# across the full store×product subset without hitting GH Actions' 2h cap.
+# Each run resumes automatically from where the previous one stopped
+# (checkpoint committed to repo as data/prices_ci_checkpoint.json).
+
+on:
+  schedule:
+    - cron: '0 4  * * *'   # 04:00 UTC
+    - cron: '0 8  * * *'   # 08:00 UTC
+    - cron: '0 12 * * *'   # 12:00 UTC
+    - cron: '0 16 * * *'   # 16:00 UTC
+  workflow_dispatch:         # manual trigger via GitHub UI
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120     # hard GH cap; --max-runtime exits 15 min earlier
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests tqdm
+
+      # -----------------------------------------------------------------------
+      # Fetch prices — resumes from checkpoint automatically if in_progress;
+      # starts fresh for a new day (checkpoint from yesterday is ignored).
+      # Stops after 1h45m so the job finishes well within GH's 2h limit.
+      # -----------------------------------------------------------------------
+      - name: Fetch prices
+        run: |
+          STORE_ARG="--limit-stores 150"
+          PROD_ARG="--limit-products 200"
+          [ -f data/ci_stores.txt ]   && STORE_ARG="--store-ids-file data/ci_stores.txt"
+          [ -f data/ci_products.txt ] && PROD_ARG="--product-ids-file data/ci_products.txt"
+
+          python fetch_prices.py data/prices_ci.db \
+            $STORE_ARG $PROD_ARG \
+            --max-runtime 6300
+
+      # -----------------------------------------------------------------------
+      # Commit DB + checkpoint (skip if nothing changed)
+      # -----------------------------------------------------------------------
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/prices_ci.db data/prices_ci_checkpoint.json || true
+          [ -f data/ci_stores.txt ]   && git add data/ci_stores.txt
+          [ -f data/ci_products.txt ] && git add data/ci_products.txt
+
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+
+          git commit -m "chore(ci): fetch prices $(date -u +%FT%H:%MZ)"
+          git push

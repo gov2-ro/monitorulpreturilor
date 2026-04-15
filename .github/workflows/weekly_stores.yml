@@ -1,0 +1,71 @@
+name: Weekly store discovery
+
+# Runs every Sunday at 03:00 UTC (one hour before the first daily price fetch).
+# Discovers any new stores added to the API since last week, refreshes
+# population weights, and regenerates the CI store/product subset files.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Sunday 03:00 UTC
+  workflow_dispatch:        # manual trigger
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests tqdm
+
+      # -----------------------------------------------------------------------
+      # Refresh reference data (networks, UATs, categories, products)
+      # -----------------------------------------------------------------------
+      - name: Refresh reference data
+        run: python fetch_reference.py data/prices_ci.db
+
+      # -----------------------------------------------------------------------
+      # Discover stores (resumes from checkpoint if interrupted)
+      # -----------------------------------------------------------------------
+      - name: Discover stores
+        run: python discover_stores.py --db data/prices_ci.db
+
+      # -----------------------------------------------------------------------
+      # Update surrounding-population weights for newly added stores
+      # -----------------------------------------------------------------------
+      - name: Update store populations
+        run: python update_store_populations.py data/prices_ci.db
+
+      # -----------------------------------------------------------------------
+      # Regenerate CI subset files (stores + products)
+      # Requires price data — skips product selection gracefully if table empty
+      # -----------------------------------------------------------------------
+      - name: Build CI subset
+        run: python build_ci_subset.py data/prices_ci.db --debug
+
+      # -----------------------------------------------------------------------
+      # Commit everything back to repo
+      # -----------------------------------------------------------------------
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/prices_ci.db || true
+          [ -f data/ci_stores.txt ]   && git add data/ci_stores.txt
+          [ -f data/ci_products.txt ] && git add data/ci_products.txt
+
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+
+          git commit -m "chore(ci): weekly store discovery $(date -u +%F)"
+          git push
