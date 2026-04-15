@@ -122,10 +122,12 @@ Checkpoint behaviour:
 - **Completed run, same day** → exits immediately (no redundant API calls)
 - **Completed run, new day** → starts a fresh run automatically
 - **`--fresh`** → ignores any checkpoint and starts clean
+- **`--resume`** → continues a completed same-day run; skips already-processed store×batch keys, fetches only new stores
 
 ```bash
 python fetch_prices.py                                      # full run → data/prices.db
-python fetch_prices.py --limit-uats 3 --limit-products 90  # quick smoke test
+python fetch_prices.py --resume                             # fetch only new stores added since today's run
+python fetch_prices.py --limit-stores 3 --limit-products 90 # quick smoke test
 python fetch_prices.py --fresh                              # ignore checkpoint, start clean
 python fetch_prices.py path/to/db.db                        # custom DB path
 ```

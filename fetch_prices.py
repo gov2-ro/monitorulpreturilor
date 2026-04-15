@@ -18,6 +18,8 @@ Options:
   --limit-stores N    process only the first N stores
   --limit-products N  use only the first N products per store
   --fresh             ignore saved checkpoint and start a clean run
+  --resume            continue a completed run (e.g. after adding new stores);
+                      already-processed store×batch keys are skipped
 """
 
 import argparse
@@ -107,7 +109,7 @@ def _finish_checkpoint(path, fetched_at, done):
 # ---------------------------------------------------------------------------
 
 def main(db_path="data/prices.db", order="population", limit_stores=None,
-         limit_products=None, fresh=False):
+         limit_products=None, fresh=False, resume=False):
     conn = init_db(db_path)
 
     cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
@@ -116,9 +118,16 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
         cp_date = datetime.fromisoformat(cp["fetched_at"]).date()
         status = cp.get("status", "in_progress")
         if status == "completed" and cp_date == today:
-            tqdm.write(f"Already completed today ({cp['fetched_at']}). Nothing to do.")
-            conn.close()
-            return
+            if not resume:
+                tqdm.write(f"Already completed today ({cp['fetched_at']}). Nothing to do.")
+                tqdm.write("  Use --resume to process any newly added stores.")
+                conn.close()
+                return
+            tqdm.write(
+                f"Resuming completed run ({cp['fetched_at']}, {len(cp['done'])} work units done). "
+                f"New stores will be fetched; existing keys skipped."
+            )
+            cp["status"] = "in_progress"
         elif status == "completed" and cp_date != today:
             tqdm.write(f"Previous run completed on {cp_date}, starting fresh for today.")
             cp = None
@@ -244,5 +253,7 @@ if __name__ == "__main__":
                         help="use only the first N products per store")
     parser.add_argument("--fresh", action="store_true",
                         help="ignore saved checkpoint and start a clean run")
+    parser.add_argument("--resume", action="store_true",
+                        help="continue a completed today run (process only new stores/batches)")
     args = parser.parse_args()
-    main(args.db, args.order, args.limit_stores, args.limit_products, args.fresh)
+    main(args.db, args.order, args.limit_stores, args.limit_products, args.fresh, args.resume)
