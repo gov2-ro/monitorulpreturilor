@@ -12,7 +12,7 @@ Two workflows run on a schedule:
 | Workflow | File | Schedule | Purpose |
 |----------|------|----------|---------|
 | **CI price fetch** | `ci_prices.yml` | Daily, 4× per day | Fetch prices for the CI subset |
-| **Weekly store discovery** | `weekly_stores.yml` | Sundays 03:00 UTC | Refresh stores + regenerate subsets |
+| **Weekly reference refresh** | `weekly_stores.yml` | Sundays 03:00 UTC | Refresh networks, categories, products |
 
 ### Why 4× per day?
 
@@ -55,6 +55,23 @@ The two lists are unioned and deduplicated. IDs stored in `data/ci_products.txt`
 | `data/reference/populatie romania siruta coords.csv` | Manual (static) | Locality centroids for store discovery |
 
 All other `data/` files remain gitignored (local full DB, local checkpoints, CSV exports).
+
+---
+
+## Updating the store/product subset
+
+The store and product lists (`ci_stores.txt`, `ci_products.txt`) are **stable by design** — the CI pipeline monitors the same stores consistently so price history is comparable over time. They are NOT regenerated automatically.
+
+Update them manually after a full local fetch when you have good popularity signal:
+
+```bash
+python build_ci_subset.py data/prices.db --debug
+git add data/ci_stores.txt data/ci_products.txt
+git commit -m "chore(ci): refresh store/product subset"
+git push
+```
+
+Store discovery (`discover_stores.py`) is a full-pipeline operation — running it in CI just to then monitor 120 out of 3,500 stores is wasteful. Discover locally, then re-run `build_ci_subset.py`.
 
 ---
 
