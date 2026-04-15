@@ -32,6 +32,7 @@ import os
 import time
 from datetime import datetime, timezone
 
+import requests
 from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
@@ -293,7 +294,14 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
                             f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
                             f"&csvprodids={csv_ids}&OrderBy=price"
                         )
-                        root = fetch_xml(url)
+                        try:
+                            root = fetch_xml(url)
+                        except requests.exceptions.RequestException as exc:
+                            tqdm.write(
+                                f"  WARN: skipping {name} batch {i} after all retries failed: {exc}"
+                            )
+                            time.sleep(SLEEP_BETWEEN)
+                            continue
                         result_stores, prices = parse_stores_and_prices(root, fetched_at)
 
                         for s in result_stores:
