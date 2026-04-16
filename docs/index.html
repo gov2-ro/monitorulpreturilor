@@ -125,7 +125,7 @@ tr:hover td { background: #f8fafc; }
       <div class="kpi-label">Prețuri colectate</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">1,194</div>
+      <div class="kpi-value">1,303</div>
       <div class="kpi-label">Benzinării</div>
     </div>
     <div class="kpi">
@@ -160,7 +160,7 @@ tr:hover td { background: #f8fafc; }
         <tr><td style="color:var(--muted)">Ultimul preț carburant</td>
             <td style="font-weight:600">16/04/2026 14:16</td></tr>
         <tr><td style="color:var(--muted)">UAT-uri acoperite</td>
-            <td style="font-weight:600">284</td></tr>
+            <td style="font-weight:600">357</td></tr>
         <tr><td style="color:var(--muted)">Categorii produse</td>
             <td style="font-weight:600">143</td></tr>
       </table>
@@ -226,7 +226,7 @@ if (fuelTrendRawDash.length) {
   const dashFuelTypes = [...new Set(fuelTrendRawDash.map(r => r.fuel))].sort();
   const dashFuelDates = [...new Set(fuelTrendRawDash.map(r => r.price_date))].sort();
   const dashFuelNets  = [...new Set(fuelTrendRawDash.map(r => r.network))].sort();
-  const gasColsDash = {"Rompetrol":"#ffd700","LUKOIL România S.R.L.":"#e31e24","MOL România Petroleum Products":"#ff6600","Gazprom Petrol Stations":"#0066b3","SOCAR":"#00a1de","PETROM":"#004a99","OMV":"#009639"};
+  const gasColsDash = {"Gazprom Petrol Stations":"#0066b3","SOCAR":"#00a1de","PETROM":"#004a99","MOL România Petroleum Products":"#ff6600","OMV":"#009639","LUKOIL România S.R.L.":"#e31e24","Rompetrol":"#ffd700"};
 
   const tabsEl = document.getElementById('dashFuelTabs');
   let dashFuelChart = null;
