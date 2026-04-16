@@ -9,6 +9,7 @@ data*/*
 !data/ci_products.txt
 !data/reference/
 !data/reference/populatie romania siruta coords.csv
+data/reference/*.xlsx
 *.code-workspace
 docs/reference/screenshots
 docs/reference/sampleResponses

@@ -1,22 +1,14 @@
-# monitorulpreturilor.info
+# Monitorul Prețurilor
+
+[monitorulpreturilor.gov2.ro](https://monitorulpreturilor.gov2.ro/) – interfață alternativă pentru [monitorulpreturilor.info](https://monitorulpreturilor.info/)
 
 Fetch and store food price and fuel price data from the Romanian government price monitor API.
 
 > Proiectul *Monitorul Prețurilor* produselor alimentare își propune să acorde consumatorilor posibilitatea de a compara prețul aferent coșului de produse a cărui achiziție intenționează să o realizeze.
 
-Start with [Retail](https://monitorulpreturilor.info/Home/Retail). See also [Gas](https://monitorulpreturilor.info/Home/Gas).
 
 ---
 
-## Setup
-
-```bash
-source ~/devbox/envs/240826/bin/activate
-```
-
-Dependencies: stdlib + `requests` + `sqlite3` + `tqdm` (+ `openpyxl` for `discover_stores_by_uat.py`)
-
----
 
 ## Pipeline overview
 
@@ -341,13 +333,15 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [x] Price variability analysis (`analyse_prices.py`)
 - [x] Brand/product word analysis (`analyse_products.py`)
 - [x] Do [carburanți](docs/carburanti/readme.md)
-- [ ] Automated daily fetching (cron / scheduler)
-- [ ] UI — monitor price variations over time
+- [x] Automated daily fetching (cron / scheduler)
+- [x] UI — monitor price variations over time
 - [ ] Check price differences per UAT — maybe skip low-value UATs?
-- [ ] Make list of relevant products and fetch those more often
+- [x] Make list of relevant products and fetch those more often
 - [ ] Cross-reference with https://ro.openfoodfacts.org/ / [suntfrugal](https://www.suntfrugal.com/)
 - [ ] Deduplicate products with different names but same item
 - [ ] Remove dedicated brands — map to existing known brands
 
+Vezi și: [backlog](docs/backlog.md)
+
 ### Open questions
-- Same network has different prices for different stores — document scope and frequency
+- Does same network has different prices for different stores? — document scope and frequency
