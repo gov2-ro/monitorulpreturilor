@@ -389,6 +389,19 @@ def build_compare_data_files(conn, out_dir: Path):
     return len(product_ids)
 
 
+def load_analytics_data(conn):
+    """Load all analytics view data for the analytics page."""
+    return {
+        "price_variability": query(conn, "SELECT * FROM v_price_variability"),
+        "cross_network":     query(conn, "SELECT * FROM v_cross_network_spread LIMIT 500"),
+        "popular_products":  query(conn, "SELECT * FROM v_product_popularity LIMIT 200"),
+        "private_labels":    query(conn, "SELECT * FROM v_private_label_candidates LIMIT 100"),
+        "stores_per_network": query(conn, "SELECT * FROM v_stores_per_network"),
+        "price_freshness":   query(conn, "SELECT * FROM v_price_freshness LIMIT 30"),
+        "products_no_prices": query(conn, "SELECT * FROM v_products_no_prices"),
+    }
+
+
 def load_stores(conn):
     """Stores with network names for map."""
     return query(conn, """
@@ -505,6 +518,7 @@ NAV_ITEMS = [
     ("trends.html",      "Tendințe"),
     ("compare.html",     "Comparare"),
     ("fuel.html",        "Carburanți"),
+    ("analytics.html",   "Analiză"),
     ("pipeline.html",    "Pipeline"),
     ("stores_map.html",  "Hartă"),
 ]
@@ -1496,6 +1510,155 @@ if (sel.value) onSelect();
     return page_shell("Comparare", "compare.html", body, extra_scripts=scripts)
 
 
+def gen_analytics(data):
+    """Analytics page — sortable tables for all analytical views."""
+
+    TABS = [
+        ("price_variability",  "Variabilitate prețuri",    "Spread intra-rețea pe produs (outlier-filtrat, ultima dată)",                   "price_variability.csv"),
+        ("cross_network",      "Diferențe inter-rețea",    "Raport preț max/min între rețele per produs (excl. SELGROS, min. 2 rețele)",     "cross_network_spread.csv"),
+        ("popular_products",   "Produse populare",         "Top 200 produse după acoperire în magazine și număr de înregistrări",            "popular_products.csv"),
+        ("private_labels",     "Mărci proprii",            "Produse găsite într-o singură rețea (candidați mărci proprii)",                  "private_labels.csv"),
+        ("stores_per_network", "Magazine per rețea",       "Numărul total de magazine per lanț de retail",                                   "stores_per_network.csv"),
+        ("price_freshness",    "Prospețime date",          "Numărul de înregistrări, magazine și produse per dată de preț",                  "price_freshness.csv"),
+        ("products_no_prices", "Produse fără prețuri",     "Produse din catalog care nu au nicio înregistrare de preț",                      "products_no_prices.csv"),
+    ]
+
+    tab_buttons = ""
+    for i, (key, label, _desc, _csv) in enumerate(TABS):
+        cls = "tab-btn active" if i == 0 else "tab-btn"
+        tab_buttons += f'<button class="{cls}" data-tab="{key}">{label}</button>'
+
+    body = f"""
+<div class="container">
+  <h1>Analiză Date</h1>
+  <p class="subtitle">Tabele sortabile din interogările analitice — actualizate zilnic</p>
+
+  <div class="card">
+    <div class="tabs" id="analyticsTabs" style="margin-bottom:12px">{tab_buttons}</div>
+    <div id="analyticsDesc" style="color:var(--muted);font-size:13px;margin-bottom:14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span id="analyticsCount" style="font-size:13px;color:var(--muted)"></span>
+      <a id="csvLink" href="#" download
+         style="font-size:13px;padding:5px 12px;border-radius:6px;border:1px solid var(--border);
+                color:var(--primary);background:var(--card);text-decoration:none">
+        ↓ CSV
+      </a>
+    </div>
+    <div class="table-wrap">
+      <table id="analyticsTable">
+        <thead id="analyticsHead"></thead>
+        <tbody id="analyticsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>"""
+
+    tabs_meta = [{"key": key, "desc": desc, "csv": csv}
+                 for key, _label, desc, csv in TABS]
+    scripts = f"""
+<script>
+const analyticsData = {jdump({k: v for k, v in data.items()})};
+const tabsMeta = {jdump(tabs_meta)};
+
+/* ── Sorting state ─────────────────────────────────────────────────── */
+let sortCol = -1, sortAsc = true;
+
+function renderTable(key) {{
+  const rows = analyticsData[key] || [];
+  const meta = tabsMeta.find(t => t.key === key);
+  if (!rows.length) {{
+    document.getElementById('analyticsHead').innerHTML = '';
+    document.getElementById('analyticsBody').innerHTML =
+      '<tr><td colspan="99" style="text-align:center;color:var(--muted);padding:32px">Nu există date.</td></tr>';
+    document.getElementById('analyticsCount').textContent = '0 rânduri';
+    document.getElementById('analyticsDesc').textContent = meta?.desc || '';
+    document.getElementById('csvLink').href = 'data/' + (meta?.csv || '');
+    return;
+  }}
+
+  const cols = Object.keys(rows[0]);
+  sortCol = -1; sortAsc = true;
+
+  document.getElementById('analyticsDesc').textContent = meta?.desc || '';
+  document.getElementById('csvLink').href = 'data/' + (meta?.csv || '');
+
+  // Header
+  document.getElementById('analyticsHead').innerHTML =
+    '<tr>' + cols.map((c, i) =>
+      `<th style="cursor:pointer;user-select:none" data-col="${{i}}"
+           title="Click to sort">${{c}} <span class="sort-icon"></span></th>`
+    ).join('') + '</tr>';
+
+  // Detect numeric columns
+  const isNum = cols.map(c => rows.every(r => r[c] === null || r[c] === '' || !isNaN(+r[c])));
+
+  function bodyRows(data) {{
+    return data.map(r => {{
+      const cells = cols.map((c, ci) => {{
+        const v = r[c];
+        const fmt = (isNum[ci] && v !== null && v !== '')
+          ? `<td style="text-align:right">${{(+v).toLocaleString('ro', {{maximumFractionDigits:2}})}}</td>`
+          : `<td>${{v ?? ''}}</td>`;
+        return fmt;
+      }});
+      return '<tr>' + cells.join('') + '</tr>';
+    }}).join('');
+  }}
+
+  document.getElementById('analyticsBody').innerHTML = bodyRows(rows);
+  document.getElementById('analyticsCount').textContent =
+    rows.length.toLocaleString('ro') + ' rânduri';
+
+  // Sort on header click
+  document.getElementById('analyticsHead').addEventListener('click', e => {{
+    const th = e.target.closest('th');
+    if (!th) return;
+    const ci = +th.dataset.col;
+    if (sortCol === ci) sortAsc = !sortAsc; else {{ sortCol = ci; sortAsc = true; }}
+
+    const sorted = [...rows].sort((a, b) => {{
+      const av = a[cols[ci]], bv = b[cols[ci]];
+      const an = +av, bn = +bv;
+      const cmp = (!isNaN(an) && !isNaN(bn))
+        ? an - bn
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'ro');
+      return sortAsc ? cmp : -cmp;
+    }});
+    document.getElementById('analyticsBody').innerHTML = bodyRows(sorted);
+
+    // Update sort icons
+    document.querySelectorAll('#analyticsHead th').forEach((t, i) => {{
+      t.querySelector('.sort-icon').textContent =
+        i === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '';
+    }});
+  }});
+}}
+
+/* ── Tab switching ─────────────────────────────────────────────────── */
+const tabsEl = document.getElementById('analyticsTabs');
+tabsEl.addEventListener('click', e => {{
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  tabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable(btn.dataset.tab);
+}});
+
+// Render first tab on load
+renderTable('{TABS[0][0]}');
+</script>"""
+
+    extra_head = """
+<style>
+#analyticsTable th:hover { color: var(--primary); }
+#analyticsTable th .sort-icon { font-size: 10px; }
+#analyticsTable td { white-space: nowrap; }
+</style>"""
+
+    return page_shell("Analiză", "analytics.html", body,
+                      extra_head=extra_head, extra_scripts=scripts)
+
+
 def gen_stores_map(stores):
     """Enhanced store map with network toggles."""
     # Build data
@@ -1670,6 +1833,7 @@ def main():
     category_trends = load_category_trends(conn)
     fuel_trends     = load_fuel_trends(conn)
     compare_index   = load_compare_index(conn)
+    analytics_data  = load_analytics_data(conn)
     stores          = load_stores(conn)
 
     print("Building compare data files...")
@@ -1684,6 +1848,7 @@ def main():
         "trends.html":      gen_trends(network_trends, category_trends, fuel_trends),
         "compare.html":     gen_compare(compare_index),
         "fuel.html":        gen_fuel(fuel_prices),
+        "analytics.html":   gen_analytics(analytics_data),
         "pipeline.html":    gen_pipeline(runs, coverage, summary),
         "stores_map.html":  gen_stores_map(stores),
     }
