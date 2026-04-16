@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tendințe — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="trends.html" class="active">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
+
+<div class="container">
+  <h1>Tendințe Prețuri</h1>
+  <p class="subtitle">Evoluția prețurilor în timp — se actualizează zilnic</p>
+
+  <div class="card">
+    <div class="card-title">Index Prețuri pe Rețea în Timp</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+      100 = cea mai ieftină rețea din acea zi (produse comparabile disponibile în 3+ rețele)</p>
+    <div class="chart-box" style="height:380px"><canvas id="networkTrendChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Preț Mediu pe Categorie în Timp (RON)</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+      Prețul mediu al produselor per categorie</p>
+    <div class="tabs" id="catTrendTabs"></div>
+    <div class="chart-box" style="height:340px"><canvas id="catTrendChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Carburanți — Evoluție Prețuri (RON/L)</div>
+    <div class="tabs" id="fuelTrendTabs"></div>
+    <div class="chart-box" style="height:340px"><canvas id="fuelTrendChart"></canvas></div>
+  </div>
+</div>
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const trendDates  = ["14.04 04:00","15.04 04:00","15.04 20:00","16.04 04:00"];
+const allDates    = ["14.04.2026 04:00","15.04.2026 04:00","15.04.2026 20:00","16.04.2026 04:00"];
+const netColors   = {"LIDL DISCOUNT SRL":"#f1c40f","PENNY":"#c0392b","SUPECO":"#d35400","AUCHAN":"#27ae60","PROFI":"#e74c3c","CARREFOUR":"#2980b9","KAUFLAND":"#e67e22","SELGROS":"#16a085","MEGA IMAGE SRL":"#8e44ad","CORA":"#2c3e50"};
+const gasColors   = {"OMV":"#009639","PETROM":"#004a99","Rompetrol":"#ffd700","MOL România Petroleum Products":"#ff6600","LUKOIL România S.R.L.":"#e31e24","Gazprom Petrol Stations":"#0066b3","SOCAR":"#00a1de"};
+const allNetworks = ["LIDL DISCOUNT SRL","PENNY","SUPECO","AUCHAN","PROFI","CARREFOUR","KAUFLAND","SELGROS","MEGA IMAGE SRL","CORA"];
+const allCats     = ["ALIMENTE DE BAZA","ALIMENTE SI BAUTURI PENTRU BEBELUSI","BAUTURI ALCOOLICE","CAFEA, CEAI","CARNE","COFETARIE, DESERT, DULCIURI","PANIFICATIE"];
+const allFuelTypes= ["Benzină premium","Benzină standard","GPL","Motorină premium","Motorină standard","Încărcare Electrică"];
+const netTrendRaw = [{"price_date":"14.04.2026 04:00","network":"PENNY","index_value":108.5},{"price_date":"14.04.2026 04:00","network":"SUPECO","index_value":111.6},{"price_date":"14.04.2026 04:00","network":"AUCHAN","index_value":114.7},{"price_date":"14.04.2026 04:00","network":"PROFI","index_value":122.1},{"price_date":"14.04.2026 04:00","network":"MEGA IMAGE SRL","index_value":125.4},{"price_date":"14.04.2026 04:00","network":"KAUFLAND","index_value":127.9},{"price_date":"14.04.2026 04:00","network":"CARREFOUR","index_value":129.1},{"price_date":"14.04.2026 04:00","network":"SELGROS","index_value":132.8},{"price_date":"15.04.2026 04:00","network":"LIDL DISCOUNT SRL","index_value":111.7},{"price_date":"15.04.2026 04:00","network":"AUCHAN","index_value":126.7},{"price_date":"15.04.2026 04:00","network":"SUPECO","index_value":133.1},{"price_date":"15.04.2026 04:00","network":"CARREFOUR","index_value":133.8},{"price_date":"15.04.2026 04:00","network":"PROFI","index_value":134.4},{"price_date":"15.04.2026 04:00","network":"SELGROS","index_value":135.6},{"price_date":"15.04.2026 04:00","network":"PENNY","index_value":139.7},{"price_date":"15.04.2026 04:00","network":"KAUFLAND","index_value":139.8},{"price_date":"15.04.2026 04:00","network":"MEGA IMAGE SRL","index_value":198.6},{"price_date":"15.04.2026 04:00","network":"CORA","index_value":237.5},{"price_date":"15.04.2026 20:00","network":"LIDL DISCOUNT SRL","index_value":100.9},{"price_date":"15.04.2026 20:00","network":"PENNY","index_value":125.6},{"price_date":"15.04.2026 20:00","network":"SUPECO","index_value":129.0},{"price_date":"15.04.2026 20:00","network":"PROFI","index_value":129.5},{"price_date":"15.04.2026 20:00","network":"AUCHAN","index_value":132.8},{"price_date":"15.04.2026 20:00","network":"SELGROS","index_value":135.5},{"price_date":"15.04.2026 20:00","network":"CARREFOUR","index_value":136.6},{"price_date":"15.04.2026 20:00","network":"KAUFLAND","index_value":137.6},{"price_date":"15.04.2026 20:00","network":"MEGA IMAGE SRL","index_value":194.9},{"price_date":"15.04.2026 20:00","network":"CORA","index_value":259.0},{"price_date":"16.04.2026 04:00","network":"LIDL DISCOUNT SRL","index_value":110.8},{"price_date":"16.04.2026 04:00","network":"PENNY","index_value":116.9},{"price_date":"16.04.2026 04:00","network":"SUPECO","index_value":118.7},{"price_date":"16.04.2026 04:00","network":"AUCHAN","index_value":121.9},{"price_date":"16.04.2026 04:00","network":"PROFI","index_value":122.4},{"price_date":"16.04.2026 04:00","network":"CARREFOUR","index_value":123.2},{"price_date":"16.04.2026 04:00","network":"KAUFLAND","index_value":123.5},{"price_date":"16.04.2026 04:00","network":"SELGROS","index_value":127.9},{"price_date":"16.04.2026 04:00","network":"MEGA IMAGE SRL","index_value":131.8},{"price_date":"16.04.2026 04:00","network":"CORA","index_value":207.0}];
+const catTrendRaw = [{"price_date":"13.04.2026 20:00","category":"ALIMENTE DE BAZA","avg_price":9.15,"products":651},{"price_date":"13.04.2026 20:00","category":"ALIMENTE SI BAUTURI PENTRU BEBELUSI","avg_price":17.36,"products":1},{"price_date":"13.04.2026 20:00","category":"BAUTURI ALCOOLICE","avg_price":31.77,"products":9},{"price_date":"13.04.2026 20:00","category":"CAFEA, CEAI","avg_price":30.86,"products":246},{"price_date":"13.04.2026 20:00","category":"CARNE","avg_price":28.3,"products":18},{"price_date":"13.04.2026 20:00","category":"COFETARIE, DESERT, DULCIURI","avg_price":9.86,"products":741},{"price_date":"13.04.2026 20:00","category":"PANIFICATIE","avg_price":10.4,"products":585},{"price_date":"14.04.2026 04:00","category":"ALIMENTE DE BAZA","avg_price":8.01,"products":26},{"price_date":"14.04.2026 04:00","category":"BAUTURI ALCOOLICE","avg_price":57.88,"products":9},{"price_date":"14.04.2026 04:00","category":"CAFEA, CEAI","avg_price":37.96,"products":17},{"price_date":"14.04.2026 04:00","category":"CARNE","avg_price":32.2,"products":32},{"price_date":"14.04.2026 04:00","category":"COFETARIE, DESERT, DULCIURI","avg_price":12.25,"products":37},{"price_date":"14.04.2026 04:00","category":"PANIFICATIE","avg_price":11.9,"products":43},{"price_date":"15.04.2026 04:00","category":"ALIMENTE DE BAZA","avg_price":9.3,"products":785},{"price_date":"15.04.2026 04:00","category":"ALIMENTE SI BAUTURI PENTRU BEBELUSI","avg_price":9.28,"products":3},{"price_date":"15.04.2026 04:00","category":"BAUTURI ALCOOLICE","avg_price":55.59,"products":510},{"price_date":"15.04.2026 04:00","category":"CAFEA, CEAI","avg_price":34.11,"products":325},{"price_date":"15.04.2026 04:00","category":"CARNE","avg_price":31.89,"products":56},{"price_date":"15.04.2026 04:00","category":"COFETARIE, DESERT, DULCIURI","avg_price":12.44,"products":962},{"price_date":"15.04.2026 04:00","category":"PANIFICATIE","avg_price":11.51,"products":855},{"price_date":"15.04.2026 20:00","category":"ALIMENTE DE BAZA","avg_price":10.02,"products":981},{"price_date":"15.04.2026 20:00","category":"ALIMENTE SI BAUTURI PENTRU BEBELUSI","avg_price":12.07,"products":3},{"price_date":"15.04.2026 20:00","category":"BAUTURI ALCOOLICE","avg_price":52.8,"products":570},{"price_date":"15.04.2026 20:00","category":"CAFEA, CEAI","avg_price":29.89,"products":374},{"price_date":"15.04.2026 20:00","category":"CARNE","avg_price":31.87,"products":55},{"price_date":"15.04.2026 20:00","category":"COFETARIE, DESERT, DULCIURI","avg_price":11.16,"products":1278},{"price_date":"15.04.2026 20:00","category":"PANIFICATIE","avg_price":10.55,"products":2243},{"price_date":"16.04.2026 04:00","category":"ALIMENTE DE BAZA","avg_price":10.35,"products":738},{"price_date":"16.04.2026 04:00","category":"ALIMENTE SI BAUTURI PENTRU BEBELUSI","avg_price":12.1,"products":3},{"price_date":"16.04.2026 04:00","category":"BAUTURI ALCOOLICE","avg_price":55.66,"products":441},{"price_date":"16.04.2026 04:00","category":"CAFEA, CEAI","avg_price":31.81,"products":315},{"price_date":"16.04.2026 04:00","category":"CARNE","avg_price":32.99,"products":41},{"price_date":"16.04.2026 04:00","category":"COFETARIE, DESERT, DULCIURI","avg_price":12.73,"products":880},{"price_date":"16.04.2026 04:00","category":"PANIFICATIE","avg_price":11.15,"products":932}];
+const fuelTrendRaw= [{"price_date":"10/04/2026 00:05","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 00:05","network":"PETROM","fuel":"Benzină premium","avg_price":9.2},{"price_date":"10/04/2026 00:11","network":"Rompetrol","fuel":"Benzină premium","avg_price":9.41},{"price_date":"10/04/2026 00:26","network":"Rompetrol","fuel":"Benzină premium","avg_price":9.39},{"price_date":"10/04/2026 05:50","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 07:20","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 09:25","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"Benzină premium","avg_price":9.74},{"price_date":"10/04/2026 10:05","network":"LUKOIL România S.R.L.","fuel":"Benzină premium","avg_price":9.69},{"price_date":"10/04/2026 10:25","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 11:10","network":"Gazprom Petrol Stations","fuel":"Benzină premium","avg_price":9.86},{"price_date":"10/04/2026 12:25","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 12:55","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"10/04/2026 19:35","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"13/04/2026 08:00","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"13/04/2026 08:55","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"13/04/2026 09:50","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"13/04/2026 11:05","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"14/04/2026 07:00","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"14/04/2026 08:16","network":"SOCAR","fuel":"Benzină premium","avg_price":9.79},{"price_date":"14/04/2026 08:25","network":"OMV","fuel":"Benzină premium","avg_price":9.46},{"price_date":"14/04/2026 09:10","network":"PETROM","fuel":"Benzină premium","avg_price":9.2},{"price_date":"14/04/2026 09:16","network":"SOCAR","fuel":"Benzină premium","avg_price":9.79},{"price_date":"14/04/2026 09:27","network":"Rompetrol","fuel":"Benzină premium","avg_price":9.39},{"price_date":"10/04/2026 00:05","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 00:05","network":"PETROM","fuel":"Benzină standard","avg_price":8.72},{"price_date":"10/04/2026 00:10","network":"PETROM","fuel":"Benzină standard","avg_price":8.72},{"price_date":"10/04/2026 00:11","network":"Rompetrol","fuel":"Benzină standard","avg_price":9.11},{"price_date":"10/04/2026 00:26","network":"Rompetrol","fuel":"Benzină standard","avg_price":9.11},{"price_date":"10/04/2026 05:50","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 07:20","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 09:25","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"Benzină standard","avg_price":9.11},{"price_date":"10/04/2026 10:05","network":"LUKOIL România S.R.L.","fuel":"Benzină standard","avg_price":8.99},{"price_date":"10/04/2026 10:25","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 11:10","network":"Gazprom Petrol Stations","fuel":"Benzină standard","avg_price":9.11},{"price_date":"10/04/2026 12:25","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 12:55","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"10/04/2026 19:35","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"13/04/2026 08:00","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"13/04/2026 08:55","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"13/04/2026 09:50","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"13/04/2026 11:05","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"14/04/2026 07:00","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"14/04/2026 08:16","network":"SOCAR","fuel":"Benzină standard","avg_price":9.19},{"price_date":"14/04/2026 08:25","network":"OMV","fuel":"Benzină standard","avg_price":8.83},{"price_date":"14/04/2026 09:10","network":"PETROM","fuel":"Benzină standard","avg_price":8.72},{"price_date":"14/04/2026 09:16","network":"SOCAR","fuel":"Benzină standard","avg_price":9.19},{"price_date":"14/04/2026 09:27","network":"Rompetrol","fuel":"Benzină standard","avg_price":9.11},{"price_date":"10/04/2026 00:11","network":"Rompetrol","fuel":"GPL","avg_price":4.185},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"GPL","avg_price":4.232},{"price_date":"10/04/2026 10:05","network":"LUKOIL România S.R.L.","fuel":"GPL","avg_price":4.23},{"price_date":"10/04/2026 11:10","network":"Gazprom Petrol Stations","fuel":"GPL","avg_price":4.25},{"price_date":"14/04/2026 08:16","network":"SOCAR","fuel":"GPL","avg_price":4.14},{"price_date":"14/04/2026 09:16","network":"SOCAR","fuel":"GPL","avg_price":4.14},{"price_date":"14/04/2026 09:27","network":"Rompetrol","fuel":"GPL","avg_price":4.265},{"price_date":"10/04/2026 00:05","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 00:05","network":"PETROM","fuel":"Motorină premium","avg_price":10.35},{"price_date":"10/04/2026 00:10","network":"PETROM","fuel":"Motorină premium","avg_price":10.35},{"price_date":"10/04/2026 00:11","network":"Rompetrol","fuel":"Motorină premium","avg_price":10.85},{"price_date":"10/04/2026 00:26","network":"Rompetrol","fuel":"Motorină premium","avg_price":10.85},{"price_date":"10/04/2026 05:50","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 07:20","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 09:25","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"Motorină premium","avg_price":10.86},{"price_date":"10/04/2026 10:05","network":"LUKOIL România S.R.L.","fuel":"Motorină premium","avg_price":10.5},{"price_date":"10/04/2026 10:25","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 11:10","network":"Gazprom Petrol Stations","fuel":"Motorină premium","avg_price":10.89},{"price_date":"10/04/2026 12:25","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 12:55","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"10/04/2026 19:35","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"13/04/2026 08:00","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"13/04/2026 08:55","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"13/04/2026 09:50","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"13/04/2026 11:05","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"14/04/2026 07:00","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"14/04/2026 08:16","network":"SOCAR","fuel":"Motorină premium","avg_price":10.49},{"price_date":"14/04/2026 08:25","network":"OMV","fuel":"Motorină premium","avg_price":10.49},{"price_date":"14/04/2026 09:10","network":"PETROM","fuel":"Motorină premium","avg_price":10.35},{"price_date":"14/04/2026 09:16","network":"SOCAR","fuel":"Motorină premium","avg_price":10.49},{"price_date":"14/04/2026 09:27","network":"Rompetrol","fuel":"Motorină premium","avg_price":10.85},{"price_date":"10/04/2026 00:05","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 00:05","network":"PETROM","fuel":"Motorină standard","avg_price":9.58},{"price_date":"10/04/2026 00:10","network":"PETROM","fuel":"Motorină standard","avg_price":9.58},{"price_date":"10/04/2026 00:11","network":"Rompetrol","fuel":"Motorină standard","avg_price":10.02},{"price_date":"10/04/2026 00:26","network":"Rompetrol","fuel":"Motorină standard","avg_price":10.02},{"price_date":"10/04/2026 05:50","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 07:20","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 09:25","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"Motorină standard","avg_price":9.99},{"price_date":"10/04/2026 10:05","network":"LUKOIL România S.R.L.","fuel":"Motorină standard","avg_price":9.68},{"price_date":"10/04/2026 10:25","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 11:10","network":"Gazprom Petrol Stations","fuel":"Motorină standard","avg_price":9.99},{"price_date":"10/04/2026 12:25","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 12:55","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"10/04/2026 19:35","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"13/04/2026 08:00","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"13/04/2026 08:55","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"13/04/2026 09:50","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"13/04/2026 11:05","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"14/04/2026 07:00","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"14/04/2026 08:16","network":"SOCAR","fuel":"Motorină standard","avg_price":9.99},{"price_date":"14/04/2026 08:25","network":"OMV","fuel":"Motorină standard","avg_price":9.67},{"price_date":"14/04/2026 09:10","network":"PETROM","fuel":"Motorină standard","avg_price":9.58},{"price_date":"14/04/2026 09:16","network":"SOCAR","fuel":"Motorină standard","avg_price":9.99},{"price_date":"14/04/2026 09:27","network":"Rompetrol","fuel":"Motorină standard","avg_price":10.02},{"price_date":"10/04/2026 10:01","network":"MOL România Petroleum Products","fuel":"Încărcare Electrică","avg_price":20.946}];
+
+/* ── Network trend ───────────────────────────────────────────────── */
+new Chart(document.getElementById('networkTrendChart'), {
+  type: 'line',
+  data: {
+    labels: trendDates,
+    datasets: allNetworks.map(net => {
+      const vals = allDates.map(d => {
+        const row = netTrendRaw.find(r => r.price_date===d && r.network===net);
+        return row ? row.index_value : null;
+      });
+      return {
+        label: net,
+        data: vals,
+        borderColor: netColors[net] || '#94a3b8',
+        backgroundColor: (netColors[net] || '#94a3b8') + '20',
+        tension: 0.3, spanGaps: true, pointRadius: 4,
+        pointHoverRadius: 6, borderWidth: 2,
+      };
+    })
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
+      tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y}` } }
+    },
+    scales: {
+      x: { grid: { color: '#f1f5f9' } },
+      y: {
+        grid: { color: '#f1f5f9' },
+        title: { display: true, text: 'Index (100 = cel mai ieftin)' }
+      }
+    }
+  }
+});
+
+/* ── Category trend ──────────────────────────────────────────────── */
+const catCtx = document.getElementById('catTrendChart');
+let catTrendChart = null;
+function renderCatTrend(cat) {
+  const vals = allDates.map(d => {
+    const row = catTrendRaw.find(r => r.price_date===d && r.category===cat);
+    return row ? row.avg_price : null;
+  });
+  if (catTrendChart) catTrendChart.destroy();
+  catTrendChart = new Chart(catCtx, {
+    type: 'line',
+    data: {
+      labels: trendDates,
+      datasets: [{
+        label: cat, data: vals,
+        borderColor: '#2563eb', backgroundColor: '#2563eb20',
+        tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#f1f5f9' } },
+        y: {
+          grid: { color: '#f1f5f9' },
+          ticks: { callback: v => v.toFixed(2) + ' RON' },
+          title: { display: true, text: 'Preț mediu (RON)' }
+        }
+      }
+    }
+  });
+}
+const catTabsEl = document.getElementById('catTrendTabs');
+allCats.forEach((cat, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'tab-btn' + (i===0 ? ' active' : '');
+  btn.dataset.cat = cat; btn.textContent = cat;
+  catTabsEl.appendChild(btn);
+});
+catTabsEl.addEventListener('click', e => {
+  if (!e.target.matches('.tab-btn')) return;
+  catTabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  renderCatTrend(e.target.dataset.cat);
+});
+if (allCats.length) renderCatTrend(allCats[0]);
+
+/* ── Fuel trend ──────────────────────────────────────────────────── */
+const fuelTrendTabsEl = document.getElementById('fuelTrendTabs');
+if (fuelTrendTabsEl && allFuelTypes.length) {
+  const fuelDates = [...new Set(fuelTrendRaw.map(r => r.price_date))].sort();
+  const fuelDisplayDates = fuelDates.map(d => {
+    const p = d.split(' '); return p.length===2 ? p[0].split('.').slice(0,2).join('.')+' '+p[1] : d;
+  });
+  const fuelNets = [...new Set(fuelTrendRaw.map(r => r.network))].sort();
+  const fuelCtx = document.getElementById('fuelTrendChart');
+  let fuelTrendChart = null;
+  function renderFuelTrend(fuel) {
+    const datasets = fuelNets.map(net => {
+      const vals = fuelDates.map(d => {
+        const row = fuelTrendRaw.find(r => r.price_date===d && r.network===net && r.fuel===fuel);
+        return row ? row.avg_price : null;
+      });
+      return {
+        label: net, data: vals,
+        borderColor: gasColors[net] || '#94a3b8',
+        backgroundColor: (gasColors[net] || '#94a3b8') + '20',
+        tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+      };
+    });
+    if (fuelTrendChart) fuelTrendChart.destroy();
+    fuelTrendChart = new Chart(fuelCtx, {
+      type: 'line',
+      data: { labels: fuelDisplayDates, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y?.toFixed(3)} RON` } }
+        },
+        scales: {
+          x: { grid: { color: '#f1f5f9' } },
+          y: {
+            grid: { color: '#f1f5f9' },
+            ticks: { callback: v => v.toFixed(2) },
+            title: { display: true, text: 'RON/litru' }
+          }
+        }
+      }
+    });
+  }
+  allFuelTypes.forEach((ft, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (i===0 ? ' active' : '');
+    btn.dataset.fuel = ft; btn.textContent = ft;
+    fuelTrendTabsEl.appendChild(btn);
+  });
+  fuelTrendTabsEl.addEventListener('click', e => {
+    if (!e.target.matches('.tab-btn')) return;
+    fuelTrendTabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderFuelTrend(e.target.dataset.fuel);
+  });
+  renderFuelTrend(allFuelTypes[0]);
+}
+</script>
+</body>
+</html>
