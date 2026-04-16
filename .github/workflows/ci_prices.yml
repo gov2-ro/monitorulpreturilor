@@ -52,7 +52,7 @@ jobs:
       # Regenerate static site from updated DB
       # -----------------------------------------------------------------------
       - name: Generate site
-        run: python generate_site.py --db data/prices_ci.db --out docs/
+        run: python generate_site.py --db data/prices_ci.db --out dashboard/
 
       # -----------------------------------------------------------------------
       # Commit DB + checkpoint + docs (skip if nothing changed).
@@ -67,8 +67,8 @@ jobs:
           git add data/prices_ci.db data/prices_ci_checkpoint.json || true
           [ -f data/ci_stores.txt ]   && git add data/ci_stores.txt
           [ -f data/ci_products.txt ] && git add data/ci_products.txt
-          git add docs/index.html docs/price-index.html docs/fuel.html \
-                  docs/pipeline.html docs/stores_map.html || true
+          git add dashboard/index.html dashboard/price-index.html dashboard/fuel.html \
+                  dashboard/pipeline.html dashboard/stores_map.html dashboard/CNAME || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 
