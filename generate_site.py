@@ -192,6 +192,203 @@ def load_coverage(conn):
     """)
 
 
+def load_network_trends(conn):
+    """Network Price Index per date (time-series)."""
+    return query(conn, """
+        WITH base AS (
+          SELECT p.price_date, s.network_id, p.product_id, AVG(p.price) AS avg_price
+          FROM prices p JOIN stores s ON p.store_id = s.id
+          WHERE p.price > 0
+          GROUP BY p.price_date, s.network_id, p.product_id
+        ),
+        multi AS (
+          SELECT product_id, price_date FROM base
+          GROUP BY product_id, price_date
+          HAVING COUNT(DISTINCT network_id) >= 3
+        ),
+        filt AS (
+          SELECT b.* FROM base b
+          JOIN multi m ON b.product_id = m.product_id AND b.price_date = m.price_date
+        ),
+        mins AS (
+          SELECT price_date, product_id, MIN(avg_price) AS min_price
+          FROM filt GROUP BY price_date, product_id
+        ),
+        indexed AS (
+          SELECT f.price_date, f.network_id,
+                 AVG(f.avg_price / m.min_price * 100) AS idx
+          FROM filt f JOIN mins m ON f.price_date=m.price_date AND f.product_id=m.product_id
+          GROUP BY f.price_date, f.network_id
+        )
+        SELECT i.price_date, n.name AS network, ROUND(i.idx, 1) AS index_value
+        FROM indexed i JOIN retail_networks n ON i.network_id = n.id
+        ORDER BY i.price_date, i.idx
+    """)
+
+
+def load_category_trends(conn):
+    """Average price per top-level category per date."""
+    return query(conn, """
+        SELECT p.price_date, c.name AS category,
+               ROUND(AVG(p.price), 2) AS avg_price,
+               COUNT(DISTINCT p.product_id) AS products
+        FROM prices p
+        JOIN products pr ON p.product_id = pr.id
+        JOIN categories c ON pr.categ_id = c.id
+        WHERE p.price > 0 AND c.parent_id = 1
+        GROUP BY p.price_date, c.name
+        ORDER BY p.price_date, c.name
+    """)
+
+
+def load_fuel_trends(conn):
+    """Average fuel price per network and product type per date."""
+    return query(conn, """
+        SELECT gp.price_date, n.name AS network, gp2.name AS fuel,
+               ROUND(AVG(gp.price), 3) AS avg_price
+        FROM gas_prices gp
+        JOIN gas_stations gs ON gp.station_id = gs.id
+        JOIN gas_networks n ON gs.network_id = n.id
+        JOIN gas_products gp2 ON gp.product_id = gp2.id
+        WHERE gp.price > 0
+        GROUP BY gp.price_date, n.id, gp2.id
+        ORDER BY gp2.name, gp.price_date, n.name
+    """)
+
+
+def load_compare_index(conn):
+    """Lightweight compare index: product list + network colors for the dropdown."""
+    latest = query(conn, "SELECT MAX(price_date) AS d FROM prices")[0]["d"]
+    if not latest:
+        return {"latest_date": None, "products": [], "net_colors": {}}
+
+    products = query(conn, """
+        WITH qualifying AS (
+          SELECT p.product_id
+          FROM prices p JOIN stores s ON p.store_id = s.id
+          WHERE p.price_date = ? AND p.price > 0
+          GROUP BY p.product_id
+          HAVING COUNT(DISTINCT s.network_id) >= 3
+        )
+        SELECT DISTINCT p.product_id AS id, pr.name AS name, c.name AS cat
+        FROM prices p
+        JOIN qualifying q ON p.product_id = q.product_id
+        JOIN products pr ON p.product_id = pr.id
+        JOIN categories c ON pr.categ_id = c.id
+        WHERE p.price_date = ?
+        ORDER BY pr.name
+    """, (latest, latest))
+
+    networks = query(conn, "SELECT name FROM retail_networks ORDER BY name")
+    net_colors = {r["name"]: net_color(r["name"]) for r in networks}
+
+    return {"latest_date": latest, "products": products, "net_colors": net_colors}
+
+
+def build_compare_data_files(conn, out_dir: Path):
+    """Write docs/data/index.json and docs/data/products/{id}.csv for each product."""
+    import csv, io
+
+    data_dir = out_dir / "data" / "products"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    latest = query(conn, "SELECT MAX(price_date) AS d FROM prices")[0]["d"]
+    if not latest:
+        return 0
+
+    # Latest cross-network prices
+    latest_rows = query(conn, """
+        WITH qualifying AS (
+          SELECT p.product_id
+          FROM prices p JOIN stores s ON p.store_id = s.id
+          WHERE p.price_date = ? AND p.price > 0
+          GROUP BY p.product_id
+          HAVING COUNT(DISTINCT s.network_id) >= 3
+        )
+        SELECT p.product_id, pr.name AS product_name, c.name AS category,
+               n.name AS network,
+               ROUND(AVG(p.price), 2) AS avg_price,
+               ROUND(MIN(p.price), 2) AS min_price,
+               ROUND(MAX(p.price), 2) AS max_price,
+               COUNT(DISTINCT p.store_id) AS stores
+        FROM prices p
+        JOIN qualifying q ON p.product_id = q.product_id
+        JOIN products pr ON p.product_id = pr.id
+        JOIN categories c ON pr.categ_id = c.id
+        JOIN stores s ON p.store_id = s.id
+        JOIN retail_networks n ON s.network_id = n.id
+        WHERE p.price_date = ? AND p.price > 0
+        GROUP BY p.product_id, n.id
+        ORDER BY p.product_id, avg_price
+    """, (latest, latest))
+
+    product_ids = list({r["product_id"] for r in latest_rows})
+    if not product_ids:
+        return 0
+
+    # History for all qualifying products
+    placeholders = ",".join("?" * len(product_ids))
+    history_rows = query(conn, f"""
+        SELECT p.product_id, n.name AS network, p.price_date,
+               ROUND(AVG(p.price), 2) AS avg_price
+        FROM prices p
+        JOIN stores s ON p.store_id = s.id
+        JOIN retail_networks n ON s.network_id = n.id
+        WHERE p.product_id IN ({placeholders}) AND p.price > 0
+        GROUP BY p.product_id, n.id, p.price_date
+        ORDER BY p.product_id, p.price_date, n.name
+    """, product_ids)
+
+    # Group by product_id
+    by_pid_latest: dict = {}
+    for r in latest_rows:
+        by_pid_latest.setdefault(r["product_id"], []).append(r)
+
+    by_pid_history: dict = {}
+    for r in history_rows:
+        by_pid_history.setdefault(r["product_id"], []).append(r)
+
+    # Write one CSV per product: two sections separated by blank line
+    for pid in product_ids:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+
+        # Section 1 — latest prices
+        w.writerow(["network", "avg_price", "min_price", "max_price", "stores"])
+        for r in by_pid_latest.get(pid, []):
+            w.writerow([r["network"], r["avg_price"], r["min_price"],
+                        r["max_price"], r["stores"]])
+
+        buf.write("\n")  # blank line separator
+
+        # Section 2 — history
+        w.writerow(["network", "price_date", "avg_price"])
+        for r in by_pid_history.get(pid, []):
+            w.writerow([r["network"], r["price_date"], r["avg_price"]])
+
+        (data_dir / f"{pid}.csv").write_text(buf.getvalue(), encoding="utf-8")
+
+    # Write index.json — product list + metadata for the dropdown
+    seen: dict = {}
+    for r in latest_rows:
+        pid = r["product_id"]
+        if pid not in seen:
+            seen[pid] = {"id": pid, "name": r["product_name"], "cat": r["category"]}
+
+    networks = query(conn, "SELECT name FROM retail_networks ORDER BY name")
+    index = {
+        "latest_date": latest,
+        "net_colors": {r["name"]: net_color(r["name"]) for r in networks},
+        "products": list(seen.values()),
+    }
+    (out_dir / "data" / "index.json").write_text(
+        json.dumps(index, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+    return len(product_ids)
+
+
 def load_stores(conn):
     """Stores with network names for map."""
     return query(conn, """
@@ -305,6 +502,8 @@ tr:hover td { background: #f8fafc; }
 NAV_ITEMS = [
     ("index.html",       "Dashboard"),
     ("price-index.html", "Index Prețuri"),
+    ("trends.html",      "Tendințe"),
+    ("compare.html",     "Comparare"),
     ("fuel.html",        "Carburanți"),
     ("pipeline.html",    "Pipeline"),
     ("stores_map.html",  "Hartă"),
@@ -789,6 +988,514 @@ def gen_pipeline(runs, coverage, summary):
     return page_shell("Pipeline", "pipeline.html", body)
 
 
+def _fmt_date(d: str) -> str:
+    """DD.MM.YYYY HH:MM -> DD.MM HH:MM for chart labels."""
+    if not d:
+        return d
+    parts = d.split(" ")
+    if len(parts) == 2:
+        dm = ".".join(parts[0].split(".")[:2])
+        return f"{dm} {parts[1]}"
+    return d
+
+
+def gen_trends(network_trends, category_trends, fuel_trends):
+    """Time-series trend charts page."""
+    all_dates = sorted(set(r["price_date"] for r in network_trends))
+    n_dates = len(all_dates)
+    display_dates = [_fmt_date(d) for d in all_dates]
+
+    # Stable network order: alphabetical by median index (cheapest first)
+    net_medians = {}
+    for r in network_trends:
+        net_medians.setdefault(r["network"], []).append(r["index_value"])
+    all_networks = sorted(net_medians, key=lambda n: (sum(net_medians[n]) / len(net_medians[n])))
+
+    all_cats = sorted(set(r["category"] for r in category_trends))
+    all_fuel_types = sorted(set(r["fuel"] for r in fuel_trends))
+
+    # Graceful degradation when data is thin
+    not_enough = n_dates < 2
+
+    if not_enough:
+        body = """
+<div class="container">
+  <h1>Tendințe Prețuri</h1>
+  <p class="subtitle">Evoluția prețurilor în timp — se actualizează zilnic</p>
+  <div class="card" style="text-align:center;padding:60px 24px">
+    <div style="font-size:48px;margin-bottom:16px">📊</div>
+    <h2 style="color:var(--muted);font-weight:500;font-size:18px">Se colectează date</h2>
+    <p style="color:var(--muted);margin-top:8px">
+      Graficele de tendințe vor fi disponibile după acumularea câtorva zile de date.<br>
+      Revino în curând!
+    </p>
+  </div>
+</div>"""
+        return page_shell("Tendințe", "trends.html", body)
+
+    fuel_section = ""
+    if fuel_trends:
+        fuel_section = """
+  <div class="card">
+    <div class="card-title">Carburanți — Evoluție Prețuri (RON/L)</div>
+    <div class="tabs" id="fuelTrendTabs"></div>
+    <div class="chart-box" style="height:340px"><canvas id="fuelTrendChart"></canvas></div>
+  </div>"""
+    else:
+        fuel_section = """
+  <div class="card" style="opacity:.6">
+    <div class="card-title">Carburanți — Evoluție Prețuri</div>
+    <p style="color:var(--muted);font-size:13px">
+      Date carburanți nu sunt încă disponibile în subset-ul CI. Vor apărea automat după configurarea pipeline-ului de gaz.
+    </p>
+  </div>"""
+
+    body = f"""
+<div class="container">
+  <h1>Tendințe Prețuri</h1>
+  <p class="subtitle">Evoluția prețurilor în timp — se actualizează zilnic</p>
+
+  <div class="card">
+    <div class="card-title">Index Prețuri pe Rețea în Timp</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+      100 = cea mai ieftină rețea din acea zi (produse comparabile disponibile în 3+ rețele)</p>
+    <div class="chart-box" style="height:380px"><canvas id="networkTrendChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Preț Mediu pe Categorie în Timp (RON)</div>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+      Prețul mediu al produselor per categorie</p>
+    <div class="tabs" id="catTrendTabs"></div>
+    <div class="chart-box" style="height:340px"><canvas id="catTrendChart"></canvas></div>
+  </div>
+{fuel_section}
+</div>"""
+
+    net_colors_js = {n: net_color(n) for n in all_networks}
+    gas_colors_js = {r["network"]: net_color(r["network"], GAS_COLORS) for r in fuel_trends}
+
+    scripts = f"""
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const trendDates  = {jdump(display_dates)};
+const allDates    = {jdump(all_dates)};
+const netColors   = {jdump(net_colors_js)};
+const gasColors   = {jdump(gas_colors_js)};
+const allNetworks = {jdump(all_networks)};
+const allCats     = {jdump(all_cats)};
+const allFuelTypes= {jdump(all_fuel_types)};
+const netTrendRaw = {jdump(network_trends)};
+const catTrendRaw = {jdump(category_trends)};
+const fuelTrendRaw= {jdump(fuel_trends)};
+
+/* ── Network trend ───────────────────────────────────────────────── */
+new Chart(document.getElementById('networkTrendChart'), {{
+  type: 'line',
+  data: {{
+    labels: trendDates,
+    datasets: allNetworks.map(net => {{
+      const vals = allDates.map(d => {{
+        const row = netTrendRaw.find(r => r.price_date===d && r.network===net);
+        return row ? row.index_value : null;
+      }});
+      return {{
+        label: net,
+        data: vals,
+        borderColor: netColors[net] || '#94a3b8',
+        backgroundColor: (netColors[net] || '#94a3b8') + '20',
+        tension: 0.3, spanGaps: true, pointRadius: 4,
+        pointHoverRadius: 6, borderWidth: 2,
+      }};
+    }})
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    interaction: {{ mode: 'index', intersect: false }},
+    plugins: {{
+      legend: {{ position: 'bottom', labels: {{ boxWidth: 12, font: {{ size: 12 }} }} }},
+      tooltip: {{ callbacks: {{ label: c => ` ${{c.dataset.label}}: ${{c.parsed.y}}` }} }}
+    }},
+    scales: {{
+      x: {{ grid: {{ color: '#f1f5f9' }} }},
+      y: {{
+        grid: {{ color: '#f1f5f9' }},
+        title: {{ display: true, text: 'Index (100 = cel mai ieftin)' }}
+      }}
+    }}
+  }}
+}});
+
+/* ── Category trend ──────────────────────────────────────────────── */
+const catCtx = document.getElementById('catTrendChart');
+let catTrendChart = null;
+function renderCatTrend(cat) {{
+  const vals = allDates.map(d => {{
+    const row = catTrendRaw.find(r => r.price_date===d && r.category===cat);
+    return row ? row.avg_price : null;
+  }});
+  if (catTrendChart) catTrendChart.destroy();
+  catTrendChart = new Chart(catCtx, {{
+    type: 'line',
+    data: {{
+      labels: trendDates,
+      datasets: [{{
+        label: cat, data: vals,
+        borderColor: '#2563eb', backgroundColor: '#2563eb20',
+        tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+      }}]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{ legend: {{ display: false }} }},
+      scales: {{
+        x: {{ grid: {{ color: '#f1f5f9' }} }},
+        y: {{
+          grid: {{ color: '#f1f5f9' }},
+          ticks: {{ callback: v => v.toFixed(2) + ' RON' }},
+          title: {{ display: true, text: 'Preț mediu (RON)' }}
+        }}
+      }}
+    }}
+  }});
+}}
+const catTabsEl = document.getElementById('catTrendTabs');
+allCats.forEach((cat, i) => {{
+  const btn = document.createElement('button');
+  btn.className = 'tab-btn' + (i===0 ? ' active' : '');
+  btn.dataset.cat = cat; btn.textContent = cat;
+  catTabsEl.appendChild(btn);
+}});
+catTabsEl.addEventListener('click', e => {{
+  if (!e.target.matches('.tab-btn')) return;
+  catTabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  renderCatTrend(e.target.dataset.cat);
+}});
+if (allCats.length) renderCatTrend(allCats[0]);
+
+/* ── Fuel trend ──────────────────────────────────────────────────── */
+const fuelTrendTabsEl = document.getElementById('fuelTrendTabs');
+if (fuelTrendTabsEl && allFuelTypes.length) {{
+  const fuelDates = [...new Set(fuelTrendRaw.map(r => r.price_date))].sort();
+  const fuelDisplayDates = fuelDates.map(d => {{
+    const p = d.split(' '); return p.length===2 ? p[0].split('.').slice(0,2).join('.')+' '+p[1] : d;
+  }});
+  const fuelNets = [...new Set(fuelTrendRaw.map(r => r.network))].sort();
+  const fuelCtx = document.getElementById('fuelTrendChart');
+  let fuelTrendChart = null;
+  function renderFuelTrend(fuel) {{
+    const datasets = fuelNets.map(net => {{
+      const vals = fuelDates.map(d => {{
+        const row = fuelTrendRaw.find(r => r.price_date===d && r.network===net && r.fuel===fuel);
+        return row ? row.avg_price : null;
+      }});
+      return {{
+        label: net, data: vals,
+        borderColor: gasColors[net] || '#94a3b8',
+        backgroundColor: (gasColors[net] || '#94a3b8') + '20',
+        tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+      }};
+    }});
+    if (fuelTrendChart) fuelTrendChart.destroy();
+    fuelTrendChart = new Chart(fuelCtx, {{
+      type: 'line',
+      data: {{ labels: fuelDisplayDates, datasets }},
+      options: {{
+        responsive: true, maintainAspectRatio: false,
+        interaction: {{ mode: 'index', intersect: false }},
+        plugins: {{
+          legend: {{ position: 'bottom', labels: {{ boxWidth: 12, font: {{ size: 12 }} }} }},
+          tooltip: {{ callbacks: {{ label: c => ` ${{c.dataset.label}}: ${{c.parsed.y?.toFixed(3)}} RON` }} }}
+        }},
+        scales: {{
+          x: {{ grid: {{ color: '#f1f5f9' }} }},
+          y: {{
+            grid: {{ color: '#f1f5f9' }},
+            ticks: {{ callback: v => v.toFixed(2) }},
+            title: {{ display: true, text: 'RON/litru' }}
+          }}
+        }}
+      }}
+    }});
+  }}
+  allFuelTypes.forEach((ft, i) => {{
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (i===0 ? ' active' : '');
+    btn.dataset.fuel = ft; btn.textContent = ft;
+    fuelTrendTabsEl.appendChild(btn);
+  }});
+  fuelTrendTabsEl.addEventListener('click', e => {{
+    if (!e.target.matches('.tab-btn')) return;
+    fuelTrendTabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderFuelTrend(e.target.dataset.fuel);
+  }});
+  renderFuelTrend(allFuelTypes[0]);
+}}
+</script>"""
+
+    return page_shell("Tendințe", "trends.html", body, extra_scripts=scripts)
+
+
+def gen_compare(compare_index):
+    """Product price comparison page — data loaded on demand from per-product CSVs."""
+    latest_date = compare_index.get("latest_date") or "—"
+    products = compare_index.get("products", [])
+
+    if not products:
+        body = """
+<div class="container">
+  <h1>Comparare Produse</h1>
+  <p class="subtitle">Prețuri comparate pe rețea</p>
+  <div class="card" style="text-align:center;padding:60px 24px">
+    <div style="font-size:48px;margin-bottom:16px">🔍</div>
+    <h2 style="color:var(--muted);font-weight:500;font-size:18px">Nu există date disponibile</h2>
+    <p style="color:var(--muted);margin-top:8px">Revino după prima rulare completă a pipeline-ului.</p>
+  </div>
+</div>"""
+        return page_shell("Comparare", "compare.html", body)
+
+    # Build dropdown HTML server-side (stable, no JS needed for the list)
+    by_cat: dict = {}
+    for p in products:
+        by_cat.setdefault(p["cat"], []).append(p)
+
+    options_html = ""
+    for cat in sorted(by_cat.keys()):
+        options_html += f'<optgroup label="{cat}">'
+        for p in sorted(by_cat[cat], key=lambda x: x["name"]):
+            options_html += f'<option value="{p["id"]}">{p["name"]}</option>'
+        options_html += "</optgroup>"
+
+    body = f"""
+<div class="container">
+  <h1>Comparare Produse</h1>
+  <p class="subtitle">Prețuri comparate pe rețea — {latest_date}</p>
+
+  <div class="card" style="margin-bottom:0">
+    <div class="card-title">Selectează produsul</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <select id="productSelect" style="flex:1;min-width:280px;max-width:620px;padding:9px 12px;
+        border-radius:6px;border:1px solid var(--border);font-size:14px;
+        background:var(--card);color:var(--text);cursor:pointer">
+        {options_html}
+      </select>
+      <span id="loadingMsg" style="display:none;color:var(--muted);font-size:13px">Se încarcă…</span>
+      <span id="errMsg" style="display:none;color:var(--danger);font-size:13px"></span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px">
+    <div class="card">
+      <div class="card-title" id="latestTitle">Prețuri pe rețea (ultima zi)</div>
+      <div class="chart-box" style="height:320px"><canvas id="latestChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="trendTitle">Evoluție preț</div>
+      <div class="chart-box" style="height:320px" id="trendBox">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" id="tableTitle">Detalii pe rețea</div>
+    <div class="table-wrap">
+      <table id="compareTable">
+        <thead>
+          <tr><th>#</th><th>Rețea</th><th>Preț mediu</th><th>Min</th><th>Max</th><th>Magazine</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+@media (max-width:640px) {{
+  #compareTable {{ display: block; overflow-x: auto; }}
+  [style*="grid-template-columns:1fr 1fr"] {{ grid-template-columns: 1fr !important; }}
+}}
+</style>"""
+
+    scripts = f"""
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const netColors = {jdump(compare_index.get("net_colors", {}))};
+
+/* ── CSV parser: two sections separated by a blank line ────────── */
+function parseCSV(text) {{
+  const parts = text.trim().split(/\\r?\\n\\r?\\n/);
+  function parseSection(s) {{
+    if (!s || !s.trim()) return [];
+    const lines = s.trim().split(/\\r?\\n/);
+    const keys  = lines[0].split(',');
+    return lines.slice(1).filter(Boolean).map(line => {{
+      const vals = line.split(',');
+      return Object.fromEntries(keys.map((k, i) => [k, vals[i]]));
+    }});
+  }}
+  return {{ latest: parseSection(parts[0] || ''), history: parseSection(parts[1] || '') }};
+}}
+
+/* ── Per-product fetch with in-memory cache ────────────────────── */
+const cache = {{}};
+async function loadProduct(pid) {{
+  if (cache[pid]) return cache[pid];
+  const res = await fetch(`data/products/${{pid}}.csv`);
+  if (!res.ok) throw new Error(`HTTP ${{res.status}}`);
+  cache[pid] = parseCSV(await res.text());
+  return cache[pid];
+}}
+
+/* ── Chart helpers ─────────────────────────────────────────────── */
+function fmtDate(d) {{
+  if (!d) return d;
+  const p = d.split(' ');
+  return p.length === 2 ? p[0].split('.').slice(0,2).join('.') + ' ' + p[1] : d;
+}}
+
+let latestChart = null, trendChart = null;
+
+function renderProduct(pid, name, data) {{
+  const {{ latest, history }} = data;
+
+  // Update titles
+  document.getElementById('latestTitle').textContent = name + ' — prețuri pe rețea';
+  document.getElementById('trendTitle').textContent  = name + ' — evoluție';
+  document.getElementById('tableTitle').textContent  = name + ' — detalii pe rețea';
+
+  /* Bar chart — latest prices (already sorted cheapest-first by server) */
+  if (latestChart) latestChart.destroy();
+  latestChart = new Chart(document.getElementById('latestChart'), {{
+    type: 'bar',
+    data: {{
+      labels: latest.map(r => r.network),
+      datasets: [{{
+        label: 'Preț mediu (RON)',
+        data: latest.map(r => +r.avg_price),
+        backgroundColor: latest.map(r => netColors[r.network] || '#94a3b8'),
+        borderRadius: 4, barPercentage: 0.7,
+      }}]
+    }},
+    options: {{
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{ callbacks: {{ label: c => ' ' + c.parsed.x.toFixed(2) + ' RON' }} }}
+      }},
+      scales: {{
+        x: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ callback: v => v.toFixed(2) }} }},
+        y: {{ grid: {{ display: false }} }}
+      }}
+    }}
+  }});
+
+  /* Line chart — history */
+  const allD  = [...new Set(history.map(r => r.price_date))].sort();
+  const nets  = [...new Set(history.map(r => r.network))];
+  const trendBox    = document.getElementById('trendBox');
+  const trendCanvas = document.getElementById('trendChart');
+  let noMsg = trendBox.querySelector('.no-trend');
+
+  if (allD.length < 2) {{
+    if (trendChart) {{ trendChart.destroy(); trendChart = null; }}
+    trendCanvas.style.display = 'none';
+    if (!noMsg) {{
+      noMsg = document.createElement('div');
+      noMsg.className = 'no-trend';
+      noMsg.style.cssText = 'display:flex;align-items:center;justify-content:center;' +
+        'height:100%;color:var(--muted);font-size:13px;text-align:center;padding:16px';
+      trendBox.appendChild(noMsg);
+    }}
+    noMsg.textContent = 'Date insuficiente pentru tendință. Revino în câteva zile.';
+  }} else {{
+    trendCanvas.style.display = '';
+    if (noMsg) noMsg.remove();
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(trendCanvas, {{
+      type: 'line',
+      data: {{
+        labels: allD.map(fmtDate),
+        datasets: nets.map(net => {{
+          const vals = allD.map(d => {{
+            const r = history.find(r => r.network === net && r.price_date === d);
+            return r ? +r.avg_price : null;
+          }});
+          return {{
+            label: net, data: vals,
+            borderColor: netColors[net] || '#94a3b8',
+            backgroundColor: (netColors[net] || '#94a3b8') + '20',
+            tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+          }};
+        }})
+      }},
+      options: {{
+        responsive: true, maintainAspectRatio: false,
+        interaction: {{ mode: 'index', intersect: false }},
+        plugins: {{
+          legend: {{ position: 'bottom', labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }},
+          tooltip: {{ callbacks: {{
+            label: c => ` ${{c.dataset.label}}: ${{c.parsed.y?.toFixed(2)}} RON`
+          }} }}
+        }},
+        scales: {{
+          x: {{ grid: {{ color: '#f1f5f9' }} }},
+          y: {{
+            grid: {{ color: '#f1f5f9' }},
+            ticks: {{ callback: v => v.toFixed(2) }},
+            title: {{ display: true, text: 'RON' }}
+          }}
+        }}
+      }}
+    }});
+  }}
+
+  /* Table */
+  document.querySelector('#compareTable tbody').innerHTML = latest.map((r, i) => `
+    <tr>
+      <td>${{i+1}}</td>
+      <td style="font-weight:${{i===0?700:400}};color:${{i===0?'var(--success)':''}}">
+        ${{r.network}}</td>
+      <td style="font-weight:${{i===0?700:400}};color:${{i===0?'var(--success)':''}}">
+        ${{(+r.avg_price).toFixed(2)}} RON</td>
+      <td>${{(+r.min_price).toFixed(2)}}</td>
+      <td>${{(+r.max_price).toFixed(2)}}</td>
+      <td>${{r.stores}}</td>
+    </tr>`).join('');
+}}
+
+/* ── Dropdown handler ──────────────────────────────────────────── */
+const sel     = document.getElementById('productSelect');
+const loadMsg = document.getElementById('loadingMsg');
+const errMsg  = document.getElementById('errMsg');
+
+async function onSelect() {{
+  const pid  = sel.value;
+  const name = sel.options[sel.selectedIndex]?.text || '';
+  loadMsg.style.display = '';
+  errMsg.style.display  = 'none';
+  sel.disabled = true;
+  try {{
+    const data = await loadProduct(pid);
+    renderProduct(pid, name, data);
+  }} catch(e) {{
+    errMsg.textContent = 'Eroare la încărcare: ' + e.message;
+    errMsg.style.display = '';
+  }} finally {{
+    loadMsg.style.display = 'none';
+    sel.disabled = false;
+  }}
+}}
+
+sel.addEventListener('change', onSelect);
+if (sel.value) onSelect();
+</script>"""
+
+    return page_shell("Comparare", "compare.html", body, extra_scripts=scripts)
+
+
 def gen_stores_map(stores):
     """Enhanced store map with network toggles."""
     # Build data
@@ -865,6 +1572,8 @@ def gen_stores_map(stores):
   <span class="brand">Monitorul Prețurilor</span>
   <a href="index.html">Dashboard</a>
   <a href="price-index.html">Index</a>
+  <a href="trends.html">Tendințe</a>
+  <a href="compare.html">Comparare</a>
   <a href="fuel.html">Carburanți</a>
   <a href="pipeline.html">Pipeline</a>
   <span class="count" id="visibleCount">{len(stores)} magazine</span>
@@ -951,18 +1660,29 @@ def main():
     conn = sqlite3.connect(db_path)
 
     print("Loading data...")
-    summary       = load_summary(conn)
-    price_index   = load_price_index(conn)
-    by_category   = load_price_index_by_category(conn)
-    fuel_prices   = load_fuel_prices(conn)
-    runs          = load_runs(conn)
-    coverage      = load_coverage(conn)
-    stores        = load_stores(conn)
+    summary         = load_summary(conn)
+    price_index     = load_price_index(conn)
+    by_category     = load_price_index_by_category(conn)
+    fuel_prices     = load_fuel_prices(conn)
+    runs            = load_runs(conn)
+    coverage        = load_coverage(conn)
+    network_trends  = load_network_trends(conn)
+    category_trends = load_category_trends(conn)
+    fuel_trends     = load_fuel_trends(conn)
+    compare_index   = load_compare_index(conn)
+    stores          = load_stores(conn)
+
+    print("Building compare data files...")
+    n_products = build_compare_data_files(conn, out_dir)
+    print(f"  data/products/   {n_products} CSV files")
+
     conn.close()
 
     pages = {
         "index.html":       gen_index(summary, price_index, fuel_prices),
         "price-index.html": gen_price_index(price_index, by_category),
+        "trends.html":      gen_trends(network_trends, category_trends, fuel_trends),
+        "compare.html":     gen_compare(compare_index),
         "fuel.html":        gen_fuel(fuel_prices),
         "pipeline.html":    gen_pipeline(runs, coverage, summary),
         "stores_map.html":  gen_stores_map(stores),

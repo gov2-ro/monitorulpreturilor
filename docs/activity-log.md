@@ -4,6 +4,13 @@
 
 ## General
 
+### 2026-04-16 — Trend & Comparison Dashboard (Phase 2)
+
+- Added `trends.html` — time-series line charts: Network Price Index over time (one line per network), category average prices over time (tab per category), fuel placeholder (auto-shows when gas data lands in CI). Graceful degradation when <2 dates available.
+- Added `compare.html` — product-level cross-network comparison: dropdown (grouped by category), bar chart of latest prices, trend line chart per network, ranked table with avg/min/max. All data embedded as JSON (224 KB in CI, ~3.7 MB from full DB).
+- Both pages added to nav; stores_map hardcoded nav also updated.
+- No schema changes — DB already accumulates rows by date (UNIQUE on product+store+date). `git-history` not needed; `prices_ci.db` itself is the history.
+
 ### 2026-04-16 — Static GitHub Pages UI (Phase 1)
 
 - Created `generate_site.py`: generates 5 static HTML pages into `docs/` from `data/prices.db`:

@@ -26,6 +26,49 @@ ORDER BY spread DESC
 LIMIT 20;
 ```
 
+
+Outlier-filtered version — prices more than 10× the group minimum are excluded before
+aggregation (catches data-entry errors like bani-instead-of-RON). Filtered to latest date.
+Adjust the `* 10` threshold as needed.
+
+```sql
+WITH floor AS (
+  -- min price per product × network on the latest date
+  SELECT pr.product_id, s.network_id,
+         MIN(pr.price) AS min_p
+  FROM prices pr
+  JOIN stores s ON pr.store_id = s.id
+  WHERE pr.price_date = (SELECT MAX(price_date) FROM prices)
+    AND pr.price > 0
+  GROUP BY pr.product_id, s.network_id
+),
+clean AS (
+  -- drop any price that is more than 10× the group minimum
+  SELECT pr.product_id, pr.store_id, pr.price, s.network_id
+  FROM prices pr
+  JOIN stores s ON pr.store_id = s.id
+  JOIN floor  f ON pr.product_id = f.product_id AND s.network_id = f.network_id
+  WHERE pr.price_date = (SELECT MAX(price_date) FROM prices)
+    AND pr.price > 0
+    AND pr.price <= f.min_p * 10
+)
+SELECT n.name                                                           AS network,
+       c.product_id,
+       p.name                                                           AS product,
+       COUNT(DISTINCT c.store_id)                                      AS stores,
+       ROUND(MIN(c.price), 2)                                          AS min_price,
+       ROUND(AVG(c.price), 2)                                          AS avg_price,
+       ROUND(MAX(c.price), 2)                                          AS max_price,
+       ROUND((MAX(c.price) - MIN(c.price)) / MIN(c.price) * 100, 1)   AS spread_pct
+FROM clean c
+JOIN retail_networks n ON c.network_id = n.id
+JOIN products        p ON c.product_id = p.id
+GROUP BY n.name, c.product_id
+HAVING stores >= 3 AND spread_pct > 5
+ORDER BY spread_pct DESC
+LIMIT 20;
+```
+
 ### Cross-network median price per product (top gaps)
 
 ```sql

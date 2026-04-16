@@ -141,16 +141,47 @@ def _load_checkpoint(path):
     return None
 
 
-def _save_checkpoint(path, fetched_at, done):
+def _save_checkpoint(path, fetched_at, done, product_ids=None):
+    data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
+    if product_ids is not None:
+        data["product_ids"] = product_ids
     with open(path, "w") as f:
-        json.dump({"fetched_at": fetched_at, "status": "in_progress",
-                   "done": sorted(done)}, f)
+        json.dump(data, f)
 
 
 def _finish_checkpoint(path, fetched_at, done):
     with open(path, "w") as f:
         json.dump({"fetched_at": fetched_at, "status": "completed",
                    "done": sorted(done)}, f)
+
+
+# ---------------------------------------------------------------------------
+# Product ordering
+# ---------------------------------------------------------------------------
+
+def _order_products(conn, prod_ids, mode):
+    """Reorder product IDs based on mode.
+
+    db    — original insertion order (no-op)
+    stale — never-fetched first, then sorted by oldest MAX(fetched_at) ascending
+    """
+    if mode == "db":
+        return prod_ids
+    # mode == "stale": sort by last fetch timestamp, NULLs (never fetched) first
+    rows = conn.execute(
+        "SELECT product_id, MAX(fetched_at) FROM prices GROUP BY product_id"
+    ).fetchall()
+    last_fetched = {r[0]: r[1] for r in rows}
+    never = sum(1 for pid in prod_ids if pid not in last_fetched)
+    ordered = sorted(prod_ids, key=lambda pid: (
+        last_fetched.get(pid) is not None,   # False (0) = never fetched → sorts first
+        last_fetched.get(pid) or ""
+    ))
+    tqdm.write(
+        f"Products ordered by staleness: {never} never-fetched first, "
+        f"then {len(prod_ids) - never} sorted by oldest fetch date."
+    )
+    return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +196,8 @@ def _load_ids_file(path):
 
 def main(db_path="data/prices.db", order="population", limit_stores=None,
          limit_products=None, store_ids_file=None, product_ids_file=None,
-         fresh=False, resume=False, max_runtime=0, no_cluster=False):
+         fresh=False, resume=False, max_runtime=0, no_cluster=False,
+         products_order="db"):
     if store_ids_file and (limit_stores is not None):
         raise ValueError("--store-ids-file and --limit-stores are mutually exclusive")
     if product_ids_file and (limit_products is not None):
@@ -241,8 +273,17 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
         allowed_prods = set(_load_ids_file(product_ids_file))
         prod_ids = [p for p in prod_ids if p in allowed_prods]
         tqdm.write(f"Product filter: {len(prod_ids)} products from {product_ids_file}")
-    elif limit_products:
-        prod_ids = prod_ids[:limit_products]
+    elif cp and cp.get("product_ids") and products_order == "stale":
+        # Mid-run resume of a stale run — restore saved order so batch indices stay stable
+        prod_ids = cp["product_ids"]
+        if limit_products:
+            prod_ids = prod_ids[:limit_products]
+        tqdm.write(f"Products: restored {len(prod_ids)} from checkpoint (stale order).")
+    else:
+        if products_order == "stale":
+            prod_ids = _order_products(conn, prod_ids, "stale")
+        if limit_products:
+            prod_ids = prod_ids[:limit_products]
 
     batches_list = list(_batches(prod_ids, BATCH_SIZE))
     n_batches = len(batches_list)
@@ -323,7 +364,8 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
                         batch_bar.set_postfix(prices=store_prices)
 
                         done.add(key)
-                        _save_checkpoint(checkpoint_path, fetched_at, done)
+                        _save_checkpoint(checkpoint_path, fetched_at, done,
+                                         product_ids=prod_ids if products_order == "stale" else None)
                         time.sleep(SLEEP_BETWEEN)
 
                 tqdm.write(f"  {name}: {store_prices} price records")
@@ -370,7 +412,10 @@ if __name__ == "__main__":
                         help="stop gracefully after N seconds (checkpoint saved; resume on next run)")
     parser.add_argument("--no-cluster", action="store_true",
                         help="disable spatial clustering (query every store as its own anchor)")
+    parser.add_argument("--products-order", choices=["db", "stale"], default="db",
+                        help="product ordering: db=insertion order (default), "
+                             "stale=never-fetched first then oldest fetched_at")
     args = parser.parse_args()
     main(args.db, args.order, args.limit_stores, args.limit_products,
          args.store_ids_file, args.product_ids_file, args.fresh, args.resume,
-         args.max_runtime, args.no_cluster)
+         args.max_runtime, args.no_cluster, args.products_order)

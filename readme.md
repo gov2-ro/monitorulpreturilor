@@ -116,12 +116,17 @@ Checkpoint behaviour:
 - **`--fresh`** → ignores any checkpoint and starts clean
 - **`--resume`** → continues a completed same-day run; skips already-processed store×batch keys, fetches only new stores
 
+Product ordering (`--products-order`):
+- **`db`** (default) — products in DB insertion order
+- **`stale`** — never-fetched products first, then sorted by oldest `fetched_at` ascending. Use with `--max-runtime` to cap daily overhead while always filling coverage gaps first. On interrupted runs the product order is saved in the checkpoint so resume is stable within the same day; the next day's run re-derives staleness from the DB.
+
 ```bash
-python fetch_prices.py                                      # full run → data/prices.db
-python fetch_prices.py --resume                             # fetch only new stores added since today's run
-python fetch_prices.py --limit-stores 3 --limit-products 90 # quick smoke test
-python fetch_prices.py --fresh                              # ignore checkpoint, start clean
-python fetch_prices.py path/to/db.db                        # custom DB path
+python fetch_prices.py                                           # full run → data/prices.db
+python fetch_prices.py --resume                                  # fetch only new stores added since today's run
+python fetch_prices.py --products-order stale --max-runtime 3600 # prioritise never-fetched / stale products, stop after 1h
+python fetch_prices.py --limit-stores 3 --limit-products 90      # quick smoke test
+python fetch_prices.py --fresh                                   # ignore checkpoint, start clean
+python fetch_prices.py path/to/db.db                             # custom DB path
 ```
 
 #### `discover_stores.py`
@@ -301,6 +306,9 @@ Both APIs return XML with no authentication required. They share the XML namespa
 | `GET /GetCatalogProductsByNameNetwork?CSVcategids=` | Products by category ID(s) |
 | `GET /GetCatalogProductsById?csvcatprodids=` | Products by ID(s) |
 | `GET /GetStoresForProductsByLatLon?lat=&lon=&buffer=&csvprodids=&OrderBy=price` | Stores + prices near a coordinate (max buffer ~5 000 m, max 50 stores) |
+| `GET /GetStoresForProductsByUat?uatId={}&csvprodids=[]&csvnetworkids=[]&OrderBy=price` | Stores + prices for a UAT |
+
+
 
 Sample responses: [`docs/reference/sampleResponses/`](docs/reference/sampleResponses/)
 
@@ -340,6 +348,8 @@ Sample responses: [`docs/carburanti/reference/`](docs/carburanti/reference/)
 - [ ] Cross-reference with https://ro.openfoodfacts.org/ / [suntfrugal](https://www.suntfrugal.com/)
 - [ ] Deduplicate products with different names but same item
 - [ ] Remove dedicated brands — map to existing known brands
+- [ ] check stores/location from official sites, osm?
+- [ ] alternative/own API?
 
 Vezi și: [backlog](docs/backlog.md)
 
