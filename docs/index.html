@@ -101,7 +101,7 @@ tr:hover td { background: #f8fafc; }
 
 </head>
 <body>
-<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html" class="active">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html" class="active">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
 
 <div class="container">
   <h1>Dashboard</h1>
@@ -121,7 +121,7 @@ tr:hover td { background: #f8fafc; }
       <div class="kpi-label">Produse</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">989,381</div>
+      <div class="kpi-value">989,441</div>
       <div class="kpi-label">Prețuri colectate</div>
     </div>
     <div class="kpi">
@@ -173,7 +173,7 @@ tr:hover td { background: #f8fafc; }
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-const piData = [{"network":"LIDL DISCOUNT SRL","price_index":110.1,"products":20},{"network":"SUPECO","price_index":119.9,"products":280},{"network":"PROFI","price_index":127.3,"products":1106},{"network":"AUCHAN","price_index":132.0,"products":1328},{"network":"PENNY","price_index":134.7,"products":187},{"network":"CARREFOUR","price_index":134.9,"products":1207},{"network":"SELGROS","price_index":135.1,"products":1047},{"network":"KAUFLAND","price_index":137.1,"products":941},{"network":"MEGA IMAGE SRL","price_index":193.1,"products":791},{"network":"CORA","price_index":240.1,"products":1355}];
+const piData = [{"network":"LIDL DISCOUNT SRL","price_index":109.9,"products":20},{"network":"SUPECO","price_index":120.9,"products":167},{"network":"PROFI","price_index":127.0,"products":1082},{"network":"AUCHAN","price_index":130.9,"products":1304},{"network":"PENNY","price_index":134.1,"products":185},{"network":"CARREFOUR","price_index":134.6,"products":1206},{"network":"SELGROS","price_index":136.0,"products":1000},{"network":"KAUFLAND","price_index":136.6,"products":940},{"network":"MEGA IMAGE SRL","price_index":194.0,"products":774},{"network":"CORA","price_index":239.9,"products":1351}];
 new Chart(document.getElementById('indexChart'), {
   type: 'bar',
   data: {
