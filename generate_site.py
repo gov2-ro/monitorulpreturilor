@@ -3,15 +3,15 @@
 Generate static GitHub Pages site from data/prices.db.
 
 Pages generated:
-  dashboard/index.html        — Dashboard with KPIs, charts, navigation
-  dashboard/price-index.html  — Network Price Index ("who's cheapest")
-  dashboard/fuel.html         — Fuel Price Leaderboard
-  dashboard/pipeline.html     — Pipeline health & coverage
-  dashboard/stores_map.html   — Enhanced interactive store map
+  docs/index.html        — Dashboard with KPIs, charts, navigation
+  docs/price-index.html  — Network Price Index ("who's cheapest")
+  docs/fuel.html         — Fuel Price Leaderboard
+  docs/pipeline.html     — Pipeline health & coverage
+  docs/stores_map.html   — Enhanced interactive store map
 
 Usage:
     python generate_site.py
-    python generate_site.py --db data/prices.db --out dashboard/
+    python generate_site.py --db data/prices.db --out docs/
 """
 
 import argparse
@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 
 DB_PATH = Path("data/prices.db")
-OUT_DIR = Path("dashboard")
+OUT_DIR = Path("docs")
 
 # ── Network colors ──────────────────────────────────────────────────────
 

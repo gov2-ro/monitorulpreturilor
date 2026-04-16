@@ -42,7 +42,7 @@ jobs:
         run: python fetch_reference.py data/prices_ci.db
 
       - name: Generate site
-        run: python generate_site.py --db data/prices_ci.db --out dashboard/
+        run: python generate_site.py --db data/prices_ci.db --out docs/
 
       - name: Commit updated DB and site
         run: |
@@ -50,8 +50,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add data/prices_ci.db
-          git add dashboard/index.html dashboard/price-index.html dashboard/fuel.html \
-                  dashboard/pipeline.html dashboard/stores_map.html || true
+          git add docs/index.html docs/price-index.html docs/fuel.html \
+                  docs/pipeline.html docs/stores_map.html || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 
