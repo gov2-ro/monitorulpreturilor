@@ -49,6 +49,20 @@ jobs:
             --max-runtime 6300
 
       # -----------------------------------------------------------------------
+      # Gas reference data refresh (Mondays only — slow-changing data)
+      # -----------------------------------------------------------------------
+      - name: Refresh gas reference data
+        if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 4 * * 1')
+        run: python fetch_gas_reference.py data/prices_ci.db
+
+      # -----------------------------------------------------------------------
+      # Gas price fetch — one request per UAT×fuel_type; fast (~15 min for
+      # all UATs). --max-runtime 900 keeps total CI well within 2h limit.
+      # -----------------------------------------------------------------------
+      - name: Fetch gas prices
+        run: python fetch_gas_prices.py data/prices_ci.db --max-runtime 900
+
+      # -----------------------------------------------------------------------
       # Regenerate static site from updated DB
       # -----------------------------------------------------------------------
       - name: Generate site
@@ -68,10 +82,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add data/prices_ci.db data/prices_ci_checkpoint.json || true
+          [ -f data/gas_checkpoint.json ] && git add data/gas_checkpoint.json
           [ -f data/ci_stores.txt ]   && git add data/ci_stores.txt
           [ -f data/ci_products.txt ] && git add data/ci_products.txt
           git add docs/index.html docs/price-index.html docs/fuel.html \
-                  docs/pipeline.html docs/stores_map.html docs/CNAME || true
+                  docs/pipeline.html docs/stores_map.html docs/gas_map.html \
+                  docs/trends.html docs/CNAME || true
           git add docs/data/*.csv 2>/dev/null || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0

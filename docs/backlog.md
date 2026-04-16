@@ -35,6 +35,7 @@
 - [ ] **Compile full UAT list** — same issue as retail: `Gas/GetUATByName` (no params) returns only top UATs. Use `?uatname=` search or a static list to cover all municipalities.
 - [ ] Investigate `GetGasItemsByRoute` endpoint — enables price comparison along a driving route (start/end/mid route point IDs), which could be a useful feature for the UI.
 - [ ] Add services data (`GetGasServicesFromCatalog`) — currently skipped; would allow filtering stations by amenities (ATM, car wash, restaurant, etc.)
+- [ ] **Gas station discovery for highway/road stations** — `discover_gas_stations.py` covers cities (population-based probes), but stations along highways and national roads in low-population UATs will be missed. A later phase should add a lat/lon grid probe over Romania's bounding box at ~10–15 km steps (much sparser than the 5 km retail grid since gas stations are fewer). The `GetGasItemsByLatLon` endpoint and `parse_gas_items()` already support this — just add a grid probe source as an alternative to the population CSV.
 
 ---
 

@@ -224,6 +224,13 @@ def upsert_network(conn, id, name, logo_url):
     )
 
 
+def ensure_uat(conn, id):
+    """Insert UAT id if not already present (preserves existing name/coords)."""
+    conn.execute(
+        "INSERT OR IGNORE INTO uats (id) VALUES (?)", (id,)
+    )
+
+
 def upsert_uat(conn, id, name, route_id, wkt, center_lat, center_lon):
     conn.execute(
         "INSERT OR REPLACE INTO uats VALUES (?,?,?,?,?,?)",

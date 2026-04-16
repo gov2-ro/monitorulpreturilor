@@ -1,6 +1,6 @@
 network,avg_price,min_price,max_price,stores
 PROFI,2.15,2.15,2.15,1
-PENNY,4.75,4.75,4.75,10
+PENNY,4.75,4.75,4.75,11
 KAUFLAND,5.39,5.39,5.39,8
 
 network,price_date,avg_price

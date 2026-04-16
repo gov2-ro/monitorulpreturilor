@@ -242,17 +242,23 @@ def load_category_trends(conn):
 
 
 def load_fuel_trends(conn):
-    """Average fuel price per network and product type per date."""
+    """Average fuel price per network and product type per day.
+
+    price_date from the API is a timestamp (e.g. '16/04/2026 14:16');
+    truncate to 10 chars to group by calendar day.
+    """
     return query(conn, """
-        SELECT gp.price_date, n.name AS network, gp2.name AS fuel,
+        SELECT SUBSTR(gp.price_date, 1, 10) AS price_date,
+               n.name AS network, gp2.name AS fuel,
                ROUND(AVG(gp.price), 3) AS avg_price
         FROM gas_prices gp
         JOIN gas_stations gs ON gp.station_id = gs.id
         JOIN gas_networks n ON gs.network_id = n.id
         JOIN gas_products gp2 ON gp.product_id = gp2.id
         WHERE gp.price > 0
-        GROUP BY gp.price_date, n.id, gp2.id
-        ORDER BY gp2.name, gp.price_date, n.name
+          AND gp.price_date IS NOT NULL AND gp.price_date != ''
+        GROUP BY SUBSTR(gp.price_date, 1, 10), n.id, gp2.id
+        ORDER BY gp2.name, SUBSTR(gp.price_date, 1, 10), n.name
     """)
 
 
@@ -415,6 +421,40 @@ def load_stores(conn):
     """)
 
 
+def load_gas_map_data(conn):
+    """Gas stations with latest prices per fuel type for map."""
+    rows = query(conn, """
+        SELECT gs.id, gs.name, gs.addr, gs.lat, gs.lon,
+               gn.name AS network,
+               gpr.name AS fuel, gp.price, gp.price_date
+        FROM gas_stations gs
+        JOIN gas_networks gn ON gs.network_id = gn.id
+        JOIN gas_prices gp ON gp.station_id = gs.id
+        JOIN gas_products gpr ON gp.product_id = gpr.id
+        WHERE (gp.product_id, gp.station_id, gp.price_date) IN (
+            SELECT product_id, station_id, MAX(price_date)
+            FROM gas_prices GROUP BY product_id, station_id
+        )
+        AND gs.lat IS NOT NULL AND gs.lon IS NOT NULL
+        AND gs.lat != 0 AND gs.lon != 0
+        ORDER BY gn.name, gs.name
+    """)
+    # Pivot into per-station dicts
+    stations = {}
+    for r in rows:
+        sid = r["id"]
+        if sid not in stations:
+            stations[sid] = {
+                "id": sid, "name": r["name"], "addr": r["addr"] or "",
+                "lat": r["lat"], "lon": r["lon"],
+                "network": r["network"], "prices": {}, "price_date": "",
+            }
+        stations[sid]["prices"][r["fuel"]] = r["price"]
+        if r["price_date"] > stations[sid]["price_date"]:
+            stations[sid]["price_date"] = r["price_date"]
+    return list(stations.values())
+
+
 # ── Shared HTML components ──────────────────────────────────────────────
 
 SHARED_CSS = """
@@ -521,6 +561,7 @@ NAV_ITEMS = [
     ("analytics.html",   "Analiză"),
     ("pipeline.html",    "Pipeline"),
     ("stores_map.html",  "Hartă"),
+    ("gas_map.html",     "Hartă Carburanți"),
 ]
 
 
@@ -565,7 +606,7 @@ def jdump(obj):
 
 # ── Page generators ─────────────────────────────────────────────────────
 
-def gen_index(summary, price_index, fuel_prices):
+def gen_index(summary, price_index, fuel_prices, fuel_trends):
     """Dashboard / landing page."""
     # Fuel summary: cheapest network per fuel type
     fuel_by_type = {}
@@ -644,6 +685,15 @@ def gen_index(summary, price_index, fuel_prices):
             <td style="font-weight:600">{summary['categories']}</td></tr>
       </table>
     </div>
+
+    {"" if not fuel_trends else '''
+    <div class="card" style="grid-column: 1 / -1;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span class="card-title" style="margin:0">Carburanți — Evoluție Prețuri (RON)</span>
+        <div class="tabs" id="dashFuelTabs" style="margin:0"></div>
+      </div>
+      <div class="chart-box" style="height:300px"><canvas id="dashFuelChart"></canvas></div>
+    </div>'''}
   </div>
 </div>"""
 
@@ -687,6 +737,61 @@ new Chart(document.getElementById('indexChart'), {{
     }}
   }}
 }});
+
+// ── Fuel trend chart ────────────────────────────────────────────────────
+const fuelTrendRawDash = {jdump(fuel_trends)};
+if (fuelTrendRawDash.length) {{
+  const dashFuelTypes = [...new Set(fuelTrendRawDash.map(r => r.fuel))].sort();
+  const dashFuelDates = [...new Set(fuelTrendRawDash.map(r => r.price_date))].sort();
+  const dashFuelNets  = [...new Set(fuelTrendRawDash.map(r => r.network))].sort();
+  const gasColsDash = {jdump({n: net_color(n, GAS_COLORS) for n in set(r["network"] for r in fuel_trends)})};
+
+  const tabsEl = document.getElementById('dashFuelTabs');
+  let dashFuelChart = null;
+
+  function renderDashFuel(fuel) {{
+    const datasets = dashFuelNets.map(net => {{
+      const vals = dashFuelDates.map(d => {{
+        const r = fuelTrendRawDash.find(x => x.price_date===d && x.network===net && x.fuel===fuel);
+        return r ? r.avg_price : null;
+      }});
+      return {{
+        label: net, data: vals, borderColor: gasColsDash[net] || '#94a3b8',
+        backgroundColor: 'transparent', borderWidth: 2,
+        pointRadius: 3, spanGaps: true, tension: 0.3,
+      }};
+    }});
+    if (dashFuelChart) dashFuelChart.destroy();
+    dashFuelChart = new Chart(document.getElementById('dashFuelChart'), {{
+      type: 'line',
+      data: {{ labels: dashFuelDates, datasets }},
+      options: {{
+        responsive: true, maintainAspectRatio: false,
+        plugins: {{
+          legend: {{ position: 'bottom', labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }},
+          tooltip: {{ callbacks: {{ label: c => c.dataset.label + ': ' + c.parsed.y?.toFixed(2) + ' RON' }} }}
+        }},
+        scales: {{
+          x: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ font: {{ size: 11 }} }} }},
+          y: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ callback: v => v.toFixed(2) }} }}
+        }}
+      }}
+    }});
+  }}
+
+  dashFuelTypes.forEach((fuel, i) => {{
+    const btn = document.createElement('button');
+    btn.className = i === 0 ? 'tab-btn active' : 'tab-btn';
+    btn.textContent = fuel;
+    btn.onclick = () => {{
+      tabsEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderDashFuel(fuel);
+    }};
+    tabsEl.appendChild(btn);
+  }});
+  renderDashFuel(dashFuelTypes[0]);
+}}
 </script>"""
 
     return page_shell("Dashboard", "index.html", body, extra_scripts=scripts)
@@ -839,7 +944,7 @@ def gen_fuel(fuel_prices):
     <div class="chart-box" style="height:320px;margin-bottom:20px"><canvas id="fuelChart"></canvas></div>
     <div class="table-wrap">
       <table id="fuelTable">
-        <thead><tr><th>#</th><th>Rețea</th><th>Preț mediu</th><th>Min</th><th>Max</th><th>Stații</th></tr></thead>
+        <thead><tr><th>#</th><th>Rețea</th><th>Preț mediu</th><th>Min</th><th>Max</th><th>Diferență</th><th>Stații</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -897,6 +1002,7 @@ function renderFuel(fuel) {{
       <td style="${{style}}">${{d.network}}</td>
       <td style="${{style}}">${{d.avg_price}} RON</td>
       <td>${{d.min_price}}</td><td>${{d.max_price}}</td>
+      <td style="color:var(--muted)">${{(d.max_price - d.min_price).toFixed(2)}}</td>
       <td>${{d.stations}}</td>
     </tr>`;
   }}).join('');
@@ -1739,6 +1845,7 @@ def gen_stores_map(stores):
   <a href="compare.html">Comparare</a>
   <a href="fuel.html">Carburanți</a>
   <a href="pipeline.html">Pipeline</a>
+  <a href="gas_map.html">Hartă Carburanți</a>
   <span class="count" id="visibleCount">{len(stores)} magazine</span>
 </div>
 <div id="map"></div>
@@ -1808,6 +1915,173 @@ document.getElementById('legend').addEventListener('change', updateFilters);
 </html>"""
 
 
+def gen_gas_map(stations):
+    """Interactive Leaflet map of gas stations with latest fuel prices per popup."""
+    network_counts = {}
+    network_colors = {}
+    for s in stations:
+        net = s["network"] or "Unknown"
+        network_counts[net] = network_counts.get(net, 0) + 1
+        network_colors[net] = net_color(s["network"], GAS_COLORS)
+
+    order = sorted(network_counts, key=lambda n: (-network_counts[n], n == "Unknown", n))
+
+    stations_json = []
+    for s in stations:
+        stations_json.append({
+            "id": str(s["id"]), "name": s["name"], "addr": s["addr"],
+            "lat": s["lat"], "lon": s["lon"],
+            "net": s["network"] or "Unknown",
+            "c": net_color(s["network"], GAS_COLORS),
+            "prices": s["prices"],
+            "date": s["price_date"][:10] if s["price_date"] else "",
+        })
+
+    legend_rows = ""
+    for net in order:
+        c = network_colors[net]
+        legend_rows += (
+            f'<label class="legend-row">'
+            f'<input type="checkbox" checked data-net="{net}"> '
+            f'<span class="dot" style="background:{c}"></span>'
+            f'{net} <span class="cnt">({network_counts[net]})</span>'
+            f'</label>'
+        )
+
+    # Nav links for full-page map (same pattern as stores_map)
+    nav_links = (
+        '<a href="index.html">Dashboard</a>'
+        '<a href="price-index.html">Index</a>'
+        '<a href="trends.html">Tendințe</a>'
+        '<a href="fuel.html">Carburanți</a>'
+        '<a href="pipeline.html">Pipeline</a>'
+        '<a href="stores_map.html">Hartă Magazine</a>'
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hartă Stații Carburanți — Monitorul Prețurilor+</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+  #map {{ width: 100vw; height: 100vh; }}
+
+  .top-bar {{ position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    background: rgba(15,23,42,.92); color: #fff; padding: 0 16px;
+    display: flex; align-items: center; gap: 0; backdrop-filter: blur(8px); }}
+  .top-bar .brand {{ font-weight: 700; font-size: 14px; padding: 10px 14px 10px 0;
+    border-right: 1px solid rgba(255,255,255,.15); margin-right: 8px; }}
+  .top-bar a {{ color: rgba(255,255,255,.7); padding: 10px 14px; font-size: 13px;
+    text-decoration: none; font-weight: 500; }}
+  .top-bar a:hover {{ color: #fff; }}
+  .top-bar .count {{ margin-left: auto; font-size: 12px; color: rgba(255,255,255,.6);
+    padding: 10px 0; }}
+
+  #legend {{
+    position: absolute; bottom: 30px; right: 10px; z-index: 1000;
+    background: rgba(255,255,255,0.95); border-radius: 8px;
+    padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    font-size: 12.5px; line-height: 1.5; max-height: 70vh; overflow-y: auto;
+  }}
+  #legend h4 {{ margin-bottom: 8px; font-size: 13px; font-weight: 700; }}
+  .legend-row {{ display: flex; align-items: center; gap: 5px; cursor: pointer;
+    padding: 1px 0; }}
+  .legend-row input {{ margin: 0; cursor: pointer; }}
+  .dot {{ width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }}
+  .cnt {{ color: #777; font-size: 11px; }}
+
+  .popup-prices {{ border-collapse: collapse; margin-top: 6px; width: 100%; font-size: 12px; }}
+  .popup-prices td {{ padding: 1px 4px; }}
+  .popup-prices td:last-child {{ text-align: right; font-weight: 600; }}
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <span class="brand">Monitorul Prețurilor<sup>+</sup></span>
+  {nav_links}
+  <span class="count" id="visibleCount">{len(stations)} stații</span>
+</div>
+<div id="map"></div>
+<div id="legend">
+  <h4>Rețele</h4>
+  {legend_rows}
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const stations = {json.dumps(stations_json, ensure_ascii=False, separators=(",", ":"))};
+
+const map = L.map('map', {{ zoomControl: false }}).setView([45.9, 24.97], 7);
+L.control.zoom({{ position: 'bottomleft' }}).addTo(map);
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+  attribution: '&copy; OpenStreetMap', maxZoom: 19
+}}).addTo(map);
+
+function circleIcon(color) {{
+  return L.divIcon({{
+    className: '',
+    html: `<svg width="14" height="14" viewBox="0 0 14 14">
+      <circle cx="7" cy="7" r="6" fill="${{color}}" stroke="#fff" stroke-width="1.5"/>
+    </svg>`,
+    iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -8]
+  }});
+}}
+
+function buildPopup(s) {{
+  const addr = s.addr ? `<div style="color:#555;font-size:12px;margin-top:2px">${{s.addr}}</div>` : '';
+  const netLabel = `<div style="margin-top:3px;font-size:12px;font-weight:600;color:${{s.c}}">${{s.net}}</div>`;
+  let priceRows = '';
+  for (const [fuel, price] of Object.entries(s.prices)) {{
+    priceRows += `<tr><td>${{fuel}}</td><td>${{price.toFixed(2)}} RON</td></tr>`;
+  }}
+  const priceTable = priceRows
+    ? `<table class="popup-prices">${{priceRows}}</table>`
+    : '';
+  const dateStr = s.date ? `<div style="color:#888;font-size:11px;margin-top:4px">${{s.date}}</div>` : '';
+  return `<b>${{s.name}}</b>${{netLabel}}${{addr}}${{priceTable}}${{dateStr}}`;
+}}
+
+const netLayers = {{}};
+const clusters = L.markerClusterGroup({{ maxClusterRadius: 40 }});
+
+for (const s of stations) {{
+  const marker = L.marker([s.lat, s.lon], {{ icon: circleIcon(s.c) }});
+  marker.bindPopup(buildPopup(s), {{ maxWidth: 260 }});
+  marker._netName = s.net;
+  if (!netLayers[s.net]) netLayers[s.net] = [];
+  netLayers[s.net].push(marker);
+  clusters.addLayer(marker);
+}}
+map.addLayer(clusters);
+
+function updateFilters() {{
+  const checked = new Set();
+  document.querySelectorAll('#legend input[type=checkbox]').forEach(cb => {{
+    if (cb.checked) checked.add(cb.dataset.net);
+  }});
+  clusters.clearLayers();
+  let count = 0;
+  for (const [net, markers] of Object.entries(netLayers)) {{
+    if (checked.has(net)) {{
+      markers.forEach(m => clusters.addLayer(m));
+      count += markers.length;
+    }}
+  }}
+  document.getElementById('visibleCount').textContent = count.toLocaleString('ro') + ' stații';
+}}
+document.getElementById('legend').addEventListener('change', updateFilters);
+</script>
+</body>
+</html>"""
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -1835,6 +2109,7 @@ def main():
     compare_index   = load_compare_index(conn)
     analytics_data  = load_analytics_data(conn)
     stores          = load_stores(conn)
+    gas_stations    = load_gas_map_data(conn)
 
     print("Building compare data files...")
     n_products = build_compare_data_files(conn, out_dir)
@@ -1843,7 +2118,7 @@ def main():
     conn.close()
 
     pages = {
-        "index.html":       gen_index(summary, price_index, fuel_prices),
+        "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends),
         "price-index.html": gen_price_index(price_index, by_category),
         "trends.html":      gen_trends(network_trends, category_trends, fuel_trends),
         "compare.html":     gen_compare(compare_index),
@@ -1851,6 +2126,7 @@ def main():
         "analytics.html":   gen_analytics(analytics_data),
         "pipeline.html":    gen_pipeline(runs, coverage, summary),
         "stores_map.html":  gen_stores_map(stores),
+        "gas_map.html":     gen_gas_map(gas_stations),
     }
 
     for name, html in pages.items():

@@ -1,7 +1,7 @@
 network,avg_price,min_price,max_price,stores
 CORA,24.39,24.39,24.39,1
 AUCHAN,27.59,27.59,27.59,1
-KAUFLAND,28.95,28.95,28.95,9
+KAUFLAND,28.95,28.95,28.95,8
 CARREFOUR,30.32,28.89,33.99,4
 
 network,price_date,avg_price

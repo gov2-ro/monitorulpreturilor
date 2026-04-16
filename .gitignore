@@ -12,6 +12,9 @@ data*/*
 data/reference/*.xlsx
 docs/data/*
 !docs/data/*.csv
+!docs/data/products/
+docs/data/products/*
+!docs/data/products/*.csv
 *.code-workspace
 docs/reference/screenshots
 docs/reference/sampleResponses
