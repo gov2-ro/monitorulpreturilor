@@ -109,6 +109,111 @@ def init_db(path="data/prices.db"):
         except sqlite3.OperationalError:
             pass  # column already exists
     conn.commit()
+    # Create analytical views (idempotent)
+    conn.executescript("""
+    CREATE VIEW IF NOT EXISTS v_price_variability AS
+    WITH floor AS (
+      SELECT pr.product_id, s.network_id, MIN(pr.price) AS min_p
+      FROM prices pr JOIN stores s ON pr.store_id = s.id
+      WHERE pr.price_date = (SELECT MAX(price_date) FROM prices) AND pr.price > 0
+      GROUP BY pr.product_id, s.network_id
+    ),
+    clean AS (
+      SELECT pr.product_id, pr.store_id, pr.price, s.network_id
+      FROM prices pr JOIN stores s ON pr.store_id = s.id
+      JOIN floor f ON pr.product_id = f.product_id AND s.network_id = f.network_id
+      WHERE pr.price_date = (SELECT MAX(price_date) FROM prices)
+        AND pr.price > 0 AND pr.price <= f.min_p * 10
+    )
+    SELECT n.name AS network, c.product_id, p.name AS product,
+           COUNT(DISTINCT c.store_id) AS stores,
+           ROUND(MIN(c.price), 2) AS min_price,
+           ROUND(AVG(c.price), 2) AS avg_price,
+           ROUND(MAX(c.price), 2) AS max_price,
+           ROUND((MAX(c.price) - MIN(c.price)) / MIN(c.price) * 100, 1) AS spread_pct
+    FROM clean c
+    JOIN retail_networks n ON c.network_id = n.id
+    JOIN products p ON c.product_id = p.id
+    GROUP BY n.name, c.product_id
+    HAVING stores >= 3 AND spread_pct > 5
+    ORDER BY spread_pct DESC;
+
+    CREATE VIEW IF NOT EXISTS v_cross_network_spread AS
+    WITH per_store AS (
+      SELECT p.product_id, pr.name AS product, n.name AS network, p.price
+      FROM prices p
+      JOIN stores s ON p.store_id = s.id
+      JOIN retail_networks n ON s.network_id = n.id
+      JOIN products pr ON p.product_id = pr.id
+      WHERE n.name != 'SELGROS'
+    ),
+    net_avg AS (
+      SELECT product_id, product, network,
+             AVG(price) AS avg_price, COUNT(*) AS stores
+      FROM per_store GROUP BY product_id, network HAVING stores >= 2
+    ),
+    product_range AS (
+      SELECT product_id, product,
+             MIN(avg_price) AS min_net_price, MAX(avg_price) AS max_net_price,
+             COUNT(DISTINCT network) AS networks,
+             ROUND(MAX(avg_price) - MIN(avg_price), 2) AS spread,
+             ROUND(MAX(avg_price) / MIN(avg_price), 3) AS ratio
+      FROM net_avg GROUP BY product_id HAVING networks >= 2
+    )
+    SELECT * FROM product_range ORDER BY ratio DESC;
+
+    CREATE VIEW IF NOT EXISTS v_product_popularity AS
+    WITH coverage AS (
+      SELECT product_id,
+             COUNT(DISTINCT store_id) AS store_count,
+             COUNT(*) AS record_count
+      FROM prices GROUP BY product_id
+    ),
+    ranked AS (
+      SELECT product_id, store_count, record_count,
+             RANK() OVER (ORDER BY store_count  DESC) AS cov_rank,
+             RANK() OVER (ORDER BY record_count DESC) AS rec_rank
+      FROM coverage
+    )
+    SELECT r.product_id, pr.name, c.name AS category,
+           r.store_count, r.record_count,
+           ROUND((r.cov_rank + r.rec_rank) / 2.0, 1) AS blended_rank
+    FROM ranked r
+    JOIN products pr ON r.product_id = pr.id
+    JOIN categories c ON pr.categ_id = c.id
+    ORDER BY blended_rank;
+
+    CREATE VIEW IF NOT EXISTS v_private_label_candidates AS
+    SELECT pr.name AS product, n.name AS network, COUNT(DISTINCT s.id) AS stores
+    FROM prices p
+    JOIN stores s ON p.store_id = s.id
+    JOIN retail_networks n ON s.network_id = n.id
+    JOIN products pr ON p.product_id = pr.id
+    GROUP BY p.product_id
+    HAVING COUNT(DISTINCT s.network_id) = 1
+    ORDER BY stores DESC;
+
+    CREATE VIEW IF NOT EXISTS v_stores_per_network AS
+    SELECT COALESCE(n.name, 'Unknown') AS network, COUNT(*) AS stores
+    FROM stores s
+    LEFT JOIN retail_networks n ON s.network_id = n.id
+    GROUP BY network ORDER BY stores DESC;
+
+    CREATE VIEW IF NOT EXISTS v_price_freshness AS
+    SELECT price_date,
+           COUNT(*) AS records,
+           COUNT(DISTINCT store_id) AS stores,
+           COUNT(DISTINCT product_id) AS products
+    FROM prices GROUP BY price_date ORDER BY price_date DESC;
+
+    CREATE VIEW IF NOT EXISTS v_products_no_prices AS
+    SELECT pr.id, pr.name AS product, c.name AS category
+    FROM products pr
+    JOIN categories c ON pr.categ_id = c.id
+    WHERE pr.id NOT IN (SELECT DISTINCT product_id FROM prices)
+    ORDER BY c.name, pr.name;
+    """)
+    conn.commit()
     return conn
 
 

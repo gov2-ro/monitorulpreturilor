@@ -2,6 +2,15 @@
 
 Ad-hoc queries for exploring `data/prices.db`.
 
+> Key queries are also available as **SQLite views** (created automatically by `init_db()`):
+> `v_price_variability`, `v_cross_network_spread`, `v_product_popularity`,
+> `v_private_label_candidates`, `v_stores_per_network`, `v_price_freshness`, `v_products_no_prices`
+>
+> ```bash
+> sqlite3 data/prices.db "SELECT * FROM v_price_variability LIMIT 20;"
+> python export_analytics.py   # → docs/data/*.csv
+> ```
+
 ---
 
 ## Price variability

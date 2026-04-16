@@ -11,7 +11,7 @@ data*/*
 !data/reference/populatie romania siruta coords.csv
 data/reference/*.xlsx
 docs/data/*
-docs/*.html
+!docs/data/*.csv
 *.code-workspace
 docs/reference/screenshots
 docs/reference/sampleResponses

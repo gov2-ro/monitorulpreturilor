@@ -54,6 +54,9 @@ jobs:
       - name: Generate site
         run: python generate_site.py --db data/prices_ci.db --out docs/
 
+      - name: Export analytics CSVs
+        run: python export_analytics.py data/prices_ci.db --out docs/data
+
       # -----------------------------------------------------------------------
       # Commit DB + checkpoint + docs (skip if nothing changed).
       # Pull --rebase before push to handle concurrent runs / manual triggers
@@ -69,6 +72,7 @@ jobs:
           [ -f data/ci_products.txt ] && git add data/ci_products.txt
           git add docs/index.html docs/price-index.html docs/fuel.html \
                   docs/pipeline.html docs/stores_map.html docs/CNAME || true
+          git add docs/data/*.csv 2>/dev/null || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 
