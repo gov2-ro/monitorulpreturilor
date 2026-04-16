@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Dashboard — Monitorul Prețurilor+</title>
+<title>Dashboard — Monitorul Prețurilor+ – gov2.ro</title>
 <style>
 :root {
   --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
@@ -101,15 +101,15 @@ tr:hover td { background: #f8fafc; }
 
 </head>
 <body>
-<nav class="nav"><span class="nav-brand">Monitorul Prețurilor</span><a href="index.html" class="active">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="fuel.html">Carburanți</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html" class="active">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="fuel.html">Carburanți</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
 
 <div class="container">
   <h1>Dashboard</h1>
-  <p class="subtitle">Monitorizarea prețurilor din România — date publice ANPC</p>
+  <p class="subtitle">Monitorizarea prețurilor din România — date publice publicate de către <a href="https://www.consiliulconcurentei.ro/" target=_blank rel="nofollow">Consiliul Concurenței</a> &rarr; <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a></p>
 
   <div class="kpi-grid">
     <div class="kpi">
-      <div class="kpi-value">3,945</div>
+      <div class="kpi-value">3,954</div>
       <div class="kpi-label">Magazine</div>
     </div>
     <div class="kpi">
@@ -121,7 +121,7 @@ tr:hover td { background: #f8fafc; }
       <div class="kpi-label">Produse</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">554,164</div>
+      <div class="kpi-value">594,428</div>
       <div class="kpi-label">Prețuri colectate</div>
     </div>
     <div class="kpi">
@@ -168,12 +168,12 @@ tr:hover td { background: #f8fafc; }
   </div>
 </div>
 <footer class="footer">
-  <em>Monitorul Prețurilor+</em> &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-const piData = [{"network":"PROFI","price_index":129.2,"products":1247},{"network":"SUPECO","price_index":136.9,"products":302},{"network":"PENNY","price_index":137.2,"products":293},{"network":"AUCHAN","price_index":137.4,"products":1405},{"network":"SELGROS","price_index":139.4,"products":1097},{"network":"KAUFLAND","price_index":139.9,"products":979},{"network":"CARREFOUR","price_index":141.0,"products":1244},{"network":"LIDL DISCOUNT SRL","price_index":163.8,"products":62},{"network":"MEGA IMAGE SRL","price_index":197.1,"products":809},{"network":"CORA","price_index":252.1,"products":1393}];
+const piData = [{"network":"PROFI","price_index":129.1,"products":1266},{"network":"PENNY","price_index":136.2,"products":304},{"network":"SUPECO","price_index":137.2,"products":307},{"network":"AUCHAN","price_index":137.5,"products":1420},{"network":"SELGROS","price_index":139.3,"products":1102},{"network":"KAUFLAND","price_index":139.9,"products":983},{"network":"CARREFOUR","price_index":141.2,"products":1247},{"network":"LIDL DISCOUNT SRL","price_index":163.6,"products":62},{"network":"MEGA IMAGE SRL","price_index":196.8,"products":812},{"network":"CORA","price_index":252.5,"products":1395}];
 new Chart(document.getElementById('indexChart'), {
   type: 'bar',
   data: {

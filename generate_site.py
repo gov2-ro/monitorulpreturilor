@@ -318,7 +318,7 @@ def nav_html(active_page: str) -> str:
         links.append(f'<a href="{href}"{cls}>{label}</a>')
     return (
         '<nav class="nav">'
-        '<span class="nav-brand">Monitorul Prețurilor</span>'
+        '<span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span>'
         + "".join(links) +
         '</nav>'
     )
@@ -331,7 +331,7 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{title} — Monitorul Prețurilor+</title>
+<title>{title} — Monitorul Prețurilor+ – gov2.ro</title>
 <style>{SHARED_CSS}</style>
 {extra_head}
 </head>
@@ -339,7 +339,7 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 {nav_html(active_page)}
 {body}
 <footer class="footer">
-  <em>Monitorul Prețurilor+</em> &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
 </footer>
 {extra_scripts}
 </body>
@@ -371,7 +371,7 @@ def gen_index(summary, price_index, fuel_prices):
     body = f"""
 <div class="container">
   <h1>Dashboard</h1>
-  <p class="subtitle">Monitorizarea prețurilor din România — date publice ANPC</p>
+  <p class="subtitle">Monitorizarea prețurilor din România — date publice publicate de către <a href="https://www.consiliulconcurentei.ro/" target=_blank rel="nofollow">Consiliul Concurenței</a> &rarr; <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a></p>
 
   <div class="kpi-grid">
     <div class="kpi">
