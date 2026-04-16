@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Dashboard — Monitorul Prețurilor</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor</span><a href="index.html" class="active">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="fuel.html">Carburanți</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
+
+<div class="container">
+  <h1>Dashboard</h1>
+  <p class="subtitle">Monitorizarea prețurilor din România — date publice ANPC</p>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-value">3,902</div>
+      <div class="kpi-label">Magazine</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">10</div>
+      <div class="kpi-label">Rețele retail</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">6,932</div>
+      <div class="kpi-label">Produse</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">165,163</div>
+      <div class="kpi-label">Prețuri colectate</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">415</div>
+      <div class="kpi-label">Benzinării</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">1,720</div>
+      <div class="kpi-label">Prețuri carburanți</div>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-title">Index Prețuri pe Rețea</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+        100 = cea mai ieftină rețea (produse comparabile, disponibile în 3+ rețele)</p>
+      <div class="chart-box"><canvas id="indexChart"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cel mai ieftin carburant</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tip</th><th>Rețea</th><th>Preț mediu</th></tr></thead>
+          <tbody><tr><td>Benzină premium</td><td style="font-weight:600">PETROM</td><td>9.2 RON</td></tr><tr><td>Benzină standard</td><td style="font-weight:600">PETROM</td><td>8.72 RON</td></tr><tr><td>GPL</td><td style="font-weight:600">SOCAR</td><td>4.14 RON</td></tr><tr><td>Motorină premium</td><td style="font-weight:600">PETROM</td><td>10.35 RON</td></tr><tr><td>Motorină standard</td><td style="font-weight:600">PETROM</td><td>9.58 RON</td></tr><tr><td>Încărcare Electrică</td><td style="font-weight:600">MOL România Petroleum Products</td><td>20.95 RON</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Date recente</div>
+      <table>
+        <tr><td style="color:var(--muted)">Ultimul preț retail</td>
+            <td style="font-weight:600">15.04.2026 04:00</td></tr>
+        <tr><td style="color:var(--muted)">Ultimul preț carburant</td>
+            <td style="font-weight:600">14/04/2026 09:27</td></tr>
+        <tr><td style="color:var(--muted)">UAT-uri acoperite</td>
+            <td style="font-weight:600">20</td></tr>
+        <tr><td style="color:var(--muted)">Categorii produse</td>
+            <td style="font-weight:600">143</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+<footer class="footer">
+  Monitorul Prețurilor &middot; Date publice ANPC &middot;
+  <a href="https://github.com/gov2-ro/monitorulpreturilor.info">GitHub</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+const piData = [{"network":"AUCHAN","price_index":128.8,"products":933},{"network":"PROFI","price_index":133.3,"products":946},{"network":"CARREFOUR","price_index":136.5,"products":1178},{"network":"SELGROS","price_index":137.7,"products":1000},{"network":"SUPECO","price_index":139.0,"products":162},{"network":"KAUFLAND","price_index":143.1,"products":896},{"network":"PENNY","price_index":147.0,"products":225},{"network":"LIDL DISCOUNT SRL","price_index":178.6,"products":60},{"network":"MEGA IMAGE SRL","price_index":198.7,"products":734},{"network":"CORA","price_index":245.4,"products":1292}];
+new Chart(document.getElementById('indexChart'), {
+  type: 'bar',
+  data: {
+    labels: piData.map(d => d.network),
+    datasets: [{
+      label: 'Index preț (100 = cel mai ieftin)',
+      data: piData.map(d => d.price_index),
+      backgroundColor: piData.map(d => {
+        const idx = d.price_index;
+        if (idx <= 110) return '#22c55e';
+        if (idx <= 130) return '#84cc16';
+        if (idx <= 150) return '#eab308';
+        if (idx <= 180) return '#f97316';
+        return '#ef4444';
+      }),
+      borderRadius: 4,
+      barPercentage: 0.7,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: {
+        label: ctx => ctx.parsed.x.toFixed(1) + ' (din ' + piData[ctx.dataIndex].products + ' produse)'
+      } }
+    },
+    scales: {
+      x: { beginAtZero: true, grid: { color: '#f1f5f9' },
+            ticks: { callback: v => v } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+</script>
+</body>
+</html>

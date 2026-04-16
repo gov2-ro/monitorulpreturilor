@@ -4,6 +4,18 @@
 
 ## General
 
+### 2026-04-16 — Static GitHub Pages UI (Phase 1)
+
+- Created `generate_site.py`: generates 5 static HTML pages into `docs/` from `data/prices.db`:
+  - **index.html** — Dashboard with KPI cards (stores, products, prices, gas stations), Network Price Index bar chart, cheapest fuel summary, latest dates.
+  - **price-index.html** — Network Price Index: overall ranking + per-category breakdown with tab selector. Normalized to 100 = cheapest network, computed on products available in 3+ networks.
+  - **fuel.html** — Fuel Price Leaderboard: per-fuel-type tabs, horizontal bar chart + sortable table (avg/min/max/stations per network).
+  - **pipeline.html** — Pipeline health: KPI cards, coverage-by-network table with % bars, run history from `runs` audit table.
+  - **stores_map.html** — Enhanced store map: network filter checkboxes (show/hide per network), visible count display, floating nav bar. Replaces old `generate_map.py` output.
+- Design: clean card-based responsive layout, Chart.js for charts, Leaflet + MarkerCluster for map, all data embedded as JSON (~600 KB total, under 2 MB target).
+- Supersedes `generate_map.py` (still functional but `generate_site.py` produces the enhanced version).
+- Fixed: category query used `parent_id IS NULL` but top-level categories have `parent_id = 1` (virtual root).
+
 ### 2026-04-15 — Optimise fetch_prices.py: spatial clustering + larger batches
 
 - Added greedy set-cover spatial clustering to `fetch_prices.py`: groups stores within 5 km and picks one anchor per cluster. Reduces 3,813 stores → 681 anchors (82% fewer API calls).

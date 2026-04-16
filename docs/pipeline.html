@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Pipeline — Monitorul Prețurilor</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor</span><a href="index.html">Dashboard</a><a href="price-index.html">Index Prețuri</a><a href="fuel.html">Carburanți</a><a href="pipeline.html" class="active">Pipeline</a><a href="stores_map.html">Hartă</a></nav>
+
+<div class="container">
+  <h1>Pipeline & Acoperire</h1>
+  <p class="subtitle">Starea sistemului de colectare date</p>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-value">165,163</div>
+      <div class="kpi-label">Total prețuri retail</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">1,720</div>
+      <div class="kpi-label">Total prețuri carburanți</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">3298</div>
+      <div class="kpi-label">Ultimul run (înregistrări)</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-value">2</div>
+      <div class="kpi-label">UAT-uri procesate (ultimul)</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Acoperire pe rețea (ultima zi)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Rețea</th><th>Magazine cu prețuri</th><th>Acoperire</th><th>Produse</th></tr></thead>
+        <tbody><tr><td style="font-weight:600">PROFI</td><td>1440 / 1480</td><td class="bar-cell"><div class="bar-fill" style="width:97%;background:#22c55e"></div><span class="bar-text">97%</span></td><td>1,621</td></tr><tr><td style="font-weight:600">MEGA IMAGE SRL</td><td>443 / 455</td><td class="bar-cell"><div class="bar-fill" style="width:97%;background:#22c55e"></div><span class="bar-text">97%</span></td><td>841</td></tr><tr><td style="font-weight:600">PENNY</td><td>354 / 354</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>10</td></tr><tr><td style="font-weight:600">CARREFOUR</td><td>315 / 322</td><td class="bar-cell"><div class="bar-fill" style="width:98%;background:#22c55e"></div><span class="bar-text">98%</span></td><td>1,253</td></tr><tr><td style="font-weight:600">LIDL DISCOUNT SRL</td><td>266 / 266</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>16</td></tr><tr><td style="font-weight:600">KAUFLAND</td><td>196 / 196</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>1,026</td></tr><tr><td style="font-weight:600">AUCHAN</td><td>43 / 45</td><td class="bar-cell"><div class="bar-fill" style="width:96%;background:#22c55e"></div><span class="bar-text">96%</span></td><td>1,835</td></tr><tr><td style="font-weight:600">SUPECO</td><td>25 / 25</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>174</td></tr><tr><td style="font-weight:600">SELGROS</td><td>22 / 22</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>1,118</td></tr><tr><td style="font-weight:600">CORA</td><td>11 / 11</td><td class="bar-cell"><div class="bar-fill" style="width:100%;background:#22c55e"></div><span class="bar-text">100%</span></td><td>1,492</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Istoric rulări</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Script</th><th>Start</th><th>Sfârșit</th><th>Status</th><th>UATs</th><th>Recs</th></tr></thead>
+        <tbody><tr><td>36</td><td>fetch_prices</td><td>2026-04-15T15:58:47</td><td>2026-04-15T17:36:32</td><td><span class="badge badge-warn">interrupted</span></td><td>599</td><td>75405</td></tr><tr><td>35</td><td>fetch_prices</td><td>2026-04-15T15:58:47</td><td>2026-04-15T16:18:06</td><td><span class="badge badge-warn">interrupted</span></td><td>—</td><td>—</td></tr><tr><td>34</td><td>fetch_prices</td><td>2026-04-15T15:58:47</td><td>2026-04-15T16:07:48</td><td><span class="badge badge-ok">completed</span></td><td>2</td><td>3298</td></tr><tr><td>33</td><td>fetch_prices</td><td>2026-04-15T15:58:47</td><td>2026-04-15T15:59:41</td><td><span class="badge badge-warn">interrupted</span></td><td>1</td><td>1369</td></tr><tr><td>32</td><td>fetch_prices</td><td>2026-04-15T15:57:51</td><td>2026-04-15T15:58:40</td><td><span class="badge badge-warn">interrupted</span></td><td>1</td><td>1627</td></tr><tr><td>31</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:30:07</td><td><span class="badge badge-warn">interrupted</span></td><td>117</td><td>7323</td></tr><tr><td>30</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:21:47</td><td><span class="badge badge-warn">interrupted</span></td><td>5</td><td>127</td></tr><tr><td>29</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:21:14</td><td><span class="badge badge-warn">interrupted</span></td><td>7</td><td>585</td></tr><tr><td>28</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:19:51</td><td><span class="badge badge-warn">interrupted</span></td><td>114</td><td>6812</td></tr><tr><td>27</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:06:12</td><td><span class="badge badge-warn">interrupted</span></td><td>5</td><td>113</td></tr><tr><td>26</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T11:05:50</td><td><span class="badge badge-warn">interrupted</span></td><td>2</td><td>2867</td></tr><tr><td>25</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T10:48:00</td><td><span class="badge badge-warn">interrupted</span></td><td>1</td><td>1886</td></tr><tr><td>24</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T09:44:40</td><td><span class="badge badge-warn">interrupted</span></td><td>1</td><td>3426</td></tr><tr><td>23</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T09:43:26</td><td><span class="badge badge-err">error</span></td><td>—</td><td>—</td></tr><tr><td>22</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T10:36:13</td><td><span class="badge badge-warn">interrupted</span></td><td>3</td><td>121002</td></tr><tr><td>21</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T09:36:20</td><td><span class="badge badge-err">error</span></td><td>—</td><td>—</td></tr><tr><td>20</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T09:37:48</td><td><span class="badge badge-warn">interrupted</span></td><td>3</td><td>85874</td></tr><tr><td>19</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T08:55:39</td><td><span class="badge badge-warn">interrupted</span></td><td>2</td><td>5592</td></tr><tr><td>18</td><td>fetch_prices</td><td>2026-04-15T07:24:45</td><td>2026-04-15T08:45:17</td><td><span class="badge badge-warn">interrupted</span></td><td>1</td><td>36977</td></tr><tr><td>17</td><td>fetch_prices</td><td>2026-04-15T07:17:33</td><td>2026-04-15T07:17:45</td><td><span class="badge badge-warn">interrupted</span></td><td>—</td><td>—</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<footer class="footer">
+  Monitorul Prețurilor &middot; Date publice ANPC &middot;
+  <a href="https://github.com/gov2-ro/monitorulpreturilor.info">GitHub</a>
+</footer>
+
+</body>
+</html>

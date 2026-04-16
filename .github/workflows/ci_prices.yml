@@ -49,7 +49,15 @@ jobs:
             --max-runtime 6300
 
       # -----------------------------------------------------------------------
-      # Commit DB + checkpoint (skip if nothing changed)
+      # Regenerate static site from updated DB
+      # -----------------------------------------------------------------------
+      - name: Generate site
+        run: python generate_site.py --db data/prices_ci.db --out docs/
+
+      # -----------------------------------------------------------------------
+      # Commit DB + checkpoint + docs (skip if nothing changed).
+      # Pull --rebase before push to handle concurrent runs / manual triggers
+      # writing to the same branch.
       # -----------------------------------------------------------------------
       - name: Commit results
         run: |
@@ -59,8 +67,11 @@ jobs:
           git add data/prices_ci.db data/prices_ci_checkpoint.json || true
           [ -f data/ci_stores.txt ]   && git add data/ci_stores.txt
           [ -f data/ci_products.txt ] && git add data/ci_products.txt
+          git add docs/index.html docs/price-index.html docs/fuel.html \
+                  docs/pipeline.html docs/stores_map.html || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 
           git commit -m "chore(ci): fetch prices $(date -u +%FT%H:%MZ)"
+          git pull --rebase origin main
           git push

@@ -246,9 +246,120 @@ These require server-side logic and can't work as static pages:
 - Target: <2 MB total (pre-computed aggregates, not raw data)
 
 ### Phase 3+: Standalone app
-- **Backend**: Python (FastAPI or Flask) serving SQLite/PostgreSQL
-- **Frontend**: Lightweight framework (Alpine.js, htmx, or Vue) — keep it simple
-- **Deployment**: Docker container, single VPS or fly.io
-- **Search**: SQLite FTS5 for product search, or pg_trgm if PostgreSQL
-- **Background**: Celery or simple cron for alerts, report generation
-- **Auth**: Optional — anonymous browse, accounts only for saved baskets/alerts
+
+#### Architecture sketch
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Browser (SPA)                                              │
+│  ┌────────┐  ┌────────┐  ┌──────────┐  ┌────────────────┐  │
+│  │ Search │  │ Basket │  │  Maps    │  │ Price Alerts   │  │
+│  │ (FTS)  │  │ Builder│  │ (Leaflet)│  │ (WebSocket)    │  │
+│  └───┬────┘  └───┬────┘  └────┬─────┘  └───────┬────────┘  │
+│      │           │            │                 │           │
+│      └───────────┴────────────┴─────────────────┘           │
+│                        ▼  REST / JSON                       │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────┴────────────────────────────────────┐
+│  FastAPI backend                                            │
+│                                                             │
+│  /api/v1/                                                   │
+│    products/search?q=lapte&cat=12      ← FTS5 full-text     │
+│    products/{id}/prices                ← history + network  │
+│    basket/cheapest?uat=3&ids=1,2,3     ← per-network totals │
+│    stores/nearby?lat=44.4&lon=26.1&r=5 ← spatial query      │
+│    fuel/prices?uat=3&type=21           ← gas leaderboard    │
+│    fuel/map                            ← all stations+price │
+│    alerts/                             ← CRUD (auth'd)      │
+│    reports/weekly                      ← pre-generated HTML │
+│                                                             │
+│  Middleware: CORS, rate-limit (slowapi), gzip               │
+│                                                             │
+│  ┌──────────────┐  ┌───────────────┐  ┌──────────────────┐ │
+│  │ price_svc.py │  │ search_svc.py │  │ alert_svc.py     │ │
+│  │ basket calc  │  │ FTS5 + fuzzy  │  │ check + notify   │ │
+│  └──────┬───────┘  └──────┬────────┘  └────────┬─────────┘ │
+│         │                 │                     │           │
+│         └─────────────────┴─────────────────────┘           │
+│                           ▼                                 │
+│              ┌─────────────────────────┐                    │
+│              │  SQLite (prices.db)     │                    │
+│              │  + FTS5 virtual table   │                    │
+│              │  + R*Tree spatial index │                    │
+│              └─────────────────────────┘                    │
+│                                                             │
+│  Background:                                                │
+│    cron_fetch.py  — daily price fetch (same scripts)        │
+│    cron_alerts.py — check thresholds, send email/push       │
+│    cron_report.py — weekly HTML report generation           │
+└─────────────────────────────────────────────────────────────┘
+
+Deployment: single Docker container (or fly.io / Railway)
+  Dockerfile:
+    python:3.12-slim
+    pip install fastapi uvicorn[standard] requests tqdm
+    COPY . /app
+    CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
+
+  Or: SQLite on volume mount, optional PostgreSQL for >1M rows
+```
+
+#### Key decisions
+
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Framework | FastAPI | async, auto-docs, Pydantic validation, fast enough for SQLite |
+| Frontend | Alpine.js + htmx | minimal JS, progressive enhancement, no build step |
+| Database | SQLite + FTS5 + R*Tree | already works, FTS5 for search, R*Tree for geo, no ops overhead |
+| Search | FTS5 with trigram tokenizer | `CREATE VIRTUAL TABLE products_fts USING fts5(name, tokenize="trigram")` |
+| Spatial | R*Tree index on stores | `CREATE VIRTUAL TABLE stores_rtree USING rtree(id, min_lat, max_lat, min_lon, max_lon)` |
+| Auth | Optional, JWT-based | anonymous for browsing; accounts only for saved baskets + alerts |
+| Alerts | Email via SMTP (or ntfy.sh) | lightweight, no push infra needed |
+| Deploy | fly.io or single VPS | SQLite = single-writer, no DB server to manage |
+| Scale limit | ~10 concurrent users | SQLite WAL handles this; beyond that → PostgreSQL migration |
+
+#### File structure (standalone)
+
+```
+standalone/
+├── app/
+│   ├── main.py              # FastAPI app, CORS, mount static
+│   ├── config.py            # settings (DB path, SMTP, JWT secret)
+│   ├── models.py            # Pydantic response models
+│   ├── routers/
+│   │   ├── products.py      # search, detail, price history
+│   │   ├── basket.py        # cheapest basket calculator
+│   │   ├── stores.py        # nearby stores, store detail
+│   │   ├── fuel.py          # gas prices, map data
+│   │   ├── alerts.py        # CRUD price alerts (auth'd)
+│   │   └── reports.py       # weekly report endpoint
+│   ├── services/
+│   │   ├── price_svc.py     # price queries, basket optimization
+│   │   ├── search_svc.py    # FTS5 product search
+│   │   ├── geo_svc.py       # spatial queries (R*Tree)
+│   │   └── alert_svc.py     # alert check + notification
+│   ├── db.py                # connection pool, FTS5/R*Tree init
+│   └── auth.py              # JWT auth (optional)
+├── static/                  # Alpine.js + htmx frontend
+│   ├── index.html
+│   ├── search.html
+│   ├── basket.html
+│   ├── map.html
+│   └── css/style.css
+├── cron/
+│   ├── fetch.py             # reuses existing fetch_prices.py
+│   ├── alerts.py            # threshold check + email
+│   └── report.py            # weekly HTML report
+├── Dockerfile
+├── docker-compose.yml       # app + optional caddy reverse proxy
+└── requirements.txt
+```
+
+#### Migration path from static → standalone
+
+1. **Phase 2 bridge**: keep `generate_site.py` for GitHub Pages but add a `/api/` preview
+   — FastAPI serves the same SQLite, static pages redirect to API-powered versions gradually
+2. **Phase 3**: product search + price history → first features that need server-side queries
+3. **Phase 4**: user accounts, saved baskets, alerts → full standalone
+4. GitHub Pages remains as a "lite" read-only dashboard (regenerated in CI)
