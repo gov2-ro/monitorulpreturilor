@@ -331,7 +331,7 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{title} — Monitorul Prețurilor</title>
+<title>{title} — Monitorul Prețurilor+</title>
 <style>{SHARED_CSS}</style>
 {extra_head}
 </head>
@@ -339,8 +339,7 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 {nav_html(active_page)}
 {body}
 <footer class="footer">
-  Monitorul Prețurilor &middot; Date publice ANPC &middot;
-  <a href="https://github.com/gov2-ro/monitorulpreturilor.info">GitHub</a>
+  <em>Monitorul Prețurilor+</em> &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
 </footer>
 {extra_scripts}
 </body>
