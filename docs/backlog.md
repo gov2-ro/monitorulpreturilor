@@ -58,3 +58,5 @@
 - [ ] Add `requirements.txt` — currently only `requests` and `tqdm`; needed for GitHub Actions `pip install` step
 - [ ] Add `get_uats(conn)` read helper to `db.py` — both `fetch_prices.py` and `fetch_gas_prices.py` run the same `SELECT id, name, center_lat, center_lon FROM uats` query inline; moving it to `db.py` keeps DB queries in one place
 - [ ] **Short network IDs config file** — current network names from the API are verbose (`MEGA IMAGE SRL`, `CARREFOUR`, `PROFI`, etc.) and inconsistent in length. Create a static config (e.g. `config/networks.json`) that maps `retail_networks.id → short_name` (e.g. `"MEGA IMAGE SRL" → "Mega"`, `"CARREFOUR" → "Carrefour"`). Use these short names in analysis outputs, map popups, and future UI. Populate manually — only ~10 retail networks and ~6 gas networks.
+- [x] add disclaimer: Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)
+    - [ ] add dismissable notification in header

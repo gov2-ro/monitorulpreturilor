@@ -2,7 +2,7 @@
 
 [monitorulpreturilor.gov2.ro](https://monitorulpreturilor.gov2.ro/) – interfață alternativă pentru [monitorulpreturilor.info](https://monitorulpreturilor.info/)
 
-Fetch and store food price and fuel price data from the Romanian government price monitor API.
+Preia și stochează date despre prețurile alimentelor și ale combustibililor de pe [Monitorului Prețurilor](https://monitorulpreturilor.info/), proiect al [Consiliului Concurenței](https://www.consiliulconcurentei.ro/) 
 
 > Proiectul *Monitorul Prețurilor* produselor alimentare își propune să acorde consumatorilor posibilitatea de a compara prețul aferent coșului de produse a cărui achiziție intenționează să o realizeze.
 
