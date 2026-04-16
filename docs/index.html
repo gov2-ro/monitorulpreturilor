@@ -109,7 +109,7 @@ tr:hover td { background: #f8fafc; }
 
   <div class="kpi-grid">
     <div class="kpi">
-      <div class="kpi-value">3,902</div>
+      <div class="kpi-value">1,040</div>
       <div class="kpi-label">Magazine</div>
     </div>
     <div class="kpi">
@@ -121,15 +121,15 @@ tr:hover td { background: #f8fafc; }
       <div class="kpi-label">Produse</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">165,163</div>
+      <div class="kpi-value">49,695</div>
       <div class="kpi-label">Prețuri colectate</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">415</div>
+      <div class="kpi-value">0</div>
       <div class="kpi-label">Benzinării</div>
     </div>
     <div class="kpi">
-      <div class="kpi-value">1,720</div>
+      <div class="kpi-value">0</div>
       <div class="kpi-label">Prețuri carburanți</div>
     </div>
   </div>
@@ -147,7 +147,7 @@ tr:hover td { background: #f8fafc; }
       <div class="table-wrap">
         <table>
           <thead><tr><th>Tip</th><th>Rețea</th><th>Preț mediu</th></tr></thead>
-          <tbody><tr><td>Benzină premium</td><td style="font-weight:600">PETROM</td><td>9.2 RON</td></tr><tr><td>Benzină standard</td><td style="font-weight:600">PETROM</td><td>8.72 RON</td></tr><tr><td>GPL</td><td style="font-weight:600">SOCAR</td><td>4.14 RON</td></tr><tr><td>Motorină premium</td><td style="font-weight:600">PETROM</td><td>10.35 RON</td></tr><tr><td>Motorină standard</td><td style="font-weight:600">PETROM</td><td>9.58 RON</td></tr><tr><td>Încărcare Electrică</td><td style="font-weight:600">MOL România Petroleum Products</td><td>20.95 RON</td></tr></tbody>
+          <tbody></tbody>
         </table>
       </div>
     </div>
@@ -156,9 +156,9 @@ tr:hover td { background: #f8fafc; }
       <div class="card-title">Date recente</div>
       <table>
         <tr><td style="color:var(--muted)">Ultimul preț retail</td>
-            <td style="font-weight:600">15.04.2026 04:00</td></tr>
+            <td style="font-weight:600">15.04.2026 20:00</td></tr>
         <tr><td style="color:var(--muted)">Ultimul preț carburant</td>
-            <td style="font-weight:600">14/04/2026 09:27</td></tr>
+            <td style="font-weight:600">—</td></tr>
         <tr><td style="color:var(--muted)">UAT-uri acoperite</td>
             <td style="font-weight:600">20</td></tr>
         <tr><td style="color:var(--muted)">Categorii produse</td>
@@ -174,7 +174,7 @@ tr:hover td { background: #f8fafc; }
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
-const piData = [{"network":"AUCHAN","price_index":128.8,"products":933},{"network":"PROFI","price_index":133.3,"products":946},{"network":"CARREFOUR","price_index":136.5,"products":1178},{"network":"SELGROS","price_index":137.7,"products":1000},{"network":"SUPECO","price_index":139.0,"products":162},{"network":"KAUFLAND","price_index":143.1,"products":896},{"network":"PENNY","price_index":147.0,"products":225},{"network":"LIDL DISCOUNT SRL","price_index":178.6,"products":60},{"network":"MEGA IMAGE SRL","price_index":198.7,"products":734},{"network":"CORA","price_index":245.4,"products":1292}];
+const piData = [{"network":"SUPECO","price_index":116.9,"products":19},{"network":"PENNY","price_index":119.6,"products":38},{"network":"CORA","price_index":122.5,"products":82},{"network":"PROFI","price_index":135.3,"products":72},{"network":"CARREFOUR","price_index":137.7,"products":82},{"network":"SELGROS","price_index":138.3,"products":75},{"network":"AUCHAN","price_index":140.4,"products":82},{"network":"MEGA IMAGE SRL","price_index":146.3,"products":72},{"network":"KAUFLAND","price_index":161.1,"products":66}];
 new Chart(document.getElementById('indexChart'), {
   type: 'bar',
   data: {
