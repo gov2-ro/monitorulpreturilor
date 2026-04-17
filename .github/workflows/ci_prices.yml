@@ -93,5 +93,5 @@ jobs:
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 
           git commit -m "chore(ci): fetch prices $(date -u +%FT%H:%MZ)"
-          git pull --rebase origin main
+          git pull --rebase --autostash origin main
           git push
