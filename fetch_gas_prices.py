@@ -45,7 +45,7 @@ def _finish_checkpoint(path, fetched_at, done):
         json.dump({"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}, f)
 
 
-def main(db_path="data/prices.db", limit_uats=None, fresh=False):
+def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
     conn = init_db(db_path)
 
     cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
@@ -88,10 +88,17 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
     run_id = start_run(conn, "fetch_gas_prices", fetched_at)
     total_prices = 0
     uats_done = 0
+    t_start = time.monotonic()
 
     try:
         with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
             for uat_id, uat_name, lat, lon in uat_bar:
+                if max_runtime and (time.monotonic() - t_start) >= max_runtime:
+                    elapsed = int(time.monotonic() - t_start)
+                    tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
+                               f"Checkpoint saved — resume with next run.")
+                    finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+                    return
                 uat_bar.set_description((uat_name or str(uat_id))[:30])
                 all_stations = {}  # keyed by id for dedup / summary
                 uat_prices = 0
@@ -169,5 +176,7 @@ if __name__ == "__main__":
                         help="process only the first N UATs")
     parser.add_argument("--fresh", action="store_true",
                         help="ignore saved checkpoint and start a clean run")
+    parser.add_argument("--max-runtime", type=int, default=0, metavar="SECONDS",
+                        help="stop after N seconds and save checkpoint (0 = no limit)")
     args = parser.parse_args()
-    main(args.db, args.limit_uats, args.fresh)
+    main(args.db, args.limit_uats, args.fresh, args.max_runtime)
