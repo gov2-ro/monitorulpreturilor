@@ -5,6 +5,7 @@ data*/*
 # CI subset files and reference data committed to repo (for GitHub Actions)
 !data/prices_ci.db
 !data/prices_ci_checkpoint.json
+!data/gas_checkpoint.json
 !data/ci_stores.txt
 !data/ci_products.txt
 !data/reference/
