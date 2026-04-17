@@ -30,6 +30,10 @@
 
 ## Gas
 
+### Bugs / Known Issues
+
+- [ ] **Some UATs have NULL `name` in the `uats` table** — `fetch_gas_prices.py` crashes at `uat_name[:30]` when `name` is NULL (patched with fallback to `uat_id`). Root cause unknown — likely rows inserted without a name during reference fetch or partial UAT discovery. Fix: audit `SELECT id, name FROM uats WHERE name IS NULL;`, backfill names via `GetUATByName?uatname=` or a static lookup, and add a NOT NULL constraint or a fetch-time warning.
+
 ### Todo
 
 - [ ] **Compile full UAT list** — same issue as retail: `Gas/GetUATByName` (no params) returns only top UATs. Use `?uatname=` search or a static list to cover all municipalities.

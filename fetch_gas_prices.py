@@ -92,7 +92,7 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False):
     try:
         with tqdm(uats, desc="UATs", unit="uat") as uat_bar:
             for uat_id, uat_name, lat, lon in uat_bar:
-                uat_bar.set_description(uat_name[:30])
+                uat_bar.set_description((uat_name or str(uat_id))[:30])
                 all_stations = {}  # keyed by id for dedup / summary
                 uat_prices = 0
 
