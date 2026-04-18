@@ -4,6 +4,20 @@
 
 ## General
 
+### 2026-04-18 — API Endpoint Discovery
+
+Wrote `explore_api.py` and probed 50+ candidate endpoints systematically. Strategy: WCF metadata first (WSDL/MEX), then pattern-based candidates, then known-endpoint variations.
+
+Key findings:
+- **`GetCatalogProductsByNameNetwork` (no params)** returns 87,448 product names (16.5 MB) — a full catalog dump. No category IDs, but names + IDs enable a client-side search index. Our current pipeline only indexes 6,932 products (monitored categories only).
+- **`GetStoresForProductsByUat`** confirmed working — tested Bucharest UAT, returns 50 stores. Supports `csvnetworkids` filter not available on the ByLatLon variant. Currently unused in our pipeline.
+- **`GetGasItemsByRoute`** endpoint exists but crashes server-side (AutoMapper bug). Tested with real UAT `route_id` values; the server accepts params but fails during response mapping. Not usable until API owners fix it.
+- No price history API exists anywhere. Our SQLite DB is the only historical record.
+- WSDL/MEX not exposed; no swagger/help. Manual probing is the only discovery path.
+- All other guessed endpoints (store details, brands, promos, history variants) return 404.
+
+Results documented in `docs/reference/undocumented-endpoints.md`. Backlog updated.
+
 ### 2026-04-18 — Phase D: Aproape de tine — Geolocation Store Finder
 
 - Added `build_stores_index.py`: emits `docs/data/stores_index.json` (2,624 consumer-network stores with coordinates, compact array format, 319 KB). Joins basket camara per-UAT cheapest cost (national fallback 302.61 lei/lună where UAT not scored). B2B (SELGROS) excluded.

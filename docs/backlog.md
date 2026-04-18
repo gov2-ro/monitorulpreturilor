@@ -38,7 +38,7 @@
 
 - [ ] **Compile full UAT list** — same issue as retail: `Gas/GetUATByName` (no params) returns only top UATs. Use `?uatname=` search or a static list to cover all municipalities.
 - [ ] **`fetch_gas_prices.py` skips newly discovered stations** — the "already completed today" check uses `fetched_at` date, so if new stations are added mid-day (e.g. after running `discover_gas_stations.py`), they won't be fetched until the next day's run. Investigate whether the skip logic should be per-station rather than a global "all done" check.
-- [ ] Investigate `GetGasItemsByRoute` endpoint — enables price comparison along a driving route (start/end/mid route point IDs), which could be a useful feature for the UI.
+- [ ] **`GetGasItemsByRoute` broken on server** — endpoint exists and accepts real UAT `route_id` values (Bucharest→Brașov tested) but returns HTTP 500 AutoMapper error. Not usable until API owners fix it. Watch for future API updates.
 - [ ] Add services data (`GetGasServicesFromCatalog`) — currently skipped; would allow filtering stations by amenities (ATM, car wash, restaurant, etc.)
 - [ ] **Gas station discovery for highway/road stations** — `discover_gas_stations.py` covers cities (population-based probes), but stations along highways and national roads in low-population UATs will be missed. A later phase should add a lat/lon grid probe over Romania's bounding box at ~10–15 km steps (much sparser than the 5 km retail grid since gas stations are fewer). The `GetGasItemsByLatLon` endpoint and `parse_gas_items()` already support this — just add a grid probe source as an alternative to the population CSV.
 
@@ -48,6 +48,13 @@
 
 ### Todo
 
+- [x] **API endpoint discovery** — ran systematic probe of 50+ candidate endpoints (2026-04-18). See [`docs/reference/undocumented-endpoints.md`](reference/undocumented-endpoints.md) for full results. Key findings:
+  - `GetCatalogProductsByNameNetwork` (no params) dumps all **87,448 product names** — useful for a client-side search index
+  - `GetStoresForProductsByUat` confirmed working — supports `csvnetworkids` filter (UAT-bounded queries per network)
+  - `GetGasItemsByRoute` exists but crashes with AutoMapper bug (server-side)
+  - No price history API exists — our SQLite DB is the only source
+  - [ ] **Build product search index from full catalog dump** — weekly download of all 87k product names, serialize to compact JSON (fuse.js or trie), embed in `compare.html` for client-side fuzzy search
+  - [ ] **Sample unknown products from full catalog dump** — pick ~50–100 random product IDs from the 80k not in our DB, probe `GetStoresForProductsByLatLon` for each, see if any return prices. Goal: understand whether these are live products, discontinued items, B2B-only, or duplicates. Informs whether the full dump is worth deeper exploration.
 - [x] **Build UI Phase 1** — `generate_site.py` generates 5 static pages into `docs/`: Dashboard, Network Price Index, Fuel Leaderboard, Pipeline Health, Enhanced Store Map. See [`docs/ui-plan.md`](ui-plan.md) for remaining phases.
 - [ ] **Build UI Phase 2+** — Cheapest Basket Calculator, Product Price Comparison, Gas Price Map, Price Spread Dashboard. Then standalone app with search, geolocation, saved baskets, alerts, API.
 - [ ] **Site generation in CI** — add `generate_site.py` step to CI workflows so `docs/` pages are regenerated after each fetch. Replace `generate_map.py` calls (now superseded).
