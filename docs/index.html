@@ -226,7 +226,7 @@ if (fuelTrendRawDash.length) {
   const dashFuelTypes = [...new Set(fuelTrendRawDash.map(r => r.fuel))].sort();
   const dashFuelDates = [...new Set(fuelTrendRawDash.map(r => r.price_date))].sort();
   const dashFuelNets  = [...new Set(fuelTrendRawDash.map(r => r.network))].sort();
-  const gasColsDash = {"Rompetrol":"#ffd700","SOCAR":"#00a1de","PETROM":"#004a99","Gazprom Petrol Stations":"#0066b3","LUKOIL România S.R.L.":"#e31e24","MOL România Petroleum Products":"#ff6600","OMV":"#009639"};
+  const gasColsDash = {"Rompetrol":"#ffd700","LUKOIL România S.R.L.":"#e31e24","PETROM":"#004a99","Gazprom Petrol Stations":"#0066b3","SOCAR":"#00a1de","MOL România Petroleum Products":"#ff6600","OMV":"#009639"};
 
   const tabsEl = document.getElementById('dashFuelTabs');
   let dashFuelChart = null;
