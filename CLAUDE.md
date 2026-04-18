@@ -42,7 +42,7 @@ Six Python modules, stdlib + `requests` + `sqlite3` + `tqdm` only:
 | `db.py` | `init_db(path)` creates all tables; upsert helpers for retail and gas |
 | `api.py` | `fetch_xml(url)` with retry/backoff; all parsers; `centroid_from_wkt(wkt)` |
 | `fetch_reference.py` | Retail: run once/weekly — networks, UATs, categories, products |
-| `fetch_prices.py` | Retail: run daily — iterates UATs × product batches of 30; 0.5 s sleep |
+| `fetch_prices.py` | Retail: run daily — iterates stores × product batches; cluster-based anchor deduplication |
 | `fetch_gas_reference.py` | Gas: run once/weekly — gas networks + fuel product types |
 | `fetch_gas_prices.py` | Gas: run daily — one request per UAT covers all 6 fuel types; 0.3 s sleep |
 
@@ -77,7 +77,7 @@ Both APIs share the same XML namespace: `http://schemas.datacontract.org/2004/07
 
 ### Retail — base `https://monitorulpreturilor.info/pmonsvc/Retail`
 - **Key endpoint:** `GetStoresForProductsByLatLon?lat=&lon=&buffer=5000&csvprodids=...&OrderBy=price`
-- Products batched 30 at a time; buffer capped at 5000 m (API returns empty above that)
+- Buffer capped at 5000 m (API returns empty above that); results capped at 50 stores per request
 
 ### Gas — base `https://monitorulpreturilor.info/pmonsvc/Gas`
 - **Key endpoint:** `GetGasItemsByUat?UatId={id}&CSVGasCatalogProductIds={single_id}&OrderBy=dist`

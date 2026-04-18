@@ -29,6 +29,18 @@ analyse_prices.py           # price variability: intra-network + cross-network C
 analyse_products.py         # brand/word frequency + category anomaly CSVs
 ```
 
+Site generation (run after daily fetch):
+```
+generate_site.py            # static GitHub Pages site (9 HTML pages + CSVs)
+generate_map.py             # standalone Leaflet store map → dashboard/stores_map.html
+export_analytics.py         # export DB views to docs/data/*.csv
+```
+
+CI helpers:
+```
+build_ci_subset.py          # build store + product ID subsets for GitHub Actions
+```
+
 ---
 
 ## Workflow
@@ -88,6 +100,9 @@ python analyse_products.py   # → data/brands.csv, data/product_words.csv, data
 | `brands.csv` | `analyse_products.py` | Normalized brand list |
 | `product_words.csv` | `analyse_products.py` | Word/bigram frequency in product names |
 | `category_anomalies.csv` | `analyse_products.py` | Products assigned to unexpected categories |
+| `discover_gas_checkpoint.json` | `discover_gas_stations.py` | Gas station discovery progress; deleted/reset on fresh run |
+| `ci_stores.txt` | `build_ci_subset.py` | Store IDs for CI test runs (one per line) |
+| `ci_products.txt` | `build_ci_subset.py` | Product IDs for CI test runs (one per line) |
 
 > **WAL note:** `prices.db-wal` and `prices.db-shm` are safe to leave in place between runs — SQLite manages them. Only delete them if you're sure no script is writing (e.g., after a crash and before restoring from backup).
 
@@ -192,6 +207,20 @@ python fetch_gas_prices.py --fresh                 # ignore checkpoint, start cl
 python fetch_gas_prices.py path/to/db              # custom DB path
 ```
 
+#### `discover_gas_stations.py`
+Discovers gas stations by probing `GetGasItemsByLatLon` from populated locality centroids (≥ 2 500 pop by default). Uses Motorină standard (fuel type 21) to find all stations within 5 km. Resumes from `data/discover_gas_checkpoint.json`.
+
+Run once (or periodically) before `fetch_gas_prices.py` to populate the `gas_stations` table.
+
+```bash
+python discover_gas_stations.py                  # all localities ≥ 2 500 pop
+python discover_gas_stations.py --min-pop 5000   # larger threshold
+python discover_gas_stations.py --limit 50       # first 50 probe points (quick test)
+python discover_gas_stations.py --dry-run        # no API calls or DB writes
+python discover_gas_stations.py --fresh          # ignore checkpoint
+python discover_gas_stations.py --debug          # verbose logging
+```
+
 ---
 
 ### Analysis
@@ -227,6 +256,64 @@ python analyse_products.py
 python analyse_products.py --db path/to/prices.db --top 200
 python analyse_products.py --anomaly-threshold 0.85
 ```
+
+---
+
+### Site generation
+
+#### `generate_site.py`
+Generates the full static GitHub Pages site from the database — 9 HTML pages (dashboard, price index, fuel leaderboard, pipeline health, store map, trends, compare, analytics, gas map) plus per-product CSVs in `docs/data/products/`.
+
+```bash
+python generate_site.py                      # → docs/
+python generate_site.py --out path/to/out   # custom output directory
+python generate_site.py --db path/to/db     # custom DB path
+```
+
+#### `generate_map.py`
+Generates a self-contained Leaflet interactive map of retail stores with network colour coding and marker clustering. Standalone alternative to the map page built by `generate_site.py`.
+
+```bash
+python generate_map.py                             # → dashboard/stores_map.html
+python generate_map.py --out docs/stores_map.html
+python generate_map.py --db path/to/prices.db
+```
+
+#### `export_analytics.py`
+Exports 8 analytical SQL views to CSV files in `docs/data/` for use by the static site and external tools.
+
+| Output CSV | Contents |
+|-----------|----------|
+| `price_variability.csv` | Per-product price variability across networks |
+| `cross_network_spread.csv` | Cross-network price spread per product |
+| `popular_products.csv` | Top 200 most-recorded products |
+| `private_labels.csv` | Top 100 private-label candidates |
+| `stores_per_network.csv` | Store count per retail network |
+| `price_freshness.csv` | Price freshness for the last 30 days |
+| `products_no_prices.csv` | Products with no price records |
+| `run_history.csv` | Last 30 pipeline run records |
+
+```bash
+python export_analytics.py                   # → docs/data/
+python export_analytics.py --out path/to/   # custom output directory
+python export_analytics.py path/to/db       # custom DB path
+```
+
+---
+
+### CI / Testing helpers
+
+#### `build_ci_subset.py`
+Builds compact store and product ID lists for GitHub Actions CI, selecting representative stores by network rank × population geography and products by coverage rank. Outputs two text files used to limit CI fetch scope.
+
+```bash
+python build_ci_subset.py                          # defaults: top-10 per net, top-50 products
+python build_ci_subset.py --top-per-net 5 --top-overall 30
+python build_ci_subset.py --debug                  # print selection details
+python build_ci_subset.py path/to/db               # custom DB path
+```
+
+Outputs: `data/ci_stores.txt`, `data/ci_products.txt` (one ID per line).
 
 ---
 
