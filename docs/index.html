@@ -147,7 +147,7 @@ tr:hover td { background: #f8fafc; }
       <div class="table-wrap">
         <table>
           <thead><tr><th>Tip</th><th>Rețea</th><th>Preț mediu</th></tr></thead>
-          <tbody></tbody>
+          <tbody><tr><td>Benzină premium</td><td style="font-weight:600">PETROM</td><td>8.65 RON</td></tr><tr><td>Benzină standard</td><td style="font-weight:600">PETROM</td><td>8.17 RON</td></tr><tr><td>GPL</td><td style="font-weight:600">SOCAR</td><td>4.14 RON</td></tr><tr><td>Motorină premium</td><td style="font-weight:600">PETROM</td><td>9.7 RON</td></tr><tr><td>Motorină standard</td><td style="font-weight:600">PETROM</td><td>8.93 RON</td></tr><tr><td>Încărcare Electrică</td><td style="font-weight:600">MOL România Petroleum Products</td><td>20.95 RON</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -167,6 +167,13 @@ tr:hover td { background: #f8fafc; }
     </div>
 
     
+    <div class="card" style="grid-column: 1 / -1;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span class="card-title" style="margin:0">Carburanți — Evoluție Prețuri (RON)</span>
+        <div class="tabs" id="dashFuelTabs" style="margin:0"></div>
+      </div>
+      <div class="chart-box" style="height:300px"><canvas id="dashFuelChart"></canvas></div>
+    </div>
   </div>
 </div>
 <footer class="footer">
@@ -214,12 +221,12 @@ new Chart(document.getElementById('indexChart'), {
 });
 
 // ── Fuel trend chart ────────────────────────────────────────────────────
-const fuelTrendRawDash = [];
+const fuelTrendRawDash = [{"price_date":"17/04/2026","network":"Gazprom Petrol Stations","fuel":"Benzină premium","avg_price":9.86},{"price_date":"17/04/2026","network":"LUKOIL România S.R.L.","fuel":"Benzină premium","avg_price":9.081},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"Benzină premium","avg_price":9.11},{"price_date":"17/04/2026","network":"OMV","fuel":"Benzină premium","avg_price":8.91},{"price_date":"17/04/2026","network":"PETROM","fuel":"Benzină premium","avg_price":8.65},{"price_date":"17/04/2026","network":"Rompetrol","fuel":"Benzină premium","avg_price":8.932},{"price_date":"17/04/2026","network":"SOCAR","fuel":"Benzină premium","avg_price":9.79},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"Benzină premium","avg_price":8.91},{"price_date":"18/04/2026","network":"Rompetrol","fuel":"Benzină premium","avg_price":8.91},{"price_date":"18/04/2026","network":"SOCAR","fuel":"Benzină premium","avg_price":9.79},{"price_date":"17/04/2026","network":"Gazprom Petrol Stations","fuel":"Benzină standard","avg_price":8.73},{"price_date":"17/04/2026","network":"LUKOIL România S.R.L.","fuel":"Benzină standard","avg_price":8.38},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"Benzină standard","avg_price":8.48},{"price_date":"17/04/2026","network":"OMV","fuel":"Benzină standard","avg_price":8.28},{"price_date":"17/04/2026","network":"PETROM","fuel":"Benzină standard","avg_price":8.17},{"price_date":"17/04/2026","network":"Rompetrol","fuel":"Benzină standard","avg_price":8.284},{"price_date":"17/04/2026","network":"SOCAR","fuel":"Benzină standard","avg_price":8.39},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"Benzină standard","avg_price":8.28},{"price_date":"18/04/2026","network":"Rompetrol","fuel":"Benzină standard","avg_price":8.28},{"price_date":"18/04/2026","network":"SOCAR","fuel":"Benzină standard","avg_price":8.39},{"price_date":"17/04/2026","network":"Gazprom Petrol Stations","fuel":"GPL","avg_price":4.29},{"price_date":"17/04/2026","network":"LUKOIL România S.R.L.","fuel":"GPL","avg_price":4.27},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"GPL","avg_price":4.232},{"price_date":"17/04/2026","network":"Rompetrol","fuel":"GPL","avg_price":4.254},{"price_date":"17/04/2026","network":"SOCAR","fuel":"GPL","avg_price":4.14},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"GPL","avg_price":4.232},{"price_date":"18/04/2026","network":"SOCAR","fuel":"GPL","avg_price":4.14},{"price_date":"17/04/2026","network":"Gazprom Petrol Stations","fuel":"Motorină premium","avg_price":10.89},{"price_date":"17/04/2026","network":"LUKOIL România S.R.L.","fuel":"Motorină premium","avg_price":10.015},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"Motorină premium","avg_price":10.24},{"price_date":"17/04/2026","network":"OMV","fuel":"Motorină premium","avg_price":9.84},{"price_date":"17/04/2026","network":"PETROM","fuel":"Motorină premium","avg_price":9.7},{"price_date":"17/04/2026","network":"Rompetrol","fuel":"Motorină premium","avg_price":9.854},{"price_date":"17/04/2026","network":"SOCAR","fuel":"Motorină premium","avg_price":10.49},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"Motorină premium","avg_price":9.89},{"price_date":"18/04/2026","network":"Rompetrol","fuel":"Motorină premium","avg_price":9.84},{"price_date":"18/04/2026","network":"SOCAR","fuel":"Motorină premium","avg_price":10.49},{"price_date":"17/04/2026","network":"Gazprom Petrol Stations","fuel":"Motorină standard","avg_price":9.49},{"price_date":"17/04/2026","network":"LUKOIL România S.R.L.","fuel":"Motorină standard","avg_price":9.195},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"Motorină standard","avg_price":9.37},{"price_date":"17/04/2026","network":"OMV","fuel":"Motorină standard","avg_price":9.02},{"price_date":"17/04/2026","network":"PETROM","fuel":"Motorină standard","avg_price":8.93},{"price_date":"17/04/2026","network":"Rompetrol","fuel":"Motorină standard","avg_price":9.027},{"price_date":"17/04/2026","network":"SOCAR","fuel":"Motorină standard","avg_price":9.34},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"Motorină standard","avg_price":9.02},{"price_date":"18/04/2026","network":"Rompetrol","fuel":"Motorină standard","avg_price":9.02},{"price_date":"18/04/2026","network":"SOCAR","fuel":"Motorină standard","avg_price":9.34},{"price_date":"17/04/2026","network":"MOL România Petroleum Products","fuel":"Încărcare Electrică","avg_price":20.946},{"price_date":"18/04/2026","network":"MOL România Petroleum Products","fuel":"Încărcare Electrică","avg_price":20.946}];
 if (fuelTrendRawDash.length) {
   const dashFuelTypes = [...new Set(fuelTrendRawDash.map(r => r.fuel))].sort();
   const dashFuelDates = [...new Set(fuelTrendRawDash.map(r => r.price_date))].sort();
   const dashFuelNets  = [...new Set(fuelTrendRawDash.map(r => r.network))].sort();
-  const gasColsDash = {};
+  const gasColsDash = {"Rompetrol":"#ffd700","SOCAR":"#00a1de","PETROM":"#004a99","Gazprom Petrol Stations":"#0066b3","LUKOIL România S.R.L.":"#e31e24","MOL România Petroleum Products":"#ff6600","OMV":"#009639"};
 
   const tabsEl = document.getElementById('dashFuelTabs');
   let dashFuelChart = null;

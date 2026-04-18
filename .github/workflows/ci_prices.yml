@@ -49,11 +49,21 @@ jobs:
             --max-runtime 6300
 
       # -----------------------------------------------------------------------
-      # Gas reference data refresh (Mondays only — slow-changing data)
+      # Gas reference data refresh (Mondays only — slow-changing data).
+      # Use bash date check because github.event.schedule is always '0 4 * * *'
+      # (single cron entry), so the startsWith trick against '0 4 * * 1' never
+      # matches. Also force-run when gas_products table is empty (first run).
       # -----------------------------------------------------------------------
       - name: Refresh gas reference data
-        if: github.event_name == 'schedule' && startsWith(github.event.schedule, '0 4 * * 1')
-        run: python fetch_gas_reference.py data/prices_ci.db
+        run: |
+          IS_MONDAY=$([ "$(date +%u)" = "1" ] && echo "1" || echo "0")
+          HAS_PRODUCTS=$(python3 -c "import sqlite3; c=sqlite3.connect('data/prices_ci.db'); print(c.execute('SELECT COUNT(*) FROM gas_products').fetchone()[0])")
+          if [ "$IS_MONDAY" = "1" ] || [ "$HAS_PRODUCTS" = "0" ]; then
+            echo "Running gas reference refresh (Monday=$IS_MONDAY, products=$HAS_PRODUCTS)"
+            python fetch_gas_reference.py data/prices_ci.db
+          else
+            echo "Skipping gas reference refresh (not Monday, products=$HAS_PRODUCTS)"
+          fi
 
       # -----------------------------------------------------------------------
       # Gas price fetch — one request per UAT×fuel_type; fast (~15 min for
