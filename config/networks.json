@@ -1,0 +1,24 @@
+{
+  "_comment": "Short, UI-friendly display names for retail and gas networks. Keys are the network IDs as stored in retail_networks.id / gas_networks.id (some are barcodes, some are slugs). Edit `short` to change how a network appears in the UI; `aliases` contain other forms of the network name we may encounter (use for fallback lookup by name). B2B-only networks are flagged so consumer-facing widgets can exclude them.",
+  "retail": {
+    "AUCHAN":         {"short": "Auchan",    "aliases": ["AUCHAN"]},
+    "5940475006709":  {"short": "Carrefour", "aliases": ["CARREFOUR"]},
+    "5948914999995":  {"short": "Cora",      "aliases": ["CORA"]},
+    "KAUFLAND":       {"short": "Kaufland",  "aliases": ["KAUFLAND"]},
+    "4055329000008":  {"short": "Lidl",      "aliases": ["LIDL DISCOUNT SRL", "LIDL"]},
+    "5940475870003":  {"short": "Mega",      "aliases": ["MEGA IMAGE SRL", "MEGA IMAGE"]},
+    "PENNY":          {"short": "Penny",     "aliases": ["PENNY"]},
+    "PROFI":          {"short": "Profi",     "aliases": ["PROFI"]},
+    "SELGROS":        {"short": "Selgros",   "aliases": ["SELGROS"], "b2b": true},
+    "SUPECO":         {"short": "Supeco",    "aliases": ["SUPECO"]}
+  },
+  "gas": {
+    "GAZPROM":        {"short": "Gazprom",    "aliases": ["Gazprom Petrol Stations", "GAZPROM"]},
+    "LUKOIL":         {"short": "Lukoil",     "aliases": ["LUKOIL România S.R.L.", "LUKOIL"]},
+    "MOL":            {"short": "MOL",        "aliases": ["MOL România Petroleum Products", "MOL"]},
+    "OMV":            {"short": "OMV",        "aliases": ["OMV"]},
+    "PETROM":         {"short": "Petrom",     "aliases": ["PETROM"]},
+    "ROMPETROL":      {"short": "Rompetrol",  "aliases": ["Rompetrol", "ROMPETROL"]},
+    "SOCAR":          {"short": "Socar",      "aliases": ["SOCAR"]}
+  }
+}

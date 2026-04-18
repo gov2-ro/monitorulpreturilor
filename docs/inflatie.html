@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Indice Inflație Civică — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html">Coșul</a><a href="anomalii.html">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html" class="active">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html">Date Deschise</a><a href="metodologie.html">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Indice de Inflație Civică <span style="font-size:14px;background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:10px;margin-left:8px;vertical-align:middle">PROTOTIP</span></h1>
+  <p class="subtitle">Evoluția costului coșurilor de cumpărături în timp, calculată din prețurile reale de raft. Un CPI alternativ, deschis și verificabil.</p>
+
+  <div class="cos-disclaimer" id="cpi-caveat" style="background:#fef9c3;color:#78350f"></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="cpi-dates"></p>
+
+  <div class="card">
+    <div class="card-title">Cost lunar coș — evoluție zilnică</div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0">Costul <em>celui mai ieftin</em> coș național (orice rețea), per zi de colectare. Variațiile zilnice reflectă parțial acoperirea diferită a magazinelor, nu doar schimbările de preț — în timp acest semnal se stabilizează.</p>
+    <div id="cpi-chart-wrap" style="height:340px;position:relative;margin-top:12px">
+      <canvas id="cpi-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Variație preț per produs — prima zi vs ultima zi disponibilă</div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0">Comparație cel mai mic preț național între prima și ultima dată disponibilă. Cu puține date, variațiile pot reflecta schimbări de acoperire, nu neapărat modificări de preț.</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>
+          <th>Produs</th>
+          <th class="px-cell">Prima dată</th>
+          <th class="px-cell">Ultima dată</th>
+          <th class="px-cell">Variație</th>
+        </tr></thead>
+        <tbody id="cpi-changes"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Metodologie</div>
+    <p style="font-size:14px;line-height:1.6">
+      Urmărim costul total al fiecărui coș de produse stabile, folosind cel mai mic preț disponibil la orice rețea în ziua respectivă (after filtrare outlieri). Aceasta este o aproximare Laspeyres simplificată — cantitățile rămân fixe (definite în <code>config/baskets.json</code>), iar prețurile se actualizează zilnic.
+      <br><br>
+      <b>Limitare importantă:</b> cu {n} zile de date, variațiile zi-la-zi reflectă și fluctuații de acoperire (câte magazine au fost interogați azi vs ieri), nu doar modificări reale de preț. Semnalul devine robust după ~4 săptămâni de colectare consecventă. Până atunci, folosiți acest grafic ca <em>schelet</em>, nu ca indicator definitiv.
+      <br><br>
+      Detalii complete: <a href="metodologie.html">pagina de metodologie</a>.
+    </p>
+  </div>
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  const COLORS = ['#2563eb','#16a34a','#f59e0b','#ef4444'];
+  const BASKET_COLORS = {camara:'#2563eb', student:'#16a34a', copt:'#f59e0b', sarbatori:'#ef4444'};
+
+  fetch('data/cpi.json', {cache:'no-cache'})
+    .then(r => r.json())
+    .then(d => {
+      // Caveat banner
+      document.getElementById('cpi-caveat').textContent = d.caveat;
+      document.getElementById('cpi-dates').textContent =
+        `${d.n_dates} zile de date: ${d.first_date} → ${d.last_date}`;
+
+      // Trend chart — cost_month per basket over dates
+      // Use short date labels
+      const labels = d.dates.map(dt => dt.slice(0,5)); // DD.MM
+
+      const datasets = d.baskets.map((b, i) => ({
+        label: b.name_ro,
+        data: b.series.map(p => p.comparable ? p.cost_month : null),
+        borderColor: COLORS[i],
+        backgroundColor: COLORS[i] + '22',
+        tension: 0.3,
+        spanGaps: false,
+        pointRadius: 4,
+      }));
+
+      new Chart(document.getElementById('cpi-chart'), {
+        type: 'line',
+        data: {labels, datasets},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: {position:'top'},
+            tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${FMT2.format(ctx.raw)} lei/lună`}},
+          },
+          scales: {
+            y: {title: {display:true, text:'lei / lună'}, beginAtZero: false},
+            x: {title: {display:true, text:'Dată'}},
+          },
+        },
+      });
+
+      // Product change table
+      const tbody = document.getElementById('cpi-changes');
+      for (const c of d.product_changes) {
+        if (c.price_first == null && c.price_last == null) continue;
+        const pct = c.change_pct;
+        const dir = pct == null ? '' : pct > 0.5 ? '▲' : pct < -0.5 ? '▼' : '→';
+        const color = pct == null ? '' : pct > 0.5 ? 'var(--danger)' : pct < -0.5 ? 'var(--success)' : 'var(--muted)';
+        tbody.insertAdjacentHTML('beforeend', `<tr>
+          <td>${esc(c.label)}</td>
+          <td class="px-cell">${c.price_first != null ? FMT2.format(c.price_first) : '—'}</td>
+          <td class="px-cell">${c.price_last  != null ? FMT2.format(c.price_last)  : '—'}</td>
+          <td class="px-cell" style="color:${color};font-weight:600">${dir} ${pct != null ? pct + '%' : '—'}</td>
+        </tr>`);
+      }
+    })
+    .catch(err => {
+      document.getElementById('cpi-chart-wrap').innerHTML =
+        `<div style="padding:30px;color:#991b1b;background:#fee2e2;border-radius:8px">Eroare: ${esc(err.message)}</div>`;
+    });
+})();
+</script>
+
+</body>
+</html>

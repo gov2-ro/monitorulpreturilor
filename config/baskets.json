@@ -1,0 +1,73 @@
+{
+  "_comment": "Curated baskets of staple SKUs. Each item lists one or more product_ids (substitutes); the basket builder picks the cheapest available at the network being scored. `qty_per_week` × 4.345 ≈ monthly quantity. The API only tracks shelf-stable goods (no fresh dairy / meat / produce), so these baskets reflect a PANTRY shop, not a full grocery cart — labels and copy must be honest about that. SKU IDs were chosen from products with ≥7 networks of coverage today; review periodically as new SKUs reach broader coverage.",
+  "baskets": [
+    {
+      "id": "camara",
+      "name_ro": "Coșul de Cămară",
+      "name_en": "Pantry Basket",
+      "description_ro": "Produse stabile esențiale, urmărite de monitorulpreturilor.info în majoritatea rețelelor: pâine, făină, ulei, zahăr, paste, orez, cafea. Nu include produse proaspete (lapte, ouă, lactate, carne, legume), care nu sunt urmărite de API.",
+      "items": [
+        {"label": "Pâine albă feliată (700g)",        "product_ids": [1038714], "qty_per_week": 4},
+        {"label": "Făină albă 000 (1kg)",             "product_ids": [1037079, 1032822, 1022190, 1053393], "qty_per_week": 1},
+        {"label": "Mălai (1kg)",                      "product_ids": [1014679], "qty_per_week": 0.5},
+        {"label": "Ulei floarea-soarelui (1l)",       "product_ids": [1011709, 1010376, 1026151, 1026745], "qty_per_week": 1},
+        {"label": "Zahăr cristal (1kg)",              "product_ids": [1026166], "qty_per_week": 0.5},
+        {"label": "Paste (500g)",                     "product_ids": [1015719, 1066742, 1011062], "qty_per_week": 1.5},
+        {"label": "Orez (1kg)",                       "product_ids": [1047691, 1027928, 1012743], "qty_per_week": 0.5},
+        {"label": "Sare iodată (500g)",               "product_ids": [1026100, 1037306], "qty_per_week": 0.25},
+        {"label": "Oțet (1l)",                        "product_ids": [1029251], "qty_per_week": 0.25},
+        {"label": "Cafea măcinată (250g)",            "product_ids": [1013048, 1024224, 1046170], "qty_per_week": 0.5},
+        {"label": "Lapte praf (400g)",                "product_ids": [1024614], "qty_per_week": 0.25}
+      ]
+    },
+    {
+      "id": "student",
+      "name_ro": "Coșul Studentului",
+      "name_en": "Student Basket",
+      "description_ro": "Versiune redusă a coșului de cămară: doar minimul pentru o săptămână de gătit acasă, cu accent pe preț.",
+      "items": [
+        {"label": "Pâine albă feliată (700g)",        "product_ids": [1038714], "qty_per_week": 3},
+        {"label": "Paste (500g)",                     "product_ids": [1015719, 1066742, 1011062], "qty_per_week": 2},
+        {"label": "Orez (1kg)",                       "product_ids": [1047691, 1027928, 1012743], "qty_per_week": 0.5},
+        {"label": "Ulei floarea-soarelui (1l)",       "product_ids": [1011709, 1010376, 1026151, 1026745], "qty_per_week": 0.5},
+        {"label": "Zahăr cristal (1kg)",              "product_ids": [1026166], "qty_per_week": 0.25},
+        {"label": "Sare iodată (500g)",               "product_ids": [1026100, 1037306], "qty_per_week": 0.1},
+        {"label": "Cafea instant (15g sticks)",       "product_ids": [1024327], "qty_per_week": 7},
+        {"label": "Făină albă 000 (1kg)",             "product_ids": [1037079, 1032822], "qty_per_week": 0.5}
+      ]
+    },
+    {
+      "id": "copt",
+      "name_ro": "Coșul de Copt",
+      "name_en": "Baking Basket",
+      "description_ro": "Pentru cei care gătesc deserturi sau aluaturi acasă: ingrediente de bază pentru prăjituri, cozonaci și paste de casă.",
+      "items": [
+        {"label": "Făină albă 000 (1kg)",             "product_ids": [1037079, 1032822, 1022190, 1053393], "qty_per_week": 1},
+        {"label": "Drojdie uscată (7g)",              "product_ids": [1013020], "qty_per_week": 1},
+        {"label": "Zahăr vanilat (8g × 4)",           "product_ids": [1011380], "qty_per_week": 0.5},
+        {"label": "Cacao (50g)",                      "product_ids": [1052522], "qty_per_week": 0.25},
+        {"label": "Praf de copt (10g)",               "product_ids": [1020548], "qty_per_week": 0.5},
+        {"label": "Esență de vanilie (38ml)",         "product_ids": [1017806], "qty_per_week": 0.1},
+        {"label": "Esență de rom (38ml)",             "product_ids": [1024060], "qty_per_week": 0.1},
+        {"label": "Zahăr (1kg)",                      "product_ids": [1026166], "qty_per_week": 0.5}
+      ]
+    },
+    {
+      "id": "sarbatori",
+      "name_ro": "Coșul de Sărbători",
+      "name_en": "Holiday Basket",
+      "description_ro": "Sezonier — pentru Crăciun, Paște sau alte ocazii: ingrediente pentru cozonac, prăjituri și deserturi clasice.",
+      "items": [
+        {"label": "Făină pentru cozonac (1kg)",       "product_ids": [1024727, 1038004, 1053848], "qty_per_week": 2},
+        {"label": "Drojdie uscată (7g)",              "product_ids": [1013020], "qty_per_week": 3},
+        {"label": "Zahăr (1kg)",                      "product_ids": [1026166], "qty_per_week": 1},
+        {"label": "Cacao (50g)",                      "product_ids": [1052522], "qty_per_week": 1},
+        {"label": "Esență de rom (38ml)",             "product_ids": [1024060], "qty_per_week": 0.5},
+        {"label": "Mix pentru cozonac (667g)",        "product_ids": [1017214], "qty_per_week": 1},
+        {"label": "Praf de spumă frișcă (48g)",       "product_ids": [1013215], "qty_per_week": 1},
+        {"label": "Brioșe vanilie (340g)",            "product_ids": [1029505], "qty_per_week": 1},
+        {"label": "Cremă tiramisu (60g)",             "product_ids": [1012760], "qty_per_week": 1}
+      ]
+    }
+  ]
+}

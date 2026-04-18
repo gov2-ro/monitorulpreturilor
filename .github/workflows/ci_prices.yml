@@ -81,6 +81,21 @@ jobs:
       - name: Export analytics CSVs
         run: python export_analytics.py data/prices_ci.db --out docs/data
 
+      - name: Build basket data (Coșul page)
+        run: python build_baskets.py --db data/prices_ci.db --out docs/data/baskets
+
+      - name: Build anomaly feed (Anomalii page)
+        run: python build_anomalies.py --db data/prices_ci.db --out docs/data/anomalies_today.json
+
+      - name: Build category data (Categorii page)
+        run: python build_categories.py --db data/prices_ci.db --out docs/data/categories
+
+      - name: Build UAT GeoJSON (Hartă Costuri)
+        run: python build_uat_geojson.py --db data/prices_ci.db --baskets docs/data/baskets --out docs/data/uats.geojson
+
+      - name: Build CPI data (Inflație page)
+        run: python build_cpi.py --db data/prices_ci.db --out docs/data/cpi.json
+
       # -----------------------------------------------------------------------
       # Commit DB + checkpoint + docs (skip if nothing changed).
       # Pull --rebase before push to handle concurrent runs / manual triggers
@@ -97,8 +112,16 @@ jobs:
           [ -f data/ci_products.txt ] && git add data/ci_products.txt
           git add docs/index.html docs/price-index.html docs/fuel.html \
                   docs/pipeline.html docs/stores_map.html docs/gas_map.html \
-                  docs/trends.html docs/CNAME || true
+                  docs/trends.html docs/cos.html docs/anomalii.html \
+                  docs/compare.html docs/analytics.html docs/CNAME || true
           git add docs/data/*.csv 2>/dev/null || true
+          git add docs/data/baskets/*.json 2>/dev/null || true
+          git add docs/data/anomalies_today.json 2>/dev/null || true
+          git add docs/data/categories/*.json 2>/dev/null || true
+          git add docs/categorii.html docs/harta.html 2>/dev/null || true
+          git add docs/data/uats.geojson docs/data/cpi.json 2>/dev/null || true
+          git add docs/inflatie.html docs/povesti.html docs/metodologie.html docs/date-deschise.html 2>/dev/null || true
+          git add docs/data/products/*.csv 2>/dev/null || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0
 

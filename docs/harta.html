@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Harta Costurilor — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+#map-wrap { position: relative; height: 580px; border-radius: 10px; overflow: hidden;
+            border: 1px solid var(--border); margin-bottom: 16px; }
+#map { width: 100%; height: 100%; }
+.map-controls { position: absolute; top: 12px; left: 12px; z-index: 10;
+                background: var(--card); border-radius: 8px; padding: 10px 14px;
+                box-shadow: 0 2px 12px rgba(0,0,0,.15); font-size: 13px; }
+.map-controls label { display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+                      cursor: pointer; font-weight: 500; }
+.map-controls label:last-child { margin-bottom: 0; }
+.map-controls input[type=radio] { accent-color: var(--primary); }
+#map-panel { position: absolute; bottom: 12px; right: 12px; z-index: 10;
+             background: var(--card); border-radius: 10px; padding: 14px 16px;
+             box-shadow: 0 2px 16px rgba(0,0,0,.15); width: 240px;
+             font-size: 13px; display: none; }
+#map-panel .panel-name { font-weight: 700; font-size: 14px; margin-bottom: 8px;
+                          border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+#map-panel .panel-row { display: flex; justify-content: space-between; padding: 3px 0; }
+#map-panel .panel-val { font-weight: 600; }
+#map-panel .close-btn { position: absolute; top: 8px; right: 10px; cursor: pointer;
+                         color: var(--muted); font-size: 16px; line-height: 1; }
+#map-legend { position: absolute; bottom: 12px; left: 12px; z-index: 10;
+              background: var(--card); border-radius: 8px; padding: 10px 14px;
+              box-shadow: 0 2px 12px rgba(0,0,0,.15); font-size: 12px; }
+#map-legend .leg-title { font-weight: 600; margin-bottom: 6px; }
+.leg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.leg-swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
+.harta-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+@media (max-width: 640px) {
+  #map-wrap { height: 420px; }
+  .harta-summary { grid-template-columns: 1fr; }
+  #map-panel { width: 200px; font-size: 12px; }
+  .map-controls { font-size: 12px; padding: 8px 10px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html">Coșul</a><a href="anomalii.html">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html" class="active">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html">Date Deschise</a><a href="metodologie.html">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Harta Costurilor</h1>
+  <p class="subtitle">Unde în România există concurență între rețele și unde un singur retailer domină? Cât costă coșul de cămară pe localitate?</p>
+
+  <div class="harta-summary" id="harta-summary"></div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+
+    <div class="map-controls">
+      <label><input type="radio" name="layer" value="networks" checked> Rețele prezente</label>
+      <label><input type="radio" name="layer" value="basket"> Coș lunar (lei)</label>
+      <label><input type="radio" name="layer" value="stores"> Nr. magazine</label>
+    </div>
+
+    <div id="map-legend"></div>
+
+    <div id="map-panel">
+      <div class="close-btn" id="panel-close">×</div>
+      <div class="panel-name" id="panel-name"></div>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+
+  <div class="cos-disclaimer" style="margin-top:0">
+    <b>Notă:</b> Coșul de cămară (Profi/Kaufland/etc.) se referă la produse stabile urmărite de API. Localitățile fără date de coș afișează estimarea națională. Rețele = retaileri cu magazine identificate; magazinele fără rețea identificată nu sunt numărate.
+  </div>
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:0, maximumFractionDigits:0});
+  const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  // Layer configs: colors for 0..N steps
+  const LAYERS = {
+    networks: {
+      title: 'Rețele prezente',
+      prop: 'n_networks',
+      steps: [0, 1, 2, 3, 4, 5],
+      colors: ['#e5e7eb','#fca5a5','#fb923c','#facc15','#86efac','#22c55e'],
+      labels: ['Neidentificate','1 rețea','2','3','4','5+'],
+    },
+    basket: {
+      title: 'Coș cămară / lună (lei)',
+      prop: 'basket_min_month',
+      steps: [0, 200, 260, 300, 330, 360],
+      colors: ['#e5e7eb','#22c55e','#86efac','#facc15','#fb923c','#ef4444'],
+      labels: ['Fără date','< 200','200–260','260–300','300–330','> 330'],
+    },
+    stores: {
+      title: 'Număr magazine',
+      prop: 'n_stores',
+      steps: [0, 1, 3, 10, 30, 100],
+      colors: ['#e5e7eb','#bfdbfe','#93c5fd','#3b82f6','#1d4ed8','#1e3a8a'],
+      labels: ['0','1–2','3–9','10–29','30–99','100+'],
+    },
+  };
+
+  function colorExpr(layer) {
+    const {prop, steps, colors} = LAYERS[layer];
+    // MapLibre step expression: ['step', ['get', prop], default, v1, c1, v2, c2, ...]
+    const expr = ['step', ['coalesce', ['get', prop], 0], colors[0]];
+    for (let i = 1; i < steps.length; i++) {
+      expr.push(steps[i], colors[i]);
+    }
+    return expr;
+  }
+
+  function renderLegend(layer) {
+    const cfg = LAYERS[layer];
+    const el = document.getElementById('map-legend');
+    el.innerHTML = `<div class="leg-title">${cfg.title}</div>` +
+      cfg.colors.map((c, i) =>
+        `<div class="leg-row"><div class="leg-swatch" style="background:${c}"></div>${cfg.labels[i]}</div>`
+      ).join('');
+  }
+
+  function renderSummary(features) {
+    const props = features.map(f => f.properties);
+    const withNets = props.filter(p => p.n_networks >= 1).length;
+    const deserts = props.filter(p => p.n_networks === 1).length;
+    const basketProps = props.filter(p => p.basket_min_month && p.basket_min_month > 0);
+    const cheapest = basketProps.length ? Math.min(...basketProps.map(p => p.basket_min_month)) : null;
+    const cheapestUat = cheapest ? basketProps.find(p => p.basket_min_month === cheapest) : null;
+    document.getElementById('harta-summary').innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Localități cu rețele identificate</div>
+        <div class="kpi-value">${withNets}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">din ${props.length} cu magazine</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Localități cu o singură rețea</div>
+        <div class="kpi-value" style="color:var(--danger)">${deserts}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">fără concurență locală</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Coș mai ieftin — localitate</div>
+        <div class="kpi-value" style="color:var(--success)">${cheapest ? FMT2.format(cheapest) + ' lei' : '—'}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">${cheapestUat ? cheapestUat.name : ''}</div>
+      </div>`;
+  }
+
+  function showPanel(props) {
+    const p = document.getElementById('map-panel');
+    document.getElementById('panel-name').textContent = props.name;
+    document.getElementById('panel-body').innerHTML = `
+      <div class="panel-row"><span>Rețele</span><span class="panel-val">${props.n_networks || '—'}</span></div>
+      <div class="panel-row"><span>Magazine</span><span class="panel-val">${props.n_stores}</span></div>
+      <div class="panel-row"><span>Coș minim/lună</span><span class="panel-val">${props.basket_min_month ? FMT2.format(props.basket_min_month) + ' lei' : '—'}</span></div>
+      <div class="panel-row"><span>Coș maxim/lună</span><span class="panel-val">${props.basket_max_month ? FMT2.format(props.basket_max_month) + ' lei' : '—'}</span></div>
+      <div class="panel-row"><span>Rețea ieftină</span><span class="panel-val">${props.basket_cheapest_net || '—'}</span></div>`;
+    p.style.display = 'block';
+  }
+
+  fetch('data/uats.geojson', {cache:'no-cache'})
+    .then(r => r.json())
+    .then(geojson => {
+      renderSummary(geojson.features);
+
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+        center: [25.0, 45.8],
+        zoom: 6.2,
+        minZoom: 5,
+        maxZoom: 14,
+      });
+
+      map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      map.on('load', () => {
+        map.addSource('uats', {type: 'geojson', data: geojson});
+
+        map.addLayer({
+          id: 'uats-fill',
+          type: 'fill',
+          source: 'uats',
+          paint: {
+            'fill-color': colorExpr('networks'),
+            'fill-opacity': 0.75,
+          },
+        });
+
+        map.addLayer({
+          id: 'uats-outline',
+          type: 'line',
+          source: 'uats',
+          paint: {
+            'line-color': '#94a3b8',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 10, 1],
+            'line-opacity': 0.6,
+          },
+        });
+
+        map.addLayer({
+          id: 'uats-hover',
+          type: 'fill',
+          source: 'uats',
+          paint: {
+            'fill-color': '#0ea5e9',
+            'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.3, 0],
+          },
+        });
+
+        renderLegend('networks');
+
+        // Layer toggle
+        document.querySelectorAll('input[name=layer]').forEach(radio => {
+          radio.addEventListener('change', () => {
+            const layer = radio.value;
+            map.setPaintProperty('uats-fill', 'fill-color', colorExpr(layer));
+            renderLegend(layer);
+          });
+        });
+
+        // Hover highlight
+        let hoveredId = null;
+        map.on('mousemove', 'uats-fill', e => {
+          if (e.features.length === 0) return;
+          if (hoveredId !== null) map.setFeatureState({source:'uats', id: hoveredId}, {hover: false});
+          hoveredId = e.features[0].id;
+          map.setFeatureState({source:'uats', id: hoveredId}, {hover: true});
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'uats-fill', () => {
+          if (hoveredId !== null) map.setFeatureState({source:'uats', id: hoveredId}, {hover: false});
+          hoveredId = null;
+          map.getCanvas().style.cursor = '';
+        });
+
+        // Click → panel
+        map.on('click', 'uats-fill', e => {
+          if (e.features.length) showPanel(e.features[0].properties);
+        });
+
+        document.getElementById('panel-close').addEventListener('click', () => {
+          document.getElementById('map-panel').style.display = 'none';
+        });
+      });
+    })
+    .catch(err => {
+      document.getElementById('map-wrap').innerHTML =
+        `<div style="padding:40px;color:#991b1b;background:#fee2e2;border-radius:10px">Eroare la încărcarea hărții: ${err.message}</div>`;
+    });
+})();
+</script>
+
+</body>
+</html>

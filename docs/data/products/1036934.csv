@@ -1,0 +1,11 @@
+network,avg_price,min_price,max_price,stores
+CORA,14.99,14.99,14.99,1
+PENNY,14.99,14.99,14.99,3
+PROFI,15.51,8.79,19.99,5
+
+network,price_date,avg_price
+CORA,15.04.2026 20:00,14.99
+PROFI,15.04.2026 20:00,8.79
+CORA,17.04.2026 04:00,14.99
+PENNY,17.04.2026 04:00,14.99
+PROFI,17.04.2026 04:00,15.51

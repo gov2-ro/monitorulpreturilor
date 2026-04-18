@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Date Deschise — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html">Coșul</a><a href="anomalii.html">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html" class="active">Date Deschise</a><a href="metodologie.html">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Date Deschise</h1>
+  <p class="subtitle">Toate seturile de date generate de acest proiect, disponibile pentru descărcare liberă. Licență CC BY 4.0 — redistribuie cu atribuire.</p>
+
+  <div class="cos-disclaimer">
+    <b>Licență:</b> <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank">Creative Commons Attribution 4.0 International (CC BY 4.0)</a>. Poți folosi, redistribui și adapta datele cu condiția să menționezi sursa: <em>monitorulpreturilor.info (ANPC) via monitorul-preturilor Civic Dashboard</em>.
+  </div>
+
+  <div class="anom-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    <div class="kpi">
+      <div class="kpi-label">Înregistrări prețuri retail</div>
+      <div class="kpi-value">2,251,224</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Ultima actualizare: 17.04.2026 04:00</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Înregistrări prețuri carburanți</div>
+      <div class="kpi-value">7,932</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Ultima actualizare: 24/04/2025 10:03</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Seturi de date disponibile</div>
+      <div class="kpi-value">9</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Actualizate zilnic automat</div>
+    </div>
+  </div>
+
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    Notă: baza de date SQLite completă (<code>prices.db</code>, ~420.9 MB) nu e distribuită direct din cauza dimensiunii, dar codul de colectare e public și poate fi rulat local. Datele de mai jos acoperă toți indicatorii calculați de site.
+  </p>
+
+  
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Anomalii de preț — azi</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">JSON</span>
+              <span style="color:var(--muted)">101 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Produse cu ratio preț-max/preț-min ≥ 1,5 între rețele, pentru data curentă. Câmpuri: product_id, product, category, brand, unit, cheapest{network,price}, priciest{network,price}, ratio, save_lei, save_pct, by_network[].</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/anomalies_today.json" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Coșuri de cumpărături — index</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">JSON</span>
+              <span style="color:var(--muted)">18 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Metadata pentru cele 4 coșuri curate (cămară, student, copt, sărbători): cost minim/maxim lunar național, rețea ieftină, nr. UAT-uri acoperite.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/baskets/index.json" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Coșul de Cămară — detaliu</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">JSON</span>
+              <span style="color:var(--muted)">72 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Cost săptămânal/lunar per rețea, național și per UAT. Include drill-down per produs cu prețul ales și produsul substitut.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/baskets/camara.json" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Harta UAT-urilor — GeoJSON</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">GeoJSON</span>
+              <span style="color:var(--muted)">475 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Poligoane UAT pentru localitățile cu magazine în baza de date. Proprietăți: siruta, name, n_stores, n_networks, basket_min_month, basket_max_month, basket_cheapest_net.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/uats.geojson" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Categorii — index</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">JSON</span>
+              <span style="color:var(--muted)">1 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Lista categoriilor de produse cu statistici de spread: nr. produse comparabile, cel mai mare ratio, economii totale posibile, top-3 rețele ieftine.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/categories/index.json" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Variabilitate prețuri pe rețea</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">CSV</span>
+              <span style="color:var(--muted)">138 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Per produs: preț minim/maxim pe rețea, spread (lei), ratio. Toate prețurile istorice (nu doar azi). Coloane: product_id, product, min_net_price, max_net_price, networks, spread, ratio.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/cross_network_spread.csv" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Index prețuri pe rețea</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">CSV</span>
+              <span style="color:var(--muted)">80 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Variabilitate medie a prețului per produs × rețea. Baza pentru graficul Index Prețuri.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/price_variability.csv" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Magazine per rețea</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">CSV</span>
+              <span style="color:var(--muted)">0 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Câte magazine are fiecare rețea în baza de date, cu nr. de UAT-uri acoperite.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/stores_per_network.csv" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">Candidați marcă privată</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">CSV</span>
+              <span style="color:var(--muted)">4 KB &middot; Actualizat: 17.04.2026 04:00</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">Produse identificate ca potențial marcă privată (vândute exclusiv sau majoritar la o singură rețea). Coloane: product, network, stores.</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="data/private_labels.csv" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>
+
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+</body>
+</html>

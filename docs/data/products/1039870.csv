@@ -1,0 +1,11 @@
+network,avg_price,min_price,max_price,stores
+PROFI,5.17,2.99,7.35,2
+PENNY,6.09,6.09,6.09,1
+KAUFLAND,6.37,6.09,6.6,20
+
+network,price_date,avg_price
+KAUFLAND,15.04.2026 20:00,6.28
+PROFI,15.04.2026 20:00,2.99
+KAUFLAND,17.04.2026 04:00,6.37
+PENNY,17.04.2026 04:00,6.09
+PROFI,17.04.2026 04:00,5.17

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Anomalii de preț — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+<style>
+.anom-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+.anom-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+.anom-controls .ctl { display: flex; flex-direction: column; }
+.anom-controls label { font-size: 11.5px; color: var(--muted);
+                        text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.anom-controls input, .anom-controls select {
+  padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--card); font-size: 14px; min-width: 180px;
+}
+.anom-controls .meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.anom-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.anom-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+              padding: 16px 18px; display: grid; grid-template-columns: 1fr 220px; gap: 18px;
+              align-items: center; transition: box-shadow .15s, transform .15s; }
+.anom-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.08); }
+.anom-card .product { font-weight: 600; font-size: 15px; line-height: 1.3; margin-bottom: 4px; }
+.anom-card .meta { font-size: 12px; color: var(--muted); }
+.anom-card .meta .pill { display: inline-block; background: #f1f5f9; padding: 2px 8px;
+                          border-radius: 10px; margin-right: 4px; }
+.anom-card .flow { margin-top: 10px; font-size: 13.5px; }
+.anom-card .flow .net-cheap { color: var(--success); font-weight: 600; }
+.anom-card .flow .net-pricey { color: var(--danger); font-weight: 600; }
+.anom-card .flow .arrow { color: var(--muted); margin: 0 6px; }
+.anom-savings { text-align: right; }
+.anom-savings .save-lei { font-size: 22px; font-weight: 700; color: var(--success); }
+.anom-savings .save-pct { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.anom-savings .ratio { display: inline-block; background: var(--primary-light); color: var(--primary);
+                        padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+                        margin-top: 6px; }
+.anom-card details { margin-top: 10px; grid-column: 1 / -1; }
+.anom-card details summary { cursor: pointer; font-size: 12.5px; color: var(--muted);
+                              padding: 4px 0; list-style: none; }
+.anom-card details summary::before { content: "▸ "; }
+.anom-card details[open] summary::before { content: "▾ "; }
+.anom-card .by-net { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.anom-card .by-net .chip { font-size: 12px; padding: 3px 10px; border-radius: 12px;
+                            background: #f1f5f9; }
+.anom-card .by-net .chip.cheap { background: #dcfce7; color: #166534; font-weight: 600; }
+.anom-card .by-net .chip.pricey { background: #fee2e2; color: #991b1b; font-weight: 600; }
+.anom-card a.compare-link { font-size: 12px; color: var(--primary); text-decoration: none;
+                             margin-left: 10px; }
+.anom-card a.compare-link:hover { text-decoration: underline; }
+.anom-empty { text-align: center; padding: 40px; color: var(--muted); }
+.anom-pager { display: flex; justify-content: center; margin-top: 20px; }
+.anom-pager button { padding: 8px 18px; border-radius: 6px; border: 1px solid var(--border);
+                      background: var(--card); cursor: pointer; font-size: 13.5px; }
+.anom-pager button:hover { border-color: var(--primary); color: var(--primary); }
+@media (max-width: 640px) {
+  .anom-summary { grid-template-columns: 1fr; }
+  .anom-card { grid-template-columns: 1fr; }
+  .anom-savings { text-align: left; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .anom-controls input, .anom-controls select { min-width: 100%; }
+  .anom-controls .ctl { width: 100%; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html">Coșul</a><a href="anomalii.html" class="active">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html">Date Deschise</a><a href="metodologie.html">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Anomalii de preț</h1>
+  <p class="subtitle">Aceleași produse, prețuri foarte diferite în funcție de rețea. Cumpără-le de unde sunt cele mai ieftine.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Date la zi din monitorulpreturilor.info. Comparăm <i>același produs</i> (același cod) între rețele, exclusiv consumatorii (SELGROS exclus). Prețuri evident eronate filtrate (peste 3× sau sub 0.3× din mediană).
+  </div>
+
+  <div class="anom-summary" id="anom-summary"></div>
+
+  <div class="card">
+    <div class="anom-controls">
+      <div class="ctl">
+        <label for="anom-search">Caută produs / brand</label>
+        <input id="anom-search" type="search" placeholder="ex. Lavazza, ulei, paste..." autocomplete="off">
+      </div>
+      <div class="ctl">
+        <label for="anom-cat">Categorie</label>
+        <select id="anom-cat"><option value="">Toate</option></select>
+      </div>
+      <div class="ctl">
+        <label for="anom-cheap">Cel mai ieftin la</label>
+        <select id="anom-cheap"><option value="">Orice rețea</option></select>
+      </div>
+      <div class="ctl">
+        <label for="anom-min">Diferență minimă</label>
+        <select id="anom-min">
+          <option value="1.5">1.5× (50%+)</option>
+          <option value="2">2× (100%+)</option>
+          <option value="3">3× (200%+)</option>
+        </select>
+      </div>
+      <div class="meta" id="anom-meta"></div>
+    </div>
+  </div>
+
+  <div class="anom-list" id="anom-list"></div>
+  <div class="anom-pager"><button id="anom-more" style="display:none">Arată mai multe</button></div>
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const PAGE_SIZE = 30;
+  let DATA = null;
+  let filtered = [];
+  let shown = 0;
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+
+  function renderSummary(){
+    const items = DATA.items;
+    const top = items[0];
+    const totalSave = items.slice(0, 10).reduce((s, x) => s + x.save_lei, 0);
+    const elem = document.getElementById('anom-summary');
+    elem.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Anomalii detectate azi</div>
+        <div class="kpi-value">${items.length}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Date la ${esc(DATA.as_of)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Cea mai mare diferență</div>
+        <div class="kpi-value">${top ? top.ratio + '×' : '—'}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">${top ? esc(top.product) : ''}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Economii potențiale (top 10)</div>
+        <div class="kpi-value" style="color:var(--success)">${FMT.format(totalSave)} lei</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">cumpărând la rețeaua ieftină</div>
+      </div>`;
+  }
+
+  function populateFilters(){
+    const cats = Array.from(new Set(DATA.items.map(x => x.category).filter(Boolean))).sort();
+    const cs = document.getElementById('anom-cat');
+    for (const c of cats) {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      cs.appendChild(o);
+    }
+    const nets = Array.from(new Set(DATA.items.map(x => x.cheapest.network))).sort();
+    const ns = document.getElementById('anom-cheap');
+    for (const n of nets) {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      ns.appendChild(o);
+    }
+  }
+
+  function applyFilters(){
+    const q = document.getElementById('anom-search').value.trim().toLowerCase();
+    const cat = document.getElementById('anom-cat').value;
+    const cheap = document.getElementById('anom-cheap').value;
+    const minR = parseFloat(document.getElementById('anom-min').value);
+    filtered = DATA.items.filter(it => {
+      if (it.ratio < minR) return false;
+      if (cat && it.category !== cat) return false;
+      if (cheap && it.cheapest.network !== cheap) return false;
+      if (q) {
+        const hay = ((it.product || '') + ' ' + (it.brand || '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    shown = 0;
+    document.getElementById('anom-list').innerHTML = '';
+    renderMore();
+    document.getElementById('anom-meta').textContent =
+      `${filtered.length} produs(e) găsit(e)`;
+  }
+
+  function renderCard(it){
+    const meta = [];
+    if (it.brand) meta.push(`<span class="pill">${esc(it.brand)}</span>`);
+    if (it.unit) meta.push(`<span class="pill">${esc(it.unit)}</span>`);
+    if (it.category) meta.push(esc(it.category));
+    const chips = it.by_network.map(([n, p]) => {
+      let cls = '';
+      if (n === it.cheapest.network) cls = 'cheap';
+      else if (n === it.priciest.network) cls = 'pricey';
+      return `<span class="chip ${cls}">${esc(n)} ${FMT.format(p)}</span>`;
+    }).join('');
+    return `<div class="anom-card">
+      <div>
+        <div class="product">${esc(it.product)}
+          <a class="compare-link" href="compare.html?pid=${it.product_id}" title="Vezi în Comparare">↗</a>
+        </div>
+        <div class="meta">${meta.join(' ')}</div>
+        <div class="flow">
+          <span class="net-cheap">${esc(it.cheapest.network)} ${FMT.format(it.cheapest.price)} lei</span>
+          <span class="arrow">→</span>
+          <span class="net-pricey">${esc(it.priciest.network)} ${FMT.format(it.priciest.price)} lei</span>
+        </div>
+        <details>
+          <summary>Toate rețelele (${it.by_network.length})</summary>
+          <div class="by-net">${chips}</div>
+        </details>
+      </div>
+      <div class="anom-savings">
+        <div class="save-lei">+${FMT.format(it.save_lei)} lei</div>
+        <div class="save-pct">${it.save_pct}% mai scump</div>
+        <div><span class="ratio">${it.ratio}×</span></div>
+      </div>
+    </div>`;
+  }
+
+  function renderMore(){
+    const next = filtered.slice(shown, shown + PAGE_SIZE);
+    const list = document.getElementById('anom-list');
+    if (shown === 0 && next.length === 0) {
+      list.innerHTML = '<div class="anom-empty">Niciun rezultat. Schimbă filtrele.</div>';
+      document.getElementById('anom-more').style.display = 'none';
+      return;
+    }
+    list.insertAdjacentHTML('beforeend', next.map(renderCard).join(''));
+    shown += next.length;
+    document.getElementById('anom-more').style.display =
+      shown < filtered.length ? '' : 'none';
+  }
+
+  fetch('data/anomalies_today.json', {cache: 'no-cache'})
+    .then(r => r.json())
+    .then(d => {
+      DATA = d;
+      renderSummary();
+      populateFilters();
+      ['anom-search','anom-cat','anom-cheap','anom-min'].forEach(id => {
+        const ev = id === 'anom-search' ? 'input' : 'change';
+        document.getElementById(id).addEventListener(ev, applyFilters);
+      });
+      document.getElementById('anom-more').addEventListener('click', renderMore);
+      applyFilters();
+    })
+    .catch(err => {
+      document.querySelector('.container').insertAdjacentHTML('beforeend',
+        `<div class="card" style="background:#fee2e2; color:#991b1b">Eroare la încărcarea datelor: ${esc(err.message)}</div>`);
+    });
+})();
+</script>
+
+</body>
+</html>

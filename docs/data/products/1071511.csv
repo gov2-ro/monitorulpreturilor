@@ -1,0 +1,10 @@
+network,avg_price,min_price,max_price,stores
+PROFI,6.97,6.49,7.45,2
+KAUFLAND,6.99,6.99,6.99,1
+SUPECO,8.29,8.29,8.29,1
+
+network,price_date,avg_price
+PROFI,15.04.2026 20:00,6.49
+KAUFLAND,17.04.2026 04:00,6.99
+PROFI,17.04.2026 04:00,6.97
+SUPECO,17.04.2026 04:00,8.29

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Metodologie & Transparență — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html">Coșul</a><a href="anomalii.html">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html">Date Deschise</a><a href="metodologie.html" class="active">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Metodologie & Transparență</h1>
+  <p class="subtitle">Cum funcționează acest site, de unde vin datele, ce știm că lipsește și cum calculăm fiecare indicator.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Acesta <b>nu este un proiect oficial guvernamental</b>. Datele provin din API-ul public <a href="https://monitorulpreturilor.info" target="_blank">monitorulpreturilor.info</a>, operat de Autoritatea Națională pentru Protecția Consumatorilor (ANPC). Codul sursă și datele brute sunt publice; metodologia e complet deschisă.
+  </div>
+
+  <!-- ── Live snapshot ── -->
+  <div class="card">
+    <div class="card-title">Starea datelor — snapshot curent</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap:14px; margin-top:12px">
+      <div class="kpi" style="padding:16px"><div class="kpi-label">Produse urmărite</div><div class="kpi-value" style="font-size:22px">6,932</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Magazine</div><div class="kpi-value" style="font-size:22px">4,011</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Rețele retail</div><div class="kpi-value" style="font-size:22px">10</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Localități cu magazine</div><div class="kpi-value" style="font-size:22px">835</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Înregistrări prețuri</div><div class="kpi-value" style="font-size:22px">2,251,224</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Date distincte retail</div><div class="kpi-value" style="font-size:22px">7</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Ultima actualizare retail</div><div class="kpi-value" style="font-size:22px">17.04.2026 04:00</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Stații carburanți</div><div class="kpi-value" style="font-size:22px">1,325</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Date distincte carburanți</div><div class="kpi-value" style="font-size:22px">58</div></div><div class="kpi" style="padding:16px"><div class="kpi-label">Ultima actualizare carburanți</div><div class="kpi-value" style="font-size:22px">24/04/2025 10:03</div></div>
+    </div>
+  </div>
+
+  <!-- ── Data source ── -->
+  <div class="card">
+    <div class="card-title">Sursa datelor</div>
+    <p style="margin:12px 0 8px">API-ul <a href="https://monitorulpreturilor.info" target="_blank">monitorulpreturilor.info</a> (ANPC) expune prețuri de raft raportate de retaileri prin sistemul național de monitorizare. Accesăm două endpoint-uri:</p>
+    <table class="table" style="margin-top:8px">
+      <thead><tr><th>Endpoint</th><th>Ce returnează</th><th>Limite</th></tr></thead>
+      <tbody>
+        <tr><td><code>GetStoresForProductsByLatLon</code></td><td>Prețuri retail per produs × magazin, în jurul unui punct geografic</td><td>Buffer max 5.000 m; max 50 magazine per cerere</td></tr>
+        <tr><td><code>GetGasItemsByUat</code></td><td>Prețuri carburanți per UAT × tip combustibil</td><td>Un produs per cerere; API returnează 500 dacă nu există date</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px; font-size:13px; color:var(--muted)">Colectăm retail zilnic (~04:00 UTC). Carburanții se actualizează zilnic per UAT. Datele de referință (rețele, UAT-uri, produse) se reîmprospătează săptămânal.</p>
+  </div>
+
+  <!-- ── Known gaps ── -->
+  <div class="card">
+    <div class="card-title">Limitări cunoscute</div>
+    <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px">
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Produse proaspete lipsesc.</b> API-ul urmărește doar produse stabile (făină, ulei, paste, cafea, conserve etc.). Carne, ouă, lactate, legume, fructe <b>nu sunt acoperite</b>. Coșurile de pe site reflectă explicit acest lucru (etichetate "cămară").
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>1,367 magazine fără rețea identificată</b> (34% din total). Aceste magazine apar în hartă și în statistici de acoperire, dar <b>nu sunt incluse în comparații pe rețea</b> (nu știm la ce rețea aparțin).
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>723 produse fără preț azi</b> (din 6,932 urmărite). Acoperirea nu e 100% — depinde de ce magazine au fost interogați azi și dacă produsul e în stoc.
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Istoric retail scurt — 7 zile distincte.</b> Indicii de inflație și tendințele pe termen lung vor deveni semnificative odată cu acumularea de date. Carburanții au 58 zile de istoric.
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Limita API de 50 magazine per cerere</b> înseamnă că nu toate magazinele dintr-o localitate mare (ex. București) sunt acoperite zilnic. Folosim un sistem de clustering spatial pentru a maximiza diversitatea.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Methodology ── -->
+  <div class="card">
+    <div class="card-title">Cum calculăm indicatorii</div>
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:8px; font-size:14px">
+
+      <div>
+        <b>Coșul de cămară (cos.html)</b>
+        <p style="margin-top:6px">Pentru fiecare (coș × localitate × rețea): alegem cel mai ieftin produs substitut disponibil din lista de alternative, înmulțim cu cantitatea săptămânală, sumăm și convertim lunar (× 52/12 = 4,333 săptămâni/lună). O rețea e <em>comparabilă</em> dacă are prețuri pentru cel puțin 50% din articolele coșului. Prețuri evident eronate filtrate: excludem orice preț sub 30% sau peste 300% din mediana cross-rețea pentru acel produs.</p>
+      </div>
+
+      <div>
+        <b>Anomalii de preț (anomalii.html)</b>
+        <p style="margin-top:6px">Pentru fiecare produs cu prețuri în ≥2 rețele azi: calculăm minimul per rețea, aplicăm același filtru de outlieri (0,30–3,0× mediană), calculăm ratio = max/min. Afișăm produsele cu ratio ≥ 1,5 (cel puțin 50% mai scump la rețeaua cea mai scumpă față de cea mai ieftină).</p>
+      </div>
+
+      <div>
+        <b>Exploratorul de categorii (categorii.html)</b>
+        <p style="margin-top:6px">Același calcul de spread ca anomaliile, grupat pe categoria de produs (nivel 2 din arborele ANPC). Liderul de rețea = câte produse din categorie sunt cel mai ieftin la fiecare rețea.</p>
+      </div>
+
+      <div>
+        <b>Harta costurilor (harta.html)</b>
+        <p style="margin-top:6px">Poligoanele UAT provin din <code>config/geo/ro-uats.topojson</code> (date ANCPI, 3.175 unități administrativ-teritoriale, join pe codul SIRUTA). Costul coșului per UAT = cel mai ieftin coș comparabil la orice rețea prezentă în UAT. Localitățile fără date locale afișează estimarea națională.</p>
+      </div>
+
+      <div>
+        <b>Indexul de prețuri pe rețea (price-index.html)</b>
+        <p style="margin-top:6px">Pentru produse prezente în ≥3 rețele: calculăm prețul mediu per rețea, împărțit la prețul minim cross-rețea × 100. Index = 100 înseamnă că rețeaua e cea mai ieftină la acel produs; 120 = 20% mai scump față de cel mai ieftin.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Code & license ── -->
+  <div class="card">
+    <div class="card-title">Cod sursă & licență</div>
+    <p style="margin:12px 0 8px; font-size:14px">Codul este open-source pe GitHub. Datele exportate sunt disponibile pe pagina <a href="date-deschise.html">Date Deschise</a> sub licență <b>CC BY 4.0</b> — poți redistribui și folosi cu atribuire.</p>
+    <p style="font-size:13px; color:var(--muted)">Jurnalul de activitate complet: <a href="pipeline.html">Pipeline & Activitate</a>. Probleme cunoscute și planuri viitoare: <a href="pipeline.html#backlog">Backlog</a>.</p>
+  </div>
+
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+</body>
+</html>

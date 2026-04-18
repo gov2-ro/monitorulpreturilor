@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Coșul de Cămară — Monitorul Prețurilor+ – gov2.ro</title>
+<style>
+:root {
+  --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+  --border: #e2e8f0; --primary: #2563eb; --primary-light: #dbeafe;
+  --success: #16a34a; --warning: #f59e0b; --danger: #ef4444;
+  --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.5; }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+.nav { background: #0f172a; color: #fff; padding: 0 24px; display: flex;
+       align-items: center; gap: 0; position: sticky; top: 0; z-index: 100;
+       box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.nav-brand { font-weight: 700; font-size: 15px; padding: 14px 16px 14px 0;
+             color: #fff; white-space: nowrap; border-right: 1px solid rgba(255,255,255,.15);
+             margin-right: 8px; }
+.nav a { color: rgba(255,255,255,.7); padding: 14px 16px; font-size: 13.5px;
+         font-weight: 500; transition: color .15s; text-decoration: none;
+         border-bottom: 2px solid transparent; }
+.nav a:hover { color: #fff; text-decoration: none; }
+.nav a.active { color: #fff; border-bottom-color: #60a5fa; }
+
+/* Layout */
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px; margin-bottom: 28px; }
+.kpi { background: var(--card); border-radius: var(--radius); padding: 18px 20px;
+       box-shadow: var(--shadow); }
+.kpi-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.kpi-label { font-size: 12.5px; color: var(--muted); margin-top: 4px; text-transform: uppercase;
+             letter-spacing: .3px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); padding: 24px;
+        box-shadow: var(--shadow); margin-bottom: 24px; }
+.card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border);
+     font-weight: 600; color: var(--muted); font-size: 11.5px; text-transform: uppercase;
+     letter-spacing: .3px; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: #f8fafc; }
+
+/* Chart container */
+.chart-box { position: relative; height: 340px; }
+
+/* Tabs / pills */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); font-size: 13px; cursor: pointer; color: var(--text);
+           transition: all .15s; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Status badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11.5px;
+         font-weight: 600; }
+.badge-ok { background: #dcfce7; color: #166534; }
+.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-err { background: #fee2e2; color: #991b1b; }
+.badge-run { background: #dbeafe; color: #1e40af; }
+
+/* Bar (inline) */
+.bar-cell { position: relative; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+            opacity: .15; }
+.bar-text { position: relative; z-index: 1; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .nav { padding: 0 12px; flex-wrap: wrap; }
+  .nav-brand { border-right: none; padding-right: 8px; margin-right: 0; }
+  .nav a { padding: 10px 10px; font-size: 12.5px; }
+  .container { padding: 16px 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  h1 { font-size: 18px; }
+  .chart-box { height: 260px; }
+}
+</style>
+
+<style>
+.cos-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-bottom: 20px; }
+.cos-controls label { display: block; font-size: 11.5px; color: var(--muted);
+                       text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.cos-controls select { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+                        background: var(--card); font-size: 14px; min-width: 240px; }
+.cos-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.cos-tab { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--card); cursor: pointer; font-size: 13.5px; font-weight: 500;
+            color: var(--text); transition: all .15s; }
+.cos-tab:hover { border-color: var(--primary); color: var(--primary); }
+.cos-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.cos-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.cos-hero .kpi { padding: 22px 24px; }
+.cos-hero .kpi-value.cheap { color: var(--success); }
+.cos-hero .kpi-value.pricey { color: var(--danger); }
+.cos-hero .kpi .delta { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.cos-rank-row { display: grid; grid-template-columns: 30px 100px 1fr 90px 60px; align-items: center;
+                gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.cos-rank-row:last-child { border-bottom: none; }
+.cos-rank-row .pos { color: var(--muted); font-weight: 600; text-align: right; }
+.cos-rank-row .net { font-weight: 600; }
+.cos-rank-row .bar-wrap { background: #f1f5f9; border-radius: 4px; height: 22px; position: relative;
+                          overflow: hidden; }
+.cos-rank-row .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--primary-light);
+                          border-radius: 4px; }
+.cos-rank-row .bar-text { position: relative; z-index: 1; padding: 3px 10px; font-size: 13px;
+                          font-weight: 600; }
+.cos-rank-row .cov { color: var(--muted); font-size: 12px; text-align: right; }
+.cos-rank-row.cheapest .net { color: var(--success); }
+.cos-rank-row.pricey .net { color: var(--danger); }
+.cos-rank-row.incomparable { opacity: .5; }
+.cos-rank-row.incomparable .cov { color: var(--warning); }
+.cos-items-table th:first-child { width: 40%; }
+.cos-items-table .px-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.cos-items-table .px-cell.cheapest { color: var(--success); font-weight: 700; }
+.cos-items-table .px-cell.missing { color: var(--muted); }
+.cos-disclaimer { background: #fef3c7; color: #92400e; padding: 12px 16px; border-radius: 8px;
+                   font-size: 13px; margin-bottom: 20px; }
+.cos-as-of { font-size: 12px; color: var(--muted); margin-top: 8px; }
+@media (max-width: 640px) {
+  .cos-hero { grid-template-columns: 1fr; }
+  .cos-rank-row { grid-template-columns: 24px 80px 1fr 70px; gap: 8px; font-size: 13px; }
+  .cos-rank-row .cov { display: none; }
+  .cos-controls select { min-width: 100%; }
+  .cos-controls label { width: 100%; }
+}
+</style>
+
+</head>
+<body>
+<nav class="nav"><span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span><a href="index.html">Dashboard</a><a href="cos.html" class="active">Coșul</a><a href="anomalii.html">Anomalii</a><a href="categorii.html">Categorii</a><a href="harta.html">Hartă Costuri</a><a href="price-index.html">Index Prețuri</a><a href="trends.html">Tendințe</a><a href="compare.html">Comparare</a><a href="fuel.html">Carburanți</a><a href="analytics.html">Analiză</a><a href="pipeline.html">Pipeline</a><a href="stores_map.html">Hartă</a><a href="gas_map.html">Hartă Carburanți</a><a href="inflatie.html">Inflație</a><a href="povesti.html">Povești</a><a href="date-deschise.html">Date Deschise</a><a href="metodologie.html">Metodologie</a></nav>
+
+<div class="container">
+  <h1>Coșul de Cămară</h1>
+  <p class="subtitle">Cât plătești pe lună la fiecare rețea pentru același coș de produse stabile? Alege coșul, alege orașul, vezi unde economisești.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Datele provin din monitorulpreturilor.info, care urmărește doar produsele <i>stabile</i> (făină, ulei, paste, conserve, cafea ș.a.). Nu include produse proaspete (lapte, ouă, lactate, carne, legume). Coșurile reflectă acest lucru.
+  </div>
+
+  <div class="card">
+    <div class="cos-controls">
+      <div>
+        <label>Coș</label>
+        <div class="cos-tabs" id="basket-tabs"></div>
+      </div>
+      <div>
+        <label for="uat-select">Localitate</label>
+        <select id="uat-select">
+          <option value="__national">🇷🇴 Național (toate rețelele)</option>
+        </select>
+      </div>
+    </div>
+    <p id="basket-desc" class="subtitle" style="margin-bottom:0; font-size:13px;"></p>
+    <div class="cos-as-of" id="cos-asof"></div>
+  </div>
+
+  <div class="cos-hero" id="cos-hero"></div>
+
+  <div class="card">
+    <div class="card-title">Clasament rețele</div>
+    <div id="cos-rank"></div>
+  </div>
+
+  <div class="card" id="cos-items-card">
+    <div class="card-title">Detaliu pe produse — preț cel mai mic la fiecare rețea (date naționale)</div>
+    <div class="table-wrap"><table class="cos-items-table" id="cos-items-table"></table></div>
+  </div>
+</div>
+
+<footer class="footer">
+  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
+</footer>
+
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const fmt = n => (n == null) ? '—' : FMT.format(n) + ' lei';
+  const basketCache = {};
+  let index = null;
+  let currentBasket = null;
+  let currentUat = '__national';
+
+  async function loadIndex(){
+    const r = await fetch('data/baskets/index.json', {cache: 'no-cache'});
+    return r.json();
+  }
+  async function loadBasket(id){
+    if (basketCache[id]) return basketCache[id];
+    const r = await fetch(`data/baskets/${id}.json`, {cache: 'no-cache'});
+    const d = await r.json();
+    basketCache[id] = d;
+    return d;
+  }
+
+  function renderTabs(){
+    const tabs = document.getElementById('basket-tabs');
+    tabs.innerHTML = index.baskets.map(b =>
+      `<button class="cos-tab ${b.id === currentBasket ? 'active' : ''}" data-id="${b.id}">${b.name_ro}</button>`
+    ).join('');
+    tabs.querySelectorAll('.cos-tab').forEach(btn => {
+      btn.addEventListener('click', () => { currentBasket = btn.dataset.id; renderAll(); });
+    });
+  }
+
+  function renderUatSelect(){
+    const sel = document.getElementById('uat-select');
+    const opts = ['<option value="__national">🇷🇴 Național (toate rețelele)</option>'];
+    for (const u of index.uats) {
+      opts.push(`<option value="${u.id}">${u.name}</option>`);
+    }
+    sel.innerHTML = opts.join('');
+    sel.value = currentUat;
+    sel.addEventListener('change', () => { currentUat = sel.value; renderAll(); });
+  }
+
+  function getNetworks(basket, uatKey){
+    if (uatKey === '__national') return basket.national;
+    return basket.per_uat[uatKey] || {};
+  }
+
+  function ranked(networks){
+    return Object.values(networks)
+      .filter(n => n.comparable)
+      .sort((a,b) => a.cost_month - b.cost_month);
+  }
+
+  function renderHero(basket, networks){
+    const r = ranked(networks);
+    const hero = document.getElementById('cos-hero');
+    if (r.length < 2) {
+      hero.innerHTML = `<div class="kpi" style="grid-column: 1 / -1;">
+        <div class="kpi-value" style="font-size:18px; color: var(--muted)">Date insuficiente pentru această localitate.</div>
+        <div class="kpi-label">Încearcă altă localitate sau vezi datele naționale.</div></div>`;
+      return;
+    }
+    const cheap = r[0], pricey = r[r.length-1];
+    const delta = pricey.cost_month - cheap.cost_month;
+    const deltaYr = delta * 12;
+    hero.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Cel mai ieftin coș</div>
+        <div class="kpi-value cheap">${cheap.network}</div>
+        <div class="delta">${fmt(cheap.cost_month)}/lună &middot; ${fmt(cheap.cost_week)}/săpt.</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Diferență față de cel mai scump (${pricey.network})</div>
+        <div class="kpi-value pricey">+${fmt(delta)}<span style="font-size:14px; color: var(--muted)">/lună</span></div>
+        <div class="delta">≈ ${fmt(deltaYr)} pe an, cumpărând același coș la ${pricey.network} în loc de ${cheap.network}.</div>
+      </div>`;
+  }
+
+  function renderRank(networks){
+    const all = Object.values(networks).sort((a,b) => {
+      if (a.comparable !== b.comparable) return a.comparable ? -1 : 1;
+      return a.cost_month - b.cost_month;
+    });
+    const comparable = all.filter(n => n.comparable);
+    const max = comparable.length ? Math.max(...comparable.map(n => n.cost_month)) : 1;
+    const min = comparable.length ? Math.min(...comparable.map(n => n.cost_month)) : 0;
+    const wrap = document.getElementById('cos-rank');
+    let pos = 0;
+    wrap.innerHTML = all.map(n => {
+      const cls = !n.comparable ? 'incomparable' : (n.cost_month === min ? 'cheapest' : (n.cost_month === max ? 'pricey' : ''));
+      if (n.comparable) pos++;
+      const fill = n.comparable ? Math.max(2, (n.cost_month / max) * 100) : 0;
+      const posLabel = n.comparable ? `#${pos}` : '—';
+      return `<div class="cos-rank-row ${cls}">
+        <div class="pos">${posLabel}</div>
+        <div class="net">${n.network}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${fill}%"></div>
+          <div class="bar-text">${fmt(n.cost_month)}/lună</div></div>
+        <div>${fmt(n.cost_week)}/sapt.</div>
+        <div class="cov">${n.items_found}/${n.items_total}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderItems(basket){
+    // National per-item table — uses basket.national (which has items[]).
+    const itemsTable = document.getElementById('cos-items-table');
+    const networks = Object.values(basket.national).sort((a,b) => a.cost_month - b.cost_month);
+    const itemLabels = basket.items.map(i => i.label);
+    let html = '<thead><tr><th>Produs</th><th>Cant./săpt.</th>';
+    for (const n of networks) html += `<th class="px-cell">${n.network}</th>`;
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < itemLabels.length; i++) {
+      const prices = networks.map(n => n.items[i].price);
+      const valid = prices.filter(p => p != null);
+      const cheap = valid.length ? Math.min(...valid) : null;
+      html += `<tr><td>${itemLabels[i]}</td><td class="px-cell">${basket.items[i].qty_per_week}</td>`;
+      for (const p of prices) {
+        if (p == null) html += '<td class="px-cell missing">—</td>';
+        else if (p === cheap) html += `<td class="px-cell cheapest">${FMT.format(p)}</td>`;
+        else html += `<td class="px-cell">${FMT.format(p)}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody>';
+    itemsTable.innerHTML = html;
+  }
+
+  function renderAll(){
+    const meta = index.baskets.find(b => b.id === currentBasket);
+    document.getElementById('basket-desc').textContent = meta.description_ro;
+    document.getElementById('cos-asof').textContent = `Date la zi: ${index.as_of}`;
+    document.querySelectorAll('.cos-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.id === currentBasket));
+    loadBasket(currentBasket).then(basket => {
+      const networks = getNetworks(basket, currentUat);
+      renderHero(basket, networks);
+      renderRank(networks);
+      renderItems(basket);
+      // Items table is national-only; when a UAT is picked, hint that the table is national.
+      const card = document.getElementById('cos-items-card');
+      const title = card.querySelector('.card-title');
+      title.textContent = currentUat === '__national'
+        ? 'Detaliu pe produse — preț cel mai mic la fiecare rețea (date naționale)'
+        : 'Detaliu pe produse (date naționale — pentru localitatea selectată sunt afișate doar costurile totale)';
+    });
+  }
+
+  loadIndex().then(idx => {
+    index = idx;
+    currentBasket = index.baskets[0].id;
+    renderTabs();
+    renderUatSelect();
+    renderAll();
+  }).catch(err => {
+    document.querySelector('.container').insertAdjacentHTML('beforeend',
+      `<div class="card" style="background:#fee2e2; color:#991b1b">Eroare la încărcarea datelor: ${err.message}</div>`);
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -4,6 +4,52 @@
 
 ## General
 
+### 2026-04-18 — Phase C: CPI prototype, Stories, Open Data Hub, Methodology
+
+- **#10 Metodologie & Transparență** (`metodologie.html`): live snapshot grid (products, stores, networks, price rows, dates, gas stats), API endpoint table with limits, known-gaps warning cards (fresh produce absent, 1367 stores with NULL network, 723 products without today's price, 7-day retail history), methodology explanations for each calculator (basket, anomalies, categories, choropleth, price index), code/license card. Data pulled at site-gen time via `load_metodologie_stats()`.
+- **#9 Date Deschise** (`date-deschise.html`): 9 downloadable datasets with format badge, file size, freshness, schema description, and direct download link. CC BY 4.0 license. Covers anomalies JSON, 4 basket JSONs, UAT GeoJSON, category index, 3 analytics CSVs.
+- **#4 Indice de Inflație Civică — prototype** (`inflatie.html` + `build_cpi.py`): tracks national cheapest-network basket cost per available price_date (7 days); Chart.js multi-line trend per basket; product change table (first vs last date, sorted by abs % change). Heavy "PROTOTIP" labeling + yellow caveat banner + methodology card. Day-to-day swings (e.g. cămară 335→267 lei) reflect coverage variation as much as price changes — caveated explicitly. Wired into CI via `build_cpi.py --db ... --out docs/data/cpi.json`.
+- **#8 Povești cu Date — prototype** (`povesti.html`): 5 auto-generated story cards built from today's anomaly + basket + category data (no historical trends needed). Stories: biggest spread today, network cheapest most often (Profi: 77% of compared products), basket savings opportunity (+59.70 lei/lună if choosing wrong network), category with most total spread (Cofetărie: 1,277 lei), products with ≥3× ratio (127 products, 1,738 lei combined savings). All link to relevant pages. Fully client-side, updates daily with data.
+- All 4 pages added to nav; `build_cpi.py` added to CI daily run.
+
+### 2026-04-18 — Harta Costurilor — choropleth map (Phase B #2)
+
+- Added `config/geo/ro-uats.topojson` (source file, 706 KB — Romania UAT polygons, 3175 features, SIRUTA join key). 365/366 DB UATs matched by SIRUTA code; all 835 store-UATs matched.
+- Added `build_uat_geojson.py`: decodes TopoJSON manually (arc stitching from spec — the `topojson` Python library fails on null-geometry features), joins DB stats (store count, consumer network count — queried directly from stores, not via the uats table which only covers 366/835 UATs), joins basket cheapest/priciest monthly cost from `docs/data/baskets/camara.json` per-UAT data (national fallback for 674/834 UATs not yet scored at local level). Outputs `docs/data/uats.geojson` (834 features, 475 KB, only store-UATs).
+- Added `gen_harta()` + `harta.html`: MapLibre GL JS v4 choropleth over CARTO Positron basemap. Three layer toggles: networks present (food-desert detection — red=1 network, green=5+), basket monthly cost (green=cheap, red=expensive), store count (blue scale). Hover highlight + click → side panel with UAT name, network count, store count, basket min/max, cheapest network. Responsive (420px height on mobile).
+- KPIs: 398 localities with identified networks, 218 single-network "food deserts", cheapest basket locality = Municipiul Baia Mare 122.26 lei/lună.
+- **Verified.** Layer toggle (networks → basket cost) works. Click on "Valea Doftanei": panel shows 1 store, 0 identified networks, national basket fallback 302.61–362.31 lei/lună, Profi cheapest.
+- Wired `build_uat_geojson.py` into CI daily run (runs after basket build so baskets data is ready).
+
+### 2026-04-18 — Category Explorer (Phase B #6)
+
+- Added `build_categories.py`: for the latest price_date, groups products by their category (level-2 of the 143-node tree — all 6932 products attach directly there), computes per-category spread rankings using the same outlier filter and B2B exclusion as the anomaly feed, emits `docs/data/categories/index.json` + one JSON per category (up to 200 products each ranked by ratio desc). 7 categories have meaningful multi-network price data today; the other 136 categories have no prices (API tracks shelf-stable goods only — meat, dairy, fresh produce categories are empty).
+- Added `gen_categorii()` + `categorii.html` page: category tabs with product counts, KPI summary (comparables count, top spread, total potential savings), network leaderboard (how many products each network prices cheapest in the category — Profi wins 146/200 in Panificatie), product card grid with search + sort (ratio/lei/pct) + min-networks filter, paginated at 24. Each card links to compare.html?pid=X.
+- Added "Categorii" to nav (4th position). Wired `build_categories.py` into CI daily run.
+- **Verified.** Tab switch (Panificatie → Cafea), search "lavazza" → 9 products, all correctly filtered. Mobile (375px): tabs wrap to 4 lines, KPI cards stack single-column — all readable.
+
+### 2026-04-18 — CI: wire baskets + anomalies builders into daily run
+
+- Added `--db` and `--out` CLI args to `build_baskets.py` and `build_anomalies.py` (both previously hard-coded to `data/prices.db`).
+- Added two CI steps after analytics export: `build_baskets.py` and `build_anomalies.py`, both pointed at `data/prices_ci.db`. Daily refresh of `docs/data/baskets/*.json` and `docs/data/anomalies_today.json` is now automatic.
+- Updated commit step to git-add the new HTML pages (`cos.html`, `anomalii.html`) and the new JSON outputs. Also added the previously-missing `compare.html`, `analytics.html`, and `docs/data/products/*.csv` to the add list — they were being regenerated in CI but not committed (`git add` was incomplete). Confirmed by running both builders locally on the live DB after the refactor.
+
+### 2026-04-18 — Anomalii de preț — daily cross-network spread feed
+
+- Added `build_anomalies.py`: for the latest `price_date`, computes per-network min price for each product, drops outliers ([0.30, 3.0]× of cross-network median per product — same filter as baskets), keeps products with ratio ≥ 1.5, ranks by ratio desc, writes top 300 to `docs/data/anomalies_today.json` (101 KB). SELGROS excluded (B2B).
+- Added `gen_anomalii()` + `anomalii.html` page: KPI summary (count, biggest spread, top-10 potential savings), filters (search, category, cheapest-at network, min ratio threshold), card list with cheapest→priciest flow, savings callout, ratio chip, expandable per-network chip row, link to compare.html?pid=… for each product. Pagination at 30 cards/page.
+- Added "Anomalii" to nav, third position after Coșul.
+- **Verified.** Top anomaly: Lavazza Qualita Rossa 250g, Kaufland 5.75 lei vs Mega 39.09 lei = 6.8× = +33.34 lei savings. SQL spot-check confirms: Kaufland has the SKU at 5.75 across 11 stores (deep promo), Mega at 39.09 across 256 stores (full price). Real, useful signal — exactly the kind of leak the feed should catch. Outlier filter passed in this case because the median across networks (≈16.67) keeps the 0.30× threshold at 5.0 — promos survive, true data errors don't.
+- Mobile (375×812): cards stack, savings line wraps below product info, filters go full-width. Filters tested: search "cafea" → 25 results; min-ratio 3× → 127 results.
+
+### 2026-04-18 — Coșul de Cămară (Phase A: foundations + basket calculator)
+
+- **Foundations.** Added `units.py` (normaliser for messy `prices.unit` strings → 'kg'|'L'|'buc'|None, 99.6% coverage of 2.25M rows) and `networks.py` + `config/networks.json` (short display names + B2B flag for the 10 retail / 7 gas networks; SELGROS flagged B2B and excluded from consumer comparisons). Network IDs in the API are inconsistent (some are slugs like `PROFI`, others are barcodes like `5940475006709` for Carrefour) — the JSON config + `short()` / `is_b2b()` helpers give the rest of the codebase one place to look.
+- **Curated baskets.** `config/baskets.json` defines 4 baskets (Cămară 11 items, Student 8, Copt 8, Sărbători 9 — 38 distinct SKUs). Each item lists 1+ substitute `product_ids` so the builder can pick the cheapest available at a given network/UAT. SKUs were filtered to those carried by ≥7 networks today. Honest framing: API only tracks shelf-stable goods, so these are *pantry* baskets (no fresh dairy, meat, produce) — copy and disclaimer say so.
+- **Builder.** `build_baskets.py` scores each basket nationally and per UAT: cheapest substitute per item per network → `weekly_cost`, `monthly_cost = weekly × 52/12`. `comparable` flag requires ≥50% items found at the network (protects ranking from missing-data networks). Outlier filter drops prices outside [0.30, 3.0]× cross-network median per product — surfaced after Cora artificially won Cămară due to 3 stores selling 1L Floriol oil at 0.50 lei (data-source error). After filter, PROFI is genuine #1 nationally at 302.61 lei/lună. Outputs `docs/data/baskets/index.json` + 4 per-basket files (~70 KB each, all UATs in one payload, lazy-loaded by tab).
+- **UI.** New `cos.html` page with tabbed basket switcher, UAT picker (national or per-locality), hero KPI ("how much extra you'd pay at the priciest network vs the cheapest"), ranked network table with bars and items-found counts, and per-product drill table showing the cheapest price per network with the chosen substitute highlighted. Added "Coșul" as second nav item across the site.
+- **Verified.** SQL spot-check reproduced Profi/Cluj-Napoca/Cămară at 160.82 lei/lună exactly (10/11 items found — bread missing in Cluj's PROFI feed). Mobile (375×812) renders cleanly. Tab switch (Cămară → Student) and UAT switch (national → Cluj-Napoca) both work in browser.
+
 ### 2026-04-16 — Gas price spread analysis + dashboard fuel trends
 
 - Confirmed gas price variation: premiums vary ~1 RON across networks, benzine ~0.62 RON, GPL only 0.14 RON (smallest). Electric charging has the widest spread (26+ RON). The earlier screenshot showing GPL variation was misleading — based on only 20 UATs.

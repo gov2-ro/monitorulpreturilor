@@ -455,6 +455,28 @@ def load_gas_map_data(conn):
     return list(stations.values())
 
 
+def load_metodologie_stats(conn):
+    """Extended stats for the Trust & Methodology page."""
+    dates = [r["d"] for r in query(conn, "SELECT DISTINCT price_date AS d FROM prices ORDER BY d")]
+    gas_dates = [r["d"] for r in query(conn, "SELECT DISTINCT price_date AS d FROM gas_prices ORDER BY d")]
+    return {
+        "price_dates": len(dates),
+        "earliest_retail": dates[0] if dates else "—",
+        "latest_retail": dates[-1] if dates else "—",
+        "latest_gas": gas_dates[-1] if gas_dates else "—",
+        "gas_dates": len(gas_dates),
+        "stores_no_network": query(conn, "SELECT COUNT(*) AS n FROM stores WHERE network_id IS NULL")[0]["n"],
+        "products_no_price_today": query(conn, """
+            SELECT COUNT(*) AS n FROM products p
+            WHERE NOT EXISTS (
+              SELECT 1 FROM prices pr
+              WHERE pr.product_id=p.id AND pr.price_date=(SELECT MAX(price_date) FROM prices)
+            )
+        """)[0]["n"],
+        "uats_with_stores": query(conn, "SELECT COUNT(DISTINCT uat_id) AS n FROM stores WHERE uat_id IS NOT NULL")[0]["n"],
+    }
+
+
 # ── Shared HTML components ──────────────────────────────────────────────
 
 SHARED_CSS = """
@@ -554,6 +576,10 @@ tr:hover td { background: #f8fafc; }
 
 NAV_ITEMS = [
     ("index.html",       "Dashboard"),
+    ("cos.html",         "Coșul"),
+    ("anomalii.html",    "Anomalii"),
+    ("categorii.html",   "Categorii"),
+    ("harta.html",       "Hartă Costuri"),
     ("price-index.html", "Index Prețuri"),
     ("trends.html",      "Tendințe"),
     ("compare.html",     "Comparare"),
@@ -562,6 +588,10 @@ NAV_ITEMS = [
     ("pipeline.html",    "Pipeline"),
     ("stores_map.html",  "Hartă"),
     ("gas_map.html",     "Hartă Carburanți"),
+    ("inflatie.html",    "Inflație"),
+    ("povesti.html",     "Povești"),
+    ("date-deschise.html", "Date Deschise"),
+    ("metodologie.html", "Metodologie"),
 ]
 
 
@@ -2082,6 +2112,1586 @@ document.getElementById('legend').addEventListener('change', updateFilters);
 </html>"""
 
 
+def gen_cos() -> str:
+    """Coșul de Cămară — interactive basket calculator.
+
+    Loads `docs/data/baskets/index.json` then a per-basket JSON on demand.
+    No server-side data needs to be passed in: the page is purely a viewer
+    over the JSON files emitted by `build_baskets.py`.
+    """
+    extra_head = """
+<style>
+.cos-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-bottom: 20px; }
+.cos-controls label { display: block; font-size: 11.5px; color: var(--muted);
+                       text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.cos-controls select { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+                        background: var(--card); font-size: 14px; min-width: 240px; }
+.cos-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.cos-tab { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--card); cursor: pointer; font-size: 13.5px; font-weight: 500;
+            color: var(--text); transition: all .15s; }
+.cos-tab:hover { border-color: var(--primary); color: var(--primary); }
+.cos-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.cos-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.cos-hero .kpi { padding: 22px 24px; }
+.cos-hero .kpi-value.cheap { color: var(--success); }
+.cos-hero .kpi-value.pricey { color: var(--danger); }
+.cos-hero .kpi .delta { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.cos-rank-row { display: grid; grid-template-columns: 30px 100px 1fr 90px 60px; align-items: center;
+                gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.cos-rank-row:last-child { border-bottom: none; }
+.cos-rank-row .pos { color: var(--muted); font-weight: 600; text-align: right; }
+.cos-rank-row .net { font-weight: 600; }
+.cos-rank-row .bar-wrap { background: #f1f5f9; border-radius: 4px; height: 22px; position: relative;
+                          overflow: hidden; }
+.cos-rank-row .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--primary-light);
+                          border-radius: 4px; }
+.cos-rank-row .bar-text { position: relative; z-index: 1; padding: 3px 10px; font-size: 13px;
+                          font-weight: 600; }
+.cos-rank-row .cov { color: var(--muted); font-size: 12px; text-align: right; }
+.cos-rank-row.cheapest .net { color: var(--success); }
+.cos-rank-row.pricey .net { color: var(--danger); }
+.cos-rank-row.incomparable { opacity: .5; }
+.cos-rank-row.incomparable .cov { color: var(--warning); }
+.cos-items-table th:first-child { width: 40%; }
+.cos-items-table .px-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.cos-items-table .px-cell.cheapest { color: var(--success); font-weight: 700; }
+.cos-items-table .px-cell.missing { color: var(--muted); }
+.cos-disclaimer { background: #fef3c7; color: #92400e; padding: 12px 16px; border-radius: 8px;
+                   font-size: 13px; margin-bottom: 20px; }
+.cos-as-of { font-size: 12px; color: var(--muted); margin-top: 8px; }
+@media (max-width: 640px) {
+  .cos-hero { grid-template-columns: 1fr; }
+  .cos-rank-row { grid-template-columns: 24px 80px 1fr 70px; gap: 8px; font-size: 13px; }
+  .cos-rank-row .cov { display: none; }
+  .cos-controls select { min-width: 100%; }
+  .cos-controls label { width: 100%; }
+}
+</style>
+"""
+    body = """
+<div class="container">
+  <h1>Coșul de Cămară</h1>
+  <p class="subtitle">Cât plătești pe lună la fiecare rețea pentru același coș de produse stabile? Alege coșul, alege orașul, vezi unde economisești.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Datele provin din monitorulpreturilor.info, care urmărește doar produsele <i>stabile</i> (făină, ulei, paste, conserve, cafea ș.a.). Nu include produse proaspete (lapte, ouă, lactate, carne, legume). Coșurile reflectă acest lucru.
+  </div>
+
+  <div class="card">
+    <div class="cos-controls">
+      <div>
+        <label>Coș</label>
+        <div class="cos-tabs" id="basket-tabs"></div>
+      </div>
+      <div>
+        <label for="uat-select">Localitate</label>
+        <select id="uat-select">
+          <option value="__national">🇷🇴 Național (toate rețelele)</option>
+        </select>
+      </div>
+    </div>
+    <p id="basket-desc" class="subtitle" style="margin-bottom:0; font-size:13px;"></p>
+    <div class="cos-as-of" id="cos-asof"></div>
+  </div>
+
+  <div class="cos-hero" id="cos-hero"></div>
+
+  <div class="card">
+    <div class="card-title">Clasament rețele</div>
+    <div id="cos-rank"></div>
+  </div>
+
+  <div class="card" id="cos-items-card">
+    <div class="card-title">Detaliu pe produse — preț cel mai mic la fiecare rețea (date naționale)</div>
+    <div class="table-wrap"><table class="cos-items-table" id="cos-items-table"></table></div>
+  </div>
+</div>
+"""
+    extra_scripts = """
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const fmt = n => (n == null) ? '—' : FMT.format(n) + ' lei';
+  const basketCache = {};
+  let index = null;
+  let currentBasket = null;
+  let currentUat = '__national';
+
+  async function loadIndex(){
+    const r = await fetch('data/baskets/index.json', {cache: 'no-cache'});
+    return r.json();
+  }
+  async function loadBasket(id){
+    if (basketCache[id]) return basketCache[id];
+    const r = await fetch(`data/baskets/${id}.json`, {cache: 'no-cache'});
+    const d = await r.json();
+    basketCache[id] = d;
+    return d;
+  }
+
+  function renderTabs(){
+    const tabs = document.getElementById('basket-tabs');
+    tabs.innerHTML = index.baskets.map(b =>
+      `<button class="cos-tab ${b.id === currentBasket ? 'active' : ''}" data-id="${b.id}">${b.name_ro}</button>`
+    ).join('');
+    tabs.querySelectorAll('.cos-tab').forEach(btn => {
+      btn.addEventListener('click', () => { currentBasket = btn.dataset.id; renderAll(); });
+    });
+  }
+
+  function renderUatSelect(){
+    const sel = document.getElementById('uat-select');
+    const opts = ['<option value="__national">🇷🇴 Național (toate rețelele)</option>'];
+    for (const u of index.uats) {
+      opts.push(`<option value="${u.id}">${u.name}</option>`);
+    }
+    sel.innerHTML = opts.join('');
+    sel.value = currentUat;
+    sel.addEventListener('change', () => { currentUat = sel.value; renderAll(); });
+  }
+
+  function getNetworks(basket, uatKey){
+    if (uatKey === '__national') return basket.national;
+    return basket.per_uat[uatKey] || {};
+  }
+
+  function ranked(networks){
+    return Object.values(networks)
+      .filter(n => n.comparable)
+      .sort((a,b) => a.cost_month - b.cost_month);
+  }
+
+  function renderHero(basket, networks){
+    const r = ranked(networks);
+    const hero = document.getElementById('cos-hero');
+    if (r.length < 2) {
+      hero.innerHTML = `<div class="kpi" style="grid-column: 1 / -1;">
+        <div class="kpi-value" style="font-size:18px; color: var(--muted)">Date insuficiente pentru această localitate.</div>
+        <div class="kpi-label">Încearcă altă localitate sau vezi datele naționale.</div></div>`;
+      return;
+    }
+    const cheap = r[0], pricey = r[r.length-1];
+    const delta = pricey.cost_month - cheap.cost_month;
+    const deltaYr = delta * 12;
+    hero.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Cel mai ieftin coș</div>
+        <div class="kpi-value cheap">${cheap.network}</div>
+        <div class="delta">${fmt(cheap.cost_month)}/lună &middot; ${fmt(cheap.cost_week)}/săpt.</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Diferență față de cel mai scump (${pricey.network})</div>
+        <div class="kpi-value pricey">+${fmt(delta)}<span style="font-size:14px; color: var(--muted)">/lună</span></div>
+        <div class="delta">≈ ${fmt(deltaYr)} pe an, cumpărând același coș la ${pricey.network} în loc de ${cheap.network}.</div>
+      </div>`;
+  }
+
+  function renderRank(networks){
+    const all = Object.values(networks).sort((a,b) => {
+      if (a.comparable !== b.comparable) return a.comparable ? -1 : 1;
+      return a.cost_month - b.cost_month;
+    });
+    const comparable = all.filter(n => n.comparable);
+    const max = comparable.length ? Math.max(...comparable.map(n => n.cost_month)) : 1;
+    const min = comparable.length ? Math.min(...comparable.map(n => n.cost_month)) : 0;
+    const wrap = document.getElementById('cos-rank');
+    let pos = 0;
+    wrap.innerHTML = all.map(n => {
+      const cls = !n.comparable ? 'incomparable' : (n.cost_month === min ? 'cheapest' : (n.cost_month === max ? 'pricey' : ''));
+      if (n.comparable) pos++;
+      const fill = n.comparable ? Math.max(2, (n.cost_month / max) * 100) : 0;
+      const posLabel = n.comparable ? `#${pos}` : '—';
+      return `<div class="cos-rank-row ${cls}">
+        <div class="pos">${posLabel}</div>
+        <div class="net">${n.network}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${fill}%"></div>
+          <div class="bar-text">${fmt(n.cost_month)}/lună</div></div>
+        <div>${fmt(n.cost_week)}/sapt.</div>
+        <div class="cov">${n.items_found}/${n.items_total}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderItems(basket){
+    // National per-item table — uses basket.national (which has items[]).
+    const itemsTable = document.getElementById('cos-items-table');
+    const networks = Object.values(basket.national).sort((a,b) => a.cost_month - b.cost_month);
+    const itemLabels = basket.items.map(i => i.label);
+    let html = '<thead><tr><th>Produs</th><th>Cant./săpt.</th>';
+    for (const n of networks) html += `<th class="px-cell">${n.network}</th>`;
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < itemLabels.length; i++) {
+      const prices = networks.map(n => n.items[i].price);
+      const valid = prices.filter(p => p != null);
+      const cheap = valid.length ? Math.min(...valid) : null;
+      html += `<tr><td>${itemLabels[i]}</td><td class="px-cell">${basket.items[i].qty_per_week}</td>`;
+      for (const p of prices) {
+        if (p == null) html += '<td class="px-cell missing">—</td>';
+        else if (p === cheap) html += `<td class="px-cell cheapest">${FMT.format(p)}</td>`;
+        else html += `<td class="px-cell">${FMT.format(p)}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody>';
+    itemsTable.innerHTML = html;
+  }
+
+  function renderAll(){
+    const meta = index.baskets.find(b => b.id === currentBasket);
+    document.getElementById('basket-desc').textContent = meta.description_ro;
+    document.getElementById('cos-asof').textContent = `Date la zi: ${index.as_of}`;
+    document.querySelectorAll('.cos-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.id === currentBasket));
+    loadBasket(currentBasket).then(basket => {
+      const networks = getNetworks(basket, currentUat);
+      renderHero(basket, networks);
+      renderRank(networks);
+      renderItems(basket);
+      // Items table is national-only; when a UAT is picked, hint that the table is national.
+      const card = document.getElementById('cos-items-card');
+      const title = card.querySelector('.card-title');
+      title.textContent = currentUat === '__national'
+        ? 'Detaliu pe produse — preț cel mai mic la fiecare rețea (date naționale)'
+        : 'Detaliu pe produse (date naționale — pentru localitatea selectată sunt afișate doar costurile totale)';
+    });
+  }
+
+  loadIndex().then(idx => {
+    index = idx;
+    currentBasket = index.baskets[0].id;
+    renderTabs();
+    renderUatSelect();
+    renderAll();
+  }).catch(err => {
+    document.querySelector('.container').insertAdjacentHTML('beforeend',
+      `<div class="card" style="background:#fee2e2; color:#991b1b">Eroare la încărcarea datelor: ${err.message}</div>`);
+  });
+})();
+</script>
+"""
+    return page_shell("Coșul de Cămară", "cos.html", body, extra_head, extra_scripts)
+
+
+def gen_inflatie() -> str:
+    """Civic CPI prototype — basket cost trend over available price dates.
+
+    Loads docs/data/cpi.json (built by build_cpi.py). Very honest about
+    shallow history; the chart skeleton fills in naturally over time.
+    """
+    extra_scripts = """
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  const COLORS = ['#2563eb','#16a34a','#f59e0b','#ef4444'];
+  const BASKET_COLORS = {camara:'#2563eb', student:'#16a34a', copt:'#f59e0b', sarbatori:'#ef4444'};
+
+  fetch('data/cpi.json', {cache:'no-cache'})
+    .then(r => r.json())
+    .then(d => {
+      // Caveat banner
+      document.getElementById('cpi-caveat').textContent = d.caveat;
+      document.getElementById('cpi-dates').textContent =
+        `${d.n_dates} zile de date: ${d.first_date} → ${d.last_date}`;
+
+      // Trend chart — cost_month per basket over dates
+      // Use short date labels
+      const labels = d.dates.map(dt => dt.slice(0,5)); // DD.MM
+
+      const datasets = d.baskets.map((b, i) => ({
+        label: b.name_ro,
+        data: b.series.map(p => p.comparable ? p.cost_month : null),
+        borderColor: COLORS[i],
+        backgroundColor: COLORS[i] + '22',
+        tension: 0.3,
+        spanGaps: false,
+        pointRadius: 4,
+      }));
+
+      new Chart(document.getElementById('cpi-chart'), {
+        type: 'line',
+        data: {labels, datasets},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: {position:'top'},
+            tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${FMT2.format(ctx.raw)} lei/lună`}},
+          },
+          scales: {
+            y: {title: {display:true, text:'lei / lună'}, beginAtZero: false},
+            x: {title: {display:true, text:'Dată'}},
+          },
+        },
+      });
+
+      // Product change table
+      const tbody = document.getElementById('cpi-changes');
+      for (const c of d.product_changes) {
+        if (c.price_first == null && c.price_last == null) continue;
+        const pct = c.change_pct;
+        const dir = pct == null ? '' : pct > 0.5 ? '▲' : pct < -0.5 ? '▼' : '→';
+        const color = pct == null ? '' : pct > 0.5 ? 'var(--danger)' : pct < -0.5 ? 'var(--success)' : 'var(--muted)';
+        tbody.insertAdjacentHTML('beforeend', `<tr>
+          <td>${esc(c.label)}</td>
+          <td class="px-cell">${c.price_first != null ? FMT2.format(c.price_first) : '—'}</td>
+          <td class="px-cell">${c.price_last  != null ? FMT2.format(c.price_last)  : '—'}</td>
+          <td class="px-cell" style="color:${color};font-weight:600">${dir} ${pct != null ? pct + '%' : '—'}</td>
+        </tr>`);
+      }
+    })
+    .catch(err => {
+      document.getElementById('cpi-chart-wrap').innerHTML =
+        `<div style="padding:30px;color:#991b1b;background:#fee2e2;border-radius:8px">Eroare: ${esc(err.message)}</div>`;
+    });
+})();
+</script>
+"""
+    body = """
+<div class="container">
+  <h1>Indice de Inflație Civică <span style="font-size:14px;background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:10px;margin-left:8px;vertical-align:middle">PROTOTIP</span></h1>
+  <p class="subtitle">Evoluția costului coșurilor de cumpărături în timp, calculată din prețurile reale de raft. Un CPI alternativ, deschis și verificabil.</p>
+
+  <div class="cos-disclaimer" id="cpi-caveat" style="background:#fef9c3;color:#78350f"></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="cpi-dates"></p>
+
+  <div class="card">
+    <div class="card-title">Cost lunar coș — evoluție zilnică</div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0">Costul <em>celui mai ieftin</em> coș național (orice rețea), per zi de colectare. Variațiile zilnice reflectă parțial acoperirea diferită a magazinelor, nu doar schimbările de preț — în timp acest semnal se stabilizează.</p>
+    <div id="cpi-chart-wrap" style="height:340px;position:relative;margin-top:12px">
+      <canvas id="cpi-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Variație preț per produs — prima zi vs ultima zi disponibilă</div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0">Comparație cel mai mic preț național între prima și ultima dată disponibilă. Cu puține date, variațiile pot reflecta schimbări de acoperire, nu neapărat modificări de preț.</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>
+          <th>Produs</th>
+          <th class="px-cell">Prima dată</th>
+          <th class="px-cell">Ultima dată</th>
+          <th class="px-cell">Variație</th>
+        </tr></thead>
+        <tbody id="cpi-changes"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Metodologie</div>
+    <p style="font-size:14px;line-height:1.6">
+      Urmărim costul total al fiecărui coș de produse stabile, folosind cel mai mic preț disponibil la orice rețea în ziua respectivă (after filtrare outlieri). Aceasta este o aproximare Laspeyres simplificată — cantitățile rămân fixe (definite în <code>config/baskets.json</code>), iar prețurile se actualizează zilnic.
+      <br><br>
+      <b>Limitare importantă:</b> cu {n} zile de date, variațiile zi-la-zi reflectă și fluctuații de acoperire (câte magazine au fost interogați azi vs ieri), nu doar modificări reale de preț. Semnalul devine robust după ~4 săptămâni de colectare consecventă. Până atunci, folosiți acest grafic ca <em>schelet</em>, nu ca indicator definitiv.
+      <br><br>
+      Detalii complete: <a href="metodologie.html">pagina de metodologie</a>.
+    </p>
+  </div>
+</div>
+"""
+    return page_shell("Indice Inflație Civică", "inflatie.html", body, extra_scripts=extra_scripts)
+
+
+def gen_povesti() -> str:
+    """Povești cu Date — auto-generated narrative cards from today's data.
+
+    Loads anomalies + basket + category data client-side and renders
+    4-6 narrative story cards. No historical trends needed — each story
+    is a snapshot insight from today's data.
+    """
+    extra_scripts = """
+<script>
+(function(){
+  const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function storyCard(icon, title, headline, detail, tag, linkHref, linkText) {
+    return `<div class="story-card">
+      <div class="story-icon">${icon}</div>
+      <div class="story-tag">${esc(tag)}</div>
+      <div class="story-title">${esc(title)}</div>
+      <div class="story-headline">${headline}</div>
+      <div class="story-detail">${esc(detail)}</div>
+      ${linkHref ? `<a class="story-link" href="${linkHref}">${esc(linkText)} →</a>` : ''}
+    </div>`;
+  }
+
+  function buildStories(anomalies, baskets, catIndex) {
+    const el = document.getElementById('stories-grid');
+    const asOf = anomalies.as_of;
+    document.getElementById('stories-asof').textContent = `Date la ${asOf}`;
+    const stories = [];
+
+    // Story 1: biggest spread today
+    const top = anomalies.items[0];
+    if (top) {
+      stories.push(storyCard('🔍',
+        'Cel mai mare decalaj de preț azi',
+        `<b>${esc(top.product)}</b>: <span style="color:var(--success)">${FMT2.format(top.cheapest.price)} lei</span> la ${esc(top.cheapest.network)} față de <span style="color:var(--danger)">${FMT2.format(top.priciest.price)} lei</span> la ${esc(top.priciest.network)}`,
+        `Diferență de ${FMT2.format(top.save_lei)} lei — de ${top.ratio}× mai scump. Același produs, aceeași zi.`,
+        'Anomalie', 'anomalii.html', 'Vezi toate anomaliile'
+      ));
+    }
+
+    // Story 2: which network is cheapest most often
+    const netTally = {};
+    for (const it of anomalies.items) {
+      const n = it.cheapest.network;
+      netTally[n] = (netTally[n] || 0) + 1;
+    }
+    const sorted = Object.entries(netTally).sort((a,b)=>b[1]-a[1]);
+    if (sorted.length >= 2) {
+      const [topNet, topCnt] = sorted[0];
+      const pct = Math.round(topCnt * 100 / anomalies.count);
+      stories.push(storyCard('🏆',
+        'Rețeaua cu cele mai mici prețuri azi',
+        `<b>${esc(topNet)}</b> este cea mai ieftină la <span style="color:var(--success);font-weight:700">${topCnt} din ${anomalies.count}</span> produse cu spread semnificativ`,
+        `${pct}% din produsele comparate azi au prețul minim la ${esc(topNet)}. Locul 2: ${esc(sorted[1][0])} (${sorted[1][1]} produse).`,
+        'Rețele', 'anomalii.html?net=' + encodeURIComponent(topNet), 'Filtrează după rețea'
+      ));
+    }
+
+    // Story 3: basket savings opportunity
+    const cam = baskets.baskets.find(b => b.id === 'camara');
+    if (cam) {
+      const cheap = cam.national_cheapest_month;
+      const pricey = cam.national_priciest_month;
+      const net = cam.national_cheapest_network;
+      const diff = pricey - cheap;
+      if (cheap && pricey) {
+        stories.push(storyCard('🛒',
+          'Coșul de cămară: cât pierzi dacă alegi greșit?',
+          `<b>+${FMT2.format(diff)} lei/lună</b> față de rețeaua ieftină`,
+          `Cel mai ieftin coș de cămară la nivel național: ${FMT2.format(cheap)} lei/lună la ${esc(net)}. Cel mai scump: ${FMT2.format(pricey)} lei/lună. Diferența anuală: ${FMT2.format(diff * 12)} lei.`,
+          'Coș', 'cos.html', 'Calculator coș'
+        ));
+      }
+    }
+
+    // Story 4: food deserts — from category index
+    // Use anomaly data to find most-expensive category
+    const catSpreads = {};
+    for (const it of anomalies.items) {
+      if (!it.category) continue;
+      if (!catSpreads[it.category]) catSpreads[it.category] = {total:0, count:0, max:0, topProd:''};
+      catSpreads[it.category].total += it.save_lei;
+      catSpreads[it.category].count += 1;
+      if (it.save_lei > catSpreads[it.category].max) {
+        catSpreads[it.category].max = it.save_lei;
+        catSpreads[it.category].topProd = it.product;
+      }
+    }
+    const topCat = Object.entries(catSpreads).sort((a,b)=>b[1].total-a[1].total)[0];
+    if (topCat) {
+      const [catName, catData] = topCat;
+      stories.push(storyCard('📦',
+        'Categoria cu cele mai mari diferențe de preț',
+        `<b>${esc(catName)}</b>: ${catData.count} produse cu spread total de <span style="color:var(--danger);font-weight:700">${FMT2.format(catData.total)} lei</span>`,
+        `Cel mai mare decalaj în această categorie: ${esc(catData.topProd)} — diferență de ${FMT2.format(catData.max)} lei între rețele.`,
+        'Categorii', 'categorii.html', 'Explorator categorii'
+      ));
+    }
+
+    // Story 5: number of products with ratio > 3x
+    const extremes = anomalies.items.filter(i => i.ratio >= 3);
+    if (extremes.length) {
+      stories.push(storyCard('⚠️',
+        'Prețuri de 3× sau mai scumpe — același produs',
+        `<b>${extremes.length} produse</b> au prețul de cel puțin <span style="color:var(--danger);font-weight:700">3× mai mare</span> într-o rețea față de alta`,
+        `Cel mai extrem: ${esc(extremes[0].product)} — ${extremes[0].ratio}×, economie de ${FMT2.format(extremes[0].save_lei)} lei. Cumpărând toate 3× produsele la rețeaua ieftină se economisesc ${FMT2.format(extremes.reduce((s,x)=>s+x.save_lei,0))} lei.`,
+        'Anomalii extreme', 'anomalii.html', 'Filtrează 3×+'
+      ));
+    }
+
+    el.innerHTML = stories.join('');
+  }
+
+  Promise.all([
+    fetch('data/anomalies_today.json', {cache:'no-cache'}).then(r=>r.json()),
+    fetch('data/baskets/index.json', {cache:'no-cache'}).then(r=>r.json()),
+    fetch('data/categories/index.json', {cache:'no-cache'}).then(r=>r.json()),
+  ]).then(([anom, baskets, cats]) => {
+    buildStories(anom, baskets, cats);
+  }).catch(err => {
+    document.getElementById('stories-grid').innerHTML =
+      `<div style="padding:24px;color:#991b1b;background:#fee2e2;border-radius:8px">Eroare: ${esc(err.message)}</div>`;
+  });
+})();
+</script>
+"""
+    extra_head = """
+<style>
+.stories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap: 18px; }
+.story-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+              padding: 20px; display: flex; flex-direction: column; gap: 8px;
+              transition: box-shadow .15s; }
+.story-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.09); }
+.story-icon { font-size: 28px; line-height: 1; }
+.story-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+             color: var(--primary); font-weight: 600; }
+.story-title { font-size: 16px; font-weight: 700; line-height: 1.3; }
+.story-headline { font-size: 14px; line-height: 1.5; }
+.story-detail { font-size: 13px; color: var(--muted); line-height: 1.5; flex: 1; }
+.story-link { font-size: 13px; color: var(--primary); text-decoration: none; font-weight: 600;
+              margin-top: 4px; }
+.story-link:hover { text-decoration: underline; }
+@media (max-width: 640px) { .stories-grid { grid-template-columns: 1fr; } }
+</style>
+"""
+    body = """
+<div class="container">
+  <h1>Povești cu Date</h1>
+  <p class="subtitle">Cele mai importante insights din datele de azi — generate automat. Actualizate zilnic.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="stories-asof"></p>
+
+  <div class="stories-grid" id="stories-grid">
+    <div style="padding:24px;color:var(--muted)">Se încarcă...</div>
+  </div>
+</div>
+"""
+    return page_shell("Povești cu Date", "povesti.html", body, extra_head, extra_scripts)
+
+
+def gen_metodologie(summary: dict, stats: dict) -> str:
+    """Trust & Methodology — honest account of the data, its gaps, and how we compute things."""
+
+    def _n(key):
+        v = summary.get(key, stats.get(key, "—"))
+        return f"{v:,}" if isinstance(v, int) else str(v)
+
+    body = f"""
+<div class="container">
+  <h1>Metodologie & Transparență</h1>
+  <p class="subtitle">Cum funcționează acest site, de unde vin datele, ce știm că lipsește și cum calculăm fiecare indicator.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Acesta <b>nu este un proiect oficial guvernamental</b>. Datele provin din API-ul public <a href="https://monitorulpreturilor.info" target="_blank">monitorulpreturilor.info</a>, operat de Autoritatea Națională pentru Protecția Consumatorilor (ANPC). Codul sursă și datele brute sunt publice; metodologia e complet deschisă.
+  </div>
+
+  <!-- ── Live snapshot ── -->
+  <div class="card">
+    <div class="card-title">Starea datelor — snapshot curent</div>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap:14px; margin-top:12px">
+      {''.join(f'<div class="kpi" style="padding:16px"><div class="kpi-label">{label}</div><div class="kpi-value" style="font-size:22px">{val}</div></div>' for label, val in [
+        ("Produse urmărite", _n("products")),
+        ("Magazine", _n("stores")),
+        ("Rețele retail", _n("retail_networks")),
+        ("Localități cu magazine", str(stats["uats_with_stores"])),
+        ("Înregistrări prețuri", _n("prices")),
+        ("Date distincte retail", str(stats["price_dates"])),
+        ("Ultima actualizare retail", stats["latest_retail"]),
+        ("Stații carburanți", _n("gas_stations")),
+        ("Date distincte carburanți", str(stats["gas_dates"])),
+        ("Ultima actualizare carburanți", stats["latest_gas"]),
+      ])}
+    </div>
+  </div>
+
+  <!-- ── Data source ── -->
+  <div class="card">
+    <div class="card-title">Sursa datelor</div>
+    <p style="margin:12px 0 8px">API-ul <a href="https://monitorulpreturilor.info" target="_blank">monitorulpreturilor.info</a> (ANPC) expune prețuri de raft raportate de retaileri prin sistemul național de monitorizare. Accesăm două endpoint-uri:</p>
+    <table class="table" style="margin-top:8px">
+      <thead><tr><th>Endpoint</th><th>Ce returnează</th><th>Limite</th></tr></thead>
+      <tbody>
+        <tr><td><code>GetStoresForProductsByLatLon</code></td><td>Prețuri retail per produs × magazin, în jurul unui punct geografic</td><td>Buffer max 5.000 m; max 50 magazine per cerere</td></tr>
+        <tr><td><code>GetGasItemsByUat</code></td><td>Prețuri carburanți per UAT × tip combustibil</td><td>Un produs per cerere; API returnează 500 dacă nu există date</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px; font-size:13px; color:var(--muted)">Colectăm retail zilnic (~04:00 UTC). Carburanții se actualizează zilnic per UAT. Datele de referință (rețele, UAT-uri, produse) se reîmprospătează săptămânal.</p>
+  </div>
+
+  <!-- ── Known gaps ── -->
+  <div class="card">
+    <div class="card-title">Limitări cunoscute</div>
+    <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px">
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Produse proaspete lipsesc.</b> API-ul urmărește doar produse stabile (făină, ulei, paste, cafea, conserve etc.). Carne, ouă, lactate, legume, fructe <b>nu sunt acoperite</b>. Coșurile de pe site reflectă explicit acest lucru (etichetate "cămară").
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>{stats["stores_no_network"]:,} magazine fără rețea identificată</b> ({stats["stores_no_network"] * 100 // summary.get("stores", 1)}% din total). Aceste magazine apar în hartă și în statistici de acoperire, dar <b>nu sunt incluse în comparații pe rețea</b> (nu știm la ce rețea aparțin).
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>{stats["products_no_price_today"]:,} produse fără preț azi</b> (din {_n("products")} urmărite). Acoperirea nu e 100% — depinde de ce magazine au fost interogați azi și dacă produsul e în stoc.
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Istoric retail scurt — {stats["price_dates"]} zile distincte.</b> Indicii de inflație și tendințele pe termen lung vor deveni semnificative odată cu acumularea de date. Carburanții au {stats["gas_dates"]} zile de istoric.
+      </div>
+      <div style="padding:12px; background:#fef9c3; border-radius:8px; font-size:13px">
+        <b>Limita API de 50 magazine per cerere</b> înseamnă că nu toate magazinele dintr-o localitate mare (ex. București) sunt acoperite zilnic. Folosim un sistem de clustering spatial pentru a maximiza diversitatea.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Methodology ── -->
+  <div class="card">
+    <div class="card-title">Cum calculăm indicatorii</div>
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:8px; font-size:14px">
+
+      <div>
+        <b>Coșul de cămară (cos.html)</b>
+        <p style="margin-top:6px">Pentru fiecare (coș × localitate × rețea): alegem cel mai ieftin produs substitut disponibil din lista de alternative, înmulțim cu cantitatea săptămânală, sumăm și convertim lunar (× 52/12 = 4,333 săptămâni/lună). O rețea e <em>comparabilă</em> dacă are prețuri pentru cel puțin 50% din articolele coșului. Prețuri evident eronate filtrate: excludem orice preț sub 30% sau peste 300% din mediana cross-rețea pentru acel produs.</p>
+      </div>
+
+      <div>
+        <b>Anomalii de preț (anomalii.html)</b>
+        <p style="margin-top:6px">Pentru fiecare produs cu prețuri în ≥2 rețele azi: calculăm minimul per rețea, aplicăm același filtru de outlieri (0,30–3,0× mediană), calculăm ratio = max/min. Afișăm produsele cu ratio ≥ 1,5 (cel puțin 50% mai scump la rețeaua cea mai scumpă față de cea mai ieftină).</p>
+      </div>
+
+      <div>
+        <b>Exploratorul de categorii (categorii.html)</b>
+        <p style="margin-top:6px">Același calcul de spread ca anomaliile, grupat pe categoria de produs (nivel 2 din arborele ANPC). Liderul de rețea = câte produse din categorie sunt cel mai ieftin la fiecare rețea.</p>
+      </div>
+
+      <div>
+        <b>Harta costurilor (harta.html)</b>
+        <p style="margin-top:6px">Poligoanele UAT provin din <code>config/geo/ro-uats.topojson</code> (date ANCPI, 3.175 unități administrativ-teritoriale, join pe codul SIRUTA). Costul coșului per UAT = cel mai ieftin coș comparabil la orice rețea prezentă în UAT. Localitățile fără date locale afișează estimarea națională.</p>
+      </div>
+
+      <div>
+        <b>Indexul de prețuri pe rețea (price-index.html)</b>
+        <p style="margin-top:6px">Pentru produse prezente în ≥3 rețele: calculăm prețul mediu per rețea, împărțit la prețul minim cross-rețea × 100. Index = 100 înseamnă că rețeaua e cea mai ieftină la acel produs; 120 = 20% mai scump față de cel mai ieftin.</p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Code & license ── -->
+  <div class="card">
+    <div class="card-title">Cod sursă & licență</div>
+    <p style="margin:12px 0 8px; font-size:14px">Codul este open-source pe GitHub. Datele exportate sunt disponibile pe pagina <a href="date-deschise.html">Date Deschise</a> sub licență <b>CC BY 4.0</b> — poți redistribui și folosi cu atribuire.</p>
+    <p style="font-size:13px; color:var(--muted)">Jurnalul de activitate complet: <a href="pipeline.html">Pipeline & Activitate</a>. Probleme cunoscute și planuri viitoare: <a href="pipeline.html#backlog">Backlog</a>.</p>
+  </div>
+
+</div>
+"""
+    return page_shell("Metodologie & Transparență", "metodologie.html", body)
+
+
+def gen_date_deschise(summary: dict, stats: dict) -> str:
+    """Open Data Hub — downloadable datasets with schema and freshness."""
+    import os
+
+    def _size(path):
+        try:
+            b = os.path.getsize(path)
+            return f"{b/1024:.0f} KB" if b < 1_000_000 else f"{b/1_000_000:.1f} MB"
+        except OSError:
+            return "—"
+
+    docs = "docs"
+    datasets = [
+        {
+            "title": "Anomalii de preț — azi",
+            "file": "data/anomalies_today.json",
+            "format": "JSON",
+            "desc": "Produse cu ratio preț-max/preț-min ≥ 1,5 între rețele, pentru data curentă. Câmpuri: product_id, product, category, brand, unit, cheapest{network,price}, priciest{network,price}, ratio, save_lei, save_pct, by_network[].",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Coșuri de cumpărături — index",
+            "file": "data/baskets/index.json",
+            "format": "JSON",
+            "desc": "Metadata pentru cele 4 coșuri curate (cămară, student, copt, sărbători): cost minim/maxim lunar național, rețea ieftină, nr. UAT-uri acoperite.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Coșul de Cămară — detaliu",
+            "file": "data/baskets/camara.json",
+            "format": "JSON",
+            "desc": "Cost săptămânal/lunar per rețea, național și per UAT. Include drill-down per produs cu prețul ales și produsul substitut.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Harta UAT-urilor — GeoJSON",
+            "file": "data/uats.geojson",
+            "format": "GeoJSON",
+            "desc": "Poligoane UAT pentru localitățile cu magazine în baza de date. Proprietăți: siruta, name, n_stores, n_networks, basket_min_month, basket_max_month, basket_cheapest_net.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Categorii — index",
+            "file": "data/categories/index.json",
+            "format": "JSON",
+            "desc": "Lista categoriilor de produse cu statistici de spread: nr. produse comparabile, cel mai mare ratio, economii totale posibile, top-3 rețele ieftine.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Variabilitate prețuri pe rețea",
+            "file": "data/cross_network_spread.csv",
+            "format": "CSV",
+            "desc": "Per produs: preț minim/maxim pe rețea, spread (lei), ratio. Toate prețurile istorice (nu doar azi). Coloane: product_id, product, min_net_price, max_net_price, networks, spread, ratio.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Index prețuri pe rețea",
+            "file": "data/price_variability.csv",
+            "format": "CSV",
+            "desc": "Variabilitate medie a prețului per produs × rețea. Baza pentru graficul Index Prețuri.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Magazine per rețea",
+            "file": "data/stores_per_network.csv",
+            "format": "CSV",
+            "desc": "Câte magazine are fiecare rețea în baza de date, cu nr. de UAT-uri acoperite.",
+            "updated": stats["latest_retail"],
+        },
+        {
+            "title": "Candidați marcă privată",
+            "file": "data/private_labels.csv",
+            "format": "CSV",
+            "desc": "Produse identificate ca potențial marcă privată (vândute exclusiv sau majoritar la o singură rețea). Coloane: product, network, stores.",
+            "updated": stats["latest_retail"],
+        },
+    ]
+
+    cards = []
+    for d in datasets:
+        full_path = os.path.join(docs, d["file"])
+        size = _size(full_path)
+        href = d["file"]
+        cards.append(f"""
+        <div class="card" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start">
+          <div>
+            <div style="font-weight:700; font-size:15px; margin-bottom:4px">{d["title"]}</div>
+            <div style="font-size:12px; margin-bottom:8px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:6px">{d["format"]}</span>
+              <span style="color:var(--muted)">{size} &middot; Actualizat: {d["updated"]}</span>
+            </div>
+            <div style="font-size:13px; color:var(--muted); line-height:1.5">{d["desc"]}</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap">
+            <a href="{href}" download style="display:inline-block;padding:8px 16px;background:var(--primary);color:#fff;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none">↓ Descarcă</a>
+          </div>
+        </div>""")
+
+    n_retail = f"{summary.get('prices', 0):,}"
+    n_gas = f"{summary.get('gas_prices', 0):,}"
+
+    body = f"""
+<div class="container">
+  <h1>Date Deschise</h1>
+  <p class="subtitle">Toate seturile de date generate de acest proiect, disponibile pentru descărcare liberă. Licență CC BY 4.0 — redistribuie cu atribuire.</p>
+
+  <div class="cos-disclaimer">
+    <b>Licență:</b> <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank">Creative Commons Attribution 4.0 International (CC BY 4.0)</a>. Poți folosi, redistribui și adapta datele cu condiția să menționezi sursa: <em>monitorulpreturilor.info (ANPC) via monitorul-preturilor Civic Dashboard</em>.
+  </div>
+
+  <div class="anom-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+    <div class="kpi">
+      <div class="kpi-label">Înregistrări prețuri retail</div>
+      <div class="kpi-value">{n_retail}</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Ultima actualizare: {stats["latest_retail"]}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Înregistrări prețuri carburanți</div>
+      <div class="kpi-value">{n_gas}</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Ultima actualizare: {stats["latest_gas"]}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Seturi de date disponibile</div>
+      <div class="kpi-value">{len(datasets)}</div>
+      <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Actualizate zilnic automat</div>
+    </div>
+  </div>
+
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+    Notă: baza de date SQLite completă (<code>prices.db</code>, ~{_size("data/prices.db")}) nu e distribuită direct din cauza dimensiunii, dar codul de colectare e public și poate fi rulat local. Datele de mai jos acoperă toți indicatorii calculați de site.
+  </p>
+
+  {"".join(cards)}
+
+</div>
+"""
+    return page_shell("Date Deschise", "date-deschise.html", body)
+
+
+def gen_harta() -> str:
+    """Harta Costuri — choropleth map of Romania UATs.
+
+    Uses MapLibre GL JS + docs/data/uats.geojson (built by build_uat_geojson.py).
+    Two layers: number of retail networks (food-desert detection) and cheapest
+    monthly basket cost (Coșul de Cămară). Click a UAT polygon for details.
+    """
+    extra_head = """
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+#map-wrap { position: relative; height: 580px; border-radius: 10px; overflow: hidden;
+            border: 1px solid var(--border); margin-bottom: 16px; }
+#map { width: 100%; height: 100%; }
+.map-controls { position: absolute; top: 12px; left: 12px; z-index: 10;
+                background: var(--card); border-radius: 8px; padding: 10px 14px;
+                box-shadow: 0 2px 12px rgba(0,0,0,.15); font-size: 13px; }
+.map-controls label { display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+                      cursor: pointer; font-weight: 500; }
+.map-controls label:last-child { margin-bottom: 0; }
+.map-controls input[type=radio] { accent-color: var(--primary); }
+#map-panel { position: absolute; bottom: 12px; right: 12px; z-index: 10;
+             background: var(--card); border-radius: 10px; padding: 14px 16px;
+             box-shadow: 0 2px 16px rgba(0,0,0,.15); width: 240px;
+             font-size: 13px; display: none; }
+#map-panel .panel-name { font-weight: 700; font-size: 14px; margin-bottom: 8px;
+                          border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+#map-panel .panel-row { display: flex; justify-content: space-between; padding: 3px 0; }
+#map-panel .panel-val { font-weight: 600; }
+#map-panel .close-btn { position: absolute; top: 8px; right: 10px; cursor: pointer;
+                         color: var(--muted); font-size: 16px; line-height: 1; }
+#map-legend { position: absolute; bottom: 12px; left: 12px; z-index: 10;
+              background: var(--card); border-radius: 8px; padding: 10px 14px;
+              box-shadow: 0 2px 12px rgba(0,0,0,.15); font-size: 12px; }
+#map-legend .leg-title { font-weight: 600; margin-bottom: 6px; }
+.leg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.leg-swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; }
+.harta-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+@media (max-width: 640px) {
+  #map-wrap { height: 420px; }
+  .harta-summary { grid-template-columns: 1fr; }
+  #map-panel { width: 200px; font-size: 12px; }
+  .map-controls { font-size: 12px; padding: 8px 10px; }
+}
+</style>
+"""
+    body = """
+<div class="container">
+  <h1>Harta Costurilor</h1>
+  <p class="subtitle">Unde în România există concurență între rețele și unde un singur retailer domină? Cât costă coșul de cămară pe localitate?</p>
+
+  <div class="harta-summary" id="harta-summary"></div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+
+    <div class="map-controls">
+      <label><input type="radio" name="layer" value="networks" checked> Rețele prezente</label>
+      <label><input type="radio" name="layer" value="basket"> Coș lunar (lei)</label>
+      <label><input type="radio" name="layer" value="stores"> Nr. magazine</label>
+    </div>
+
+    <div id="map-legend"></div>
+
+    <div id="map-panel">
+      <div class="close-btn" id="panel-close">×</div>
+      <div class="panel-name" id="panel-name"></div>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+
+  <div class="cos-disclaimer" style="margin-top:0">
+    <b>Notă:</b> Coșul de cămară (Profi/Kaufland/etc.) se referă la produse stabile urmărite de API. Localitățile fără date de coș afișează estimarea națională. Rețele = retaileri cu magazine identificate; magazinele fără rețea identificată nu sunt numărate.
+  </div>
+</div>
+"""
+    extra_scripts = """
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:0, maximumFractionDigits:0});
+  const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  // Layer configs: colors for 0..N steps
+  const LAYERS = {
+    networks: {
+      title: 'Rețele prezente',
+      prop: 'n_networks',
+      steps: [0, 1, 2, 3, 4, 5],
+      colors: ['#e5e7eb','#fca5a5','#fb923c','#facc15','#86efac','#22c55e'],
+      labels: ['Neidentificate','1 rețea','2','3','4','5+'],
+    },
+    basket: {
+      title: 'Coș cămară / lună (lei)',
+      prop: 'basket_min_month',
+      steps: [0, 200, 260, 300, 330, 360],
+      colors: ['#e5e7eb','#22c55e','#86efac','#facc15','#fb923c','#ef4444'],
+      labels: ['Fără date','< 200','200–260','260–300','300–330','> 330'],
+    },
+    stores: {
+      title: 'Număr magazine',
+      prop: 'n_stores',
+      steps: [0, 1, 3, 10, 30, 100],
+      colors: ['#e5e7eb','#bfdbfe','#93c5fd','#3b82f6','#1d4ed8','#1e3a8a'],
+      labels: ['0','1–2','3–9','10–29','30–99','100+'],
+    },
+  };
+
+  function colorExpr(layer) {
+    const {prop, steps, colors} = LAYERS[layer];
+    // MapLibre step expression: ['step', ['get', prop], default, v1, c1, v2, c2, ...]
+    const expr = ['step', ['coalesce', ['get', prop], 0], colors[0]];
+    for (let i = 1; i < steps.length; i++) {
+      expr.push(steps[i], colors[i]);
+    }
+    return expr;
+  }
+
+  function renderLegend(layer) {
+    const cfg = LAYERS[layer];
+    const el = document.getElementById('map-legend');
+    el.innerHTML = `<div class="leg-title">${cfg.title}</div>` +
+      cfg.colors.map((c, i) =>
+        `<div class="leg-row"><div class="leg-swatch" style="background:${c}"></div>${cfg.labels[i]}</div>`
+      ).join('');
+  }
+
+  function renderSummary(features) {
+    const props = features.map(f => f.properties);
+    const withNets = props.filter(p => p.n_networks >= 1).length;
+    const deserts = props.filter(p => p.n_networks === 1).length;
+    const basketProps = props.filter(p => p.basket_min_month && p.basket_min_month > 0);
+    const cheapest = basketProps.length ? Math.min(...basketProps.map(p => p.basket_min_month)) : null;
+    const cheapestUat = cheapest ? basketProps.find(p => p.basket_min_month === cheapest) : null;
+    document.getElementById('harta-summary').innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Localități cu rețele identificate</div>
+        <div class="kpi-value">${withNets}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">din ${props.length} cu magazine</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Localități cu o singură rețea</div>
+        <div class="kpi-value" style="color:var(--danger)">${deserts}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">fără concurență locală</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Coș mai ieftin — localitate</div>
+        <div class="kpi-value" style="color:var(--success)">${cheapest ? FMT2.format(cheapest) + ' lei' : '—'}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">${cheapestUat ? cheapestUat.name : ''}</div>
+      </div>`;
+  }
+
+  function showPanel(props) {
+    const p = document.getElementById('map-panel');
+    document.getElementById('panel-name').textContent = props.name;
+    document.getElementById('panel-body').innerHTML = `
+      <div class="panel-row"><span>Rețele</span><span class="panel-val">${props.n_networks || '—'}</span></div>
+      <div class="panel-row"><span>Magazine</span><span class="panel-val">${props.n_stores}</span></div>
+      <div class="panel-row"><span>Coș minim/lună</span><span class="panel-val">${props.basket_min_month ? FMT2.format(props.basket_min_month) + ' lei' : '—'}</span></div>
+      <div class="panel-row"><span>Coș maxim/lună</span><span class="panel-val">${props.basket_max_month ? FMT2.format(props.basket_max_month) + ' lei' : '—'}</span></div>
+      <div class="panel-row"><span>Rețea ieftină</span><span class="panel-val">${props.basket_cheapest_net || '—'}</span></div>`;
+    p.style.display = 'block';
+  }
+
+  fetch('data/uats.geojson', {cache:'no-cache'})
+    .then(r => r.json())
+    .then(geojson => {
+      renderSummary(geojson.features);
+
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+        center: [25.0, 45.8],
+        zoom: 6.2,
+        minZoom: 5,
+        maxZoom: 14,
+      });
+
+      map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      map.on('load', () => {
+        map.addSource('uats', {type: 'geojson', data: geojson});
+
+        map.addLayer({
+          id: 'uats-fill',
+          type: 'fill',
+          source: 'uats',
+          paint: {
+            'fill-color': colorExpr('networks'),
+            'fill-opacity': 0.75,
+          },
+        });
+
+        map.addLayer({
+          id: 'uats-outline',
+          type: 'line',
+          source: 'uats',
+          paint: {
+            'line-color': '#94a3b8',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 10, 1],
+            'line-opacity': 0.6,
+          },
+        });
+
+        map.addLayer({
+          id: 'uats-hover',
+          type: 'fill',
+          source: 'uats',
+          paint: {
+            'fill-color': '#0ea5e9',
+            'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.3, 0],
+          },
+        });
+
+        renderLegend('networks');
+
+        // Layer toggle
+        document.querySelectorAll('input[name=layer]').forEach(radio => {
+          radio.addEventListener('change', () => {
+            const layer = radio.value;
+            map.setPaintProperty('uats-fill', 'fill-color', colorExpr(layer));
+            renderLegend(layer);
+          });
+        });
+
+        // Hover highlight
+        let hoveredId = null;
+        map.on('mousemove', 'uats-fill', e => {
+          if (e.features.length === 0) return;
+          if (hoveredId !== null) map.setFeatureState({source:'uats', id: hoveredId}, {hover: false});
+          hoveredId = e.features[0].id;
+          map.setFeatureState({source:'uats', id: hoveredId}, {hover: true});
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'uats-fill', () => {
+          if (hoveredId !== null) map.setFeatureState({source:'uats', id: hoveredId}, {hover: false});
+          hoveredId = null;
+          map.getCanvas().style.cursor = '';
+        });
+
+        // Click → panel
+        map.on('click', 'uats-fill', e => {
+          if (e.features.length) showPanel(e.features[0].properties);
+        });
+
+        document.getElementById('panel-close').addEventListener('click', () => {
+          document.getElementById('map-panel').style.display = 'none';
+        });
+      });
+    })
+    .catch(err => {
+      document.getElementById('map-wrap').innerHTML =
+        `<div style="padding:40px;color:#991b1b;background:#fee2e2;border-radius:10px">Eroare la încărcarea hărții: ${err.message}</div>`;
+    });
+})();
+</script>
+"""
+    return page_shell("Harta Costurilor", "harta.html", body, extra_head, extra_scripts)
+
+
+def gen_categorii() -> str:
+    """Category Explorer — per-category product spread ranking.
+
+    Loads docs/data/categories/index.json then per-category JSON on demand.
+    Each product is ranked by cross-network price ratio so users can instantly
+    see where savings are largest within a product type.
+    """
+    extra_head = """
+<style>
+.cat-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+.cat-tab { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+           background: var(--card); cursor: pointer; font-size: 13.5px; font-weight: 500;
+           color: var(--text); transition: all .15s; }
+.cat-tab:hover { border-color: var(--primary); color: var(--primary); }
+.cat-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.cat-tab .badge { font-size: 11px; opacity: .75; margin-left: 5px; }
+.cat-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+.cat-leader { display: flex; flex-direction: column; gap: 6px; }
+.cat-leader-row { display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 10px; font-size: 13px; }
+.cat-leader-row .net { font-weight: 600; }
+.cat-leader-row .bar-wrap { background: #f1f5f9; border-radius: 4px; height: 18px; position: relative; overflow: hidden; }
+.cat-leader-row .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--primary-light); border-radius: 4px; }
+.cat-leader-row .cnt { color: var(--muted); text-align: right; }
+.cat-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+.cat-controls .ctl { display: flex; flex-direction: column; }
+.cat-controls label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.cat-controls input, .cat-controls select { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); font-size: 14px; }
+.cat-controls .meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.cat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.cat-card .product { font-weight: 600; font-size: 14px; margin-bottom: 6px; line-height: 1.3; }
+.cat-card .flow { font-size: 13px; margin-bottom: 6px; }
+.cat-card .flow .net-cheap { color: var(--success); font-weight: 600; }
+.cat-card .flow .net-pricey { color: var(--danger); font-weight: 600; }
+.cat-card .flow .arrow { color: var(--muted); margin: 0 5px; }
+.cat-card .stats { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cat-card .ratio-badge { display: inline-block; background: var(--primary-light); color: var(--primary); padding: 2px 9px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.cat-card .save-badge { color: var(--success); font-size: 13px; font-weight: 600; }
+.cat-card details { margin-top: 8px; }
+.cat-card details summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
+.cat-card details summary::before { content: "▸ "; }
+.cat-card details[open] summary::before { content: "▾ "; }
+.cat-card .by-net { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.cat-card .by-net .chip { font-size: 11.5px; padding: 2px 8px; border-radius: 10px; background: #f1f5f9; }
+.cat-card .by-net .chip.cheap { background: #dcfce7; color: #166534; font-weight: 600; }
+.cat-card .by-net .chip.pricey { background: #fee2e2; color: #991b1b; font-weight: 600; }
+.cat-card a.compare-link { font-size: 12px; color: var(--primary); text-decoration: none; margin-left: 6px; }
+.cat-card a.compare-link:hover { text-decoration: underline; }
+.cat-pager { display: flex; justify-content: center; margin-top: 20px; }
+.cat-pager button { padding: 8px 18px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); cursor: pointer; font-size: 13.5px; }
+.cat-pager button:hover { border-color: var(--primary); color: var(--primary); }
+@media (max-width: 640px) {
+  .cat-summary { grid-template-columns: 1fr; }
+  .cat-grid { grid-template-columns: 1fr; }
+  .cat-controls .ctl { width: 100%; }
+  .cat-controls input, .cat-controls select { width: 100%; box-sizing: border-box; }
+}
+</style>
+"""
+    body = """
+<div class="container">
+  <h1>Explorator Categorii</h1>
+  <p class="subtitle">Produse din aceeași categorie, prețuri diferite în funcție de rețea. Alege categoria, sortează după economii.</p>
+
+  <div class="cat-tabs" id="cat-tabs"></div>
+
+  <div class="cat-summary" id="cat-summary"></div>
+
+  <div class="card">
+    <div class="card-title">Rețeaua cea mai ieftină — câte produse din această categorie</div>
+    <div class="cat-leader" id="cat-leader"></div>
+  </div>
+
+  <div class="card">
+    <div class="cat-controls">
+      <div class="ctl">
+        <label for="cat-search">Caută produs</label>
+        <input id="cat-search" type="search" placeholder="ex. ulei, cafea..." autocomplete="off">
+      </div>
+      <div class="ctl">
+        <label for="cat-sort">Sortare</label>
+        <select id="cat-sort">
+          <option value="ratio">Diferență maximă (×)</option>
+          <option value="save_lei">Economii (lei)</option>
+          <option value="save_pct">Economii (%)</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label for="cat-min-net">Rețele min.</label>
+        <select id="cat-min-net">
+          <option value="2">2+</option>
+          <option value="3">3+</option>
+          <option value="4">4+</option>
+          <option value="5">5+</option>
+        </select>
+      </div>
+      <div class="meta" id="cat-meta"></div>
+    </div>
+    <div class="cat-grid" id="cat-grid"></div>
+  </div>
+  <div class="cat-pager"><button id="cat-more" style="display:none">Arată mai multe</button></div>
+</div>
+"""
+    extra_scripts = """
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const PAGE = 24;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  let INDEX = null;
+  let catCache = {};
+  let current = null;
+  let filtered = [];
+  let shown = 0;
+
+  async function loadIndex() {
+    const r = await fetch('data/categories/index.json', {cache:'no-cache'});
+    return r.json();
+  }
+  async function loadCat(id) {
+    if (catCache[id]) return catCache[id];
+    const r = await fetch(`data/categories/${id}.json`, {cache:'no-cache'});
+    catCache[id] = await r.json();
+    return catCache[id];
+  }
+
+  function renderTabs() {
+    const el = document.getElementById('cat-tabs');
+    el.innerHTML = INDEX.categories.map(c =>
+      `<button class="cat-tab ${c.id === current ? 'active' : ''}" data-id="${c.id}">
+        ${esc(c.name)}<span class="badge">${c.products_with_spread}</span>
+      </button>`
+    ).join('');
+    el.querySelectorAll('.cat-tab').forEach(btn => {
+      btn.addEventListener('click', () => { current = +btn.dataset.id; renderAll(); });
+    });
+  }
+
+  function renderSummary(cat) {
+    const el = document.getElementById('cat-summary');
+    const topItem = cat.items[0];
+    const totalSave = cat.items.reduce((s, x) => s + x.save_lei, 0);
+    el.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Produse comparabile</div>
+        <div class="kpi-value">${cat.products_with_spread}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">din ${cat.products_total} urmărite</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Cea mai mare diferență</div>
+        <div class="kpi-value">${topItem ? topItem.ratio + '×' : '—'}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">${topItem ? esc(topItem.product) : ''}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Economii totale posibile</div>
+        <div class="kpi-value" style="color:var(--success)">${FMT.format(totalSave)} lei</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">suma diferențelor pentru toate produsele</div>
+      </div>`;
+  }
+
+  function renderLeader(cat) {
+    const el = document.getElementById('cat-leader');
+    if (!cat.leaderboard.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">Insuficiente date.</p>'; return; }
+    const max = cat.leaderboard[0].cheapest_count;
+    el.innerHTML = cat.leaderboard.map(({network, cheapest_count}) => `
+      <div class="cat-leader-row">
+        <div class="net">${esc(network)}</div>
+        <div class="bar-wrap">
+          <div class="bar-fill" style="width:${Math.max(2, cheapest_count/max*100)}%"></div>
+        </div>
+        <div class="cnt">${cheapest_count}</div>
+      </div>`).join('');
+  }
+
+  function applyFilters(cat) {
+    const q = document.getElementById('cat-search').value.trim().toLowerCase();
+    const sort = document.getElementById('cat-sort').value;
+    const minNet = +document.getElementById('cat-min-net').value;
+    filtered = cat.items.filter(it => {
+      if (it.n_networks < minNet) return false;
+      if (q && it.product.toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    filtered.sort((a, b) => b[sort] - a[sort]);
+    shown = 0;
+    document.getElementById('cat-grid').innerHTML = '';
+    renderMore();
+    document.getElementById('cat-meta').textContent = `${filtered.length} produs(e)`;
+  }
+
+  function renderCard(it) {
+    const chips = it.by_network.map(([n, p]) => {
+      let cls = n === it.cheapest.network ? 'cheap' : (n === it.priciest.network ? 'pricey' : '');
+      return `<span class="chip ${cls}">${esc(n)} ${FMT.format(p)}</span>`;
+    }).join('');
+    return `<div class="cat-card">
+      <div class="product">${esc(it.product)}
+        <a class="compare-link" href="compare.html?pid=${it.product_id}" title="Comparare">↗</a>
+      </div>
+      <div class="flow">
+        <span class="net-cheap">${esc(it.cheapest.network)} ${FMT.format(it.cheapest.price)} lei</span>
+        <span class="arrow">→</span>
+        <span class="net-pricey">${esc(it.priciest.network)} ${FMT.format(it.priciest.price)} lei</span>
+      </div>
+      <div class="stats">
+        <span class="ratio-badge">${it.ratio}×</span>
+        <span class="save-badge">+${FMT.format(it.save_lei)} lei</span>
+        <span style="font-size:12px;color:var(--muted)">${it.n_networks} rețele</span>
+      </div>
+      <details>
+        <summary>Toate rețelele (${it.by_network.length})</summary>
+        <div class="by-net">${chips}</div>
+      </details>
+    </div>`;
+  }
+
+  function renderMore() {
+    const next = filtered.slice(shown, shown + PAGE);
+    const grid = document.getElementById('cat-grid');
+    if (shown === 0 && next.length === 0) {
+      grid.innerHTML = '<div style="padding:24px;color:var(--muted);text-align:center">Niciun produs găsit.</div>';
+      document.getElementById('cat-more').style.display = 'none';
+      return;
+    }
+    grid.insertAdjacentHTML('beforeend', next.map(renderCard).join(''));
+    shown += next.length;
+    document.getElementById('cat-more').style.display = shown < filtered.length ? '' : 'none';
+  }
+
+  function renderAll() {
+    // Update tab active state
+    document.querySelectorAll('.cat-tab').forEach(b =>
+      b.classList.toggle('active', +b.dataset.id === current));
+    loadCat(current).then(cat => {
+      renderSummary(cat);
+      renderLeader(cat);
+      applyFilters(cat);
+    });
+  }
+
+  ['cat-search','cat-sort','cat-min-net'].forEach(id => {
+    const ev = id === 'cat-search' ? 'input' : 'change';
+    document.getElementById(id).addEventListener(ev, () => {
+      if (!current) return;
+      loadCat(current).then(cat => applyFilters(cat));
+    });
+  });
+  document.getElementById('cat-more').addEventListener('click', renderMore);
+
+  loadIndex()
+    .then(idx => {
+      INDEX = idx;
+      current = INDEX.categories[0]?.id;
+      renderTabs();
+      renderAll();
+    })
+    .catch(err => {
+      document.querySelector('.container').insertAdjacentHTML('beforeend',
+        `<div class="card" style="background:#fee2e2;color:#991b1b">Eroare: ${esc(err.message)}</div>`);
+    });
+})();
+</script>
+"""
+    return page_shell("Explorator Categorii", "categorii.html", body, extra_head, extra_scripts)
+
+
+def gen_anomalii() -> str:
+    """Anomalii — daily feed of products whose price varies sharply across networks.
+
+    Loads `docs/data/anomalies_today.json` (built by build_anomalies.py).
+    Pure client-side filtering and rendering; no server data passed in.
+    """
+    extra_head = """
+<style>
+.anom-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+.anom-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+.anom-controls .ctl { display: flex; flex-direction: column; }
+.anom-controls label { font-size: 11.5px; color: var(--muted);
+                        text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.anom-controls input, .anom-controls select {
+  padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--card); font-size: 14px; min-width: 180px;
+}
+.anom-controls .meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.anom-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.anom-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+              padding: 16px 18px; display: grid; grid-template-columns: 1fr 220px; gap: 18px;
+              align-items: center; transition: box-shadow .15s, transform .15s; }
+.anom-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.08); }
+.anom-card .product { font-weight: 600; font-size: 15px; line-height: 1.3; margin-bottom: 4px; }
+.anom-card .meta { font-size: 12px; color: var(--muted); }
+.anom-card .meta .pill { display: inline-block; background: #f1f5f9; padding: 2px 8px;
+                          border-radius: 10px; margin-right: 4px; }
+.anom-card .flow { margin-top: 10px; font-size: 13.5px; }
+.anom-card .flow .net-cheap { color: var(--success); font-weight: 600; }
+.anom-card .flow .net-pricey { color: var(--danger); font-weight: 600; }
+.anom-card .flow .arrow { color: var(--muted); margin: 0 6px; }
+.anom-savings { text-align: right; }
+.anom-savings .save-lei { font-size: 22px; font-weight: 700; color: var(--success); }
+.anom-savings .save-pct { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.anom-savings .ratio { display: inline-block; background: var(--primary-light); color: var(--primary);
+                        padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+                        margin-top: 6px; }
+.anom-card details { margin-top: 10px; grid-column: 1 / -1; }
+.anom-card details summary { cursor: pointer; font-size: 12.5px; color: var(--muted);
+                              padding: 4px 0; list-style: none; }
+.anom-card details summary::before { content: "▸ "; }
+.anom-card details[open] summary::before { content: "▾ "; }
+.anom-card .by-net { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.anom-card .by-net .chip { font-size: 12px; padding: 3px 10px; border-radius: 12px;
+                            background: #f1f5f9; }
+.anom-card .by-net .chip.cheap { background: #dcfce7; color: #166534; font-weight: 600; }
+.anom-card .by-net .chip.pricey { background: #fee2e2; color: #991b1b; font-weight: 600; }
+.anom-card a.compare-link { font-size: 12px; color: var(--primary); text-decoration: none;
+                             margin-left: 10px; }
+.anom-card a.compare-link:hover { text-decoration: underline; }
+.anom-empty { text-align: center; padding: 40px; color: var(--muted); }
+.anom-pager { display: flex; justify-content: center; margin-top: 20px; }
+.anom-pager button { padding: 8px 18px; border-radius: 6px; border: 1px solid var(--border);
+                      background: var(--card); cursor: pointer; font-size: 13.5px; }
+.anom-pager button:hover { border-color: var(--primary); color: var(--primary); }
+@media (max-width: 640px) {
+  .anom-summary { grid-template-columns: 1fr; }
+  .anom-card { grid-template-columns: 1fr; }
+  .anom-savings { text-align: left; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .anom-controls input, .anom-controls select { min-width: 100%; }
+  .anom-controls .ctl { width: 100%; }
+}
+</style>
+"""
+    body = """
+<div class="container">
+  <h1>Anomalii de preț</h1>
+  <p class="subtitle">Aceleași produse, prețuri foarte diferite în funcție de rețea. Cumpără-le de unde sunt cele mai ieftine.</p>
+
+  <div class="cos-disclaimer">
+    <b>Notă:</b> Date la zi din monitorulpreturilor.info. Comparăm <i>același produs</i> (același cod) între rețele, exclusiv consumatorii (SELGROS exclus). Prețuri evident eronate filtrate (peste 3× sau sub 0.3× din mediană).
+  </div>
+
+  <div class="anom-summary" id="anom-summary"></div>
+
+  <div class="card">
+    <div class="anom-controls">
+      <div class="ctl">
+        <label for="anom-search">Caută produs / brand</label>
+        <input id="anom-search" type="search" placeholder="ex. Lavazza, ulei, paste..." autocomplete="off">
+      </div>
+      <div class="ctl">
+        <label for="anom-cat">Categorie</label>
+        <select id="anom-cat"><option value="">Toate</option></select>
+      </div>
+      <div class="ctl">
+        <label for="anom-cheap">Cel mai ieftin la</label>
+        <select id="anom-cheap"><option value="">Orice rețea</option></select>
+      </div>
+      <div class="ctl">
+        <label for="anom-min">Diferență minimă</label>
+        <select id="anom-min">
+          <option value="1.5">1.5× (50%+)</option>
+          <option value="2">2× (100%+)</option>
+          <option value="3">3× (200%+)</option>
+        </select>
+      </div>
+      <div class="meta" id="anom-meta"></div>
+    </div>
+  </div>
+
+  <div class="anom-list" id="anom-list"></div>
+  <div class="anom-pager"><button id="anom-more" style="display:none">Arată mai multe</button></div>
+</div>
+"""
+    extra_scripts = """
+<script>
+(function(){
+  const FMT = new Intl.NumberFormat('ro-RO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const PAGE_SIZE = 30;
+  let DATA = null;
+  let filtered = [];
+  let shown = 0;
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+
+  function renderSummary(){
+    const items = DATA.items;
+    const top = items[0];
+    const totalSave = items.slice(0, 10).reduce((s, x) => s + x.save_lei, 0);
+    const elem = document.getElementById('anom-summary');
+    elem.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Anomalii detectate azi</div>
+        <div class="kpi-value">${items.length}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">Date la ${esc(DATA.as_of)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Cea mai mare diferență</div>
+        <div class="kpi-value">${top ? top.ratio + '×' : '—'}</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">${top ? esc(top.product) : ''}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Economii potențiale (top 10)</div>
+        <div class="kpi-value" style="color:var(--success)">${FMT.format(totalSave)} lei</div>
+        <div class="kpi-trend" style="font-size:12px;color:var(--muted)">cumpărând la rețeaua ieftină</div>
+      </div>`;
+  }
+
+  function populateFilters(){
+    const cats = Array.from(new Set(DATA.items.map(x => x.category).filter(Boolean))).sort();
+    const cs = document.getElementById('anom-cat');
+    for (const c of cats) {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      cs.appendChild(o);
+    }
+    const nets = Array.from(new Set(DATA.items.map(x => x.cheapest.network))).sort();
+    const ns = document.getElementById('anom-cheap');
+    for (const n of nets) {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      ns.appendChild(o);
+    }
+  }
+
+  function applyFilters(){
+    const q = document.getElementById('anom-search').value.trim().toLowerCase();
+    const cat = document.getElementById('anom-cat').value;
+    const cheap = document.getElementById('anom-cheap').value;
+    const minR = parseFloat(document.getElementById('anom-min').value);
+    filtered = DATA.items.filter(it => {
+      if (it.ratio < minR) return false;
+      if (cat && it.category !== cat) return false;
+      if (cheap && it.cheapest.network !== cheap) return false;
+      if (q) {
+        const hay = ((it.product || '') + ' ' + (it.brand || '')).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+    shown = 0;
+    document.getElementById('anom-list').innerHTML = '';
+    renderMore();
+    document.getElementById('anom-meta').textContent =
+      `${filtered.length} produs(e) găsit(e)`;
+  }
+
+  function renderCard(it){
+    const meta = [];
+    if (it.brand) meta.push(`<span class="pill">${esc(it.brand)}</span>`);
+    if (it.unit) meta.push(`<span class="pill">${esc(it.unit)}</span>`);
+    if (it.category) meta.push(esc(it.category));
+    const chips = it.by_network.map(([n, p]) => {
+      let cls = '';
+      if (n === it.cheapest.network) cls = 'cheap';
+      else if (n === it.priciest.network) cls = 'pricey';
+      return `<span class="chip ${cls}">${esc(n)} ${FMT.format(p)}</span>`;
+    }).join('');
+    return `<div class="anom-card">
+      <div>
+        <div class="product">${esc(it.product)}
+          <a class="compare-link" href="compare.html?pid=${it.product_id}" title="Vezi în Comparare">↗</a>
+        </div>
+        <div class="meta">${meta.join(' ')}</div>
+        <div class="flow">
+          <span class="net-cheap">${esc(it.cheapest.network)} ${FMT.format(it.cheapest.price)} lei</span>
+          <span class="arrow">→</span>
+          <span class="net-pricey">${esc(it.priciest.network)} ${FMT.format(it.priciest.price)} lei</span>
+        </div>
+        <details>
+          <summary>Toate rețelele (${it.by_network.length})</summary>
+          <div class="by-net">${chips}</div>
+        </details>
+      </div>
+      <div class="anom-savings">
+        <div class="save-lei">+${FMT.format(it.save_lei)} lei</div>
+        <div class="save-pct">${it.save_pct}% mai scump</div>
+        <div><span class="ratio">${it.ratio}×</span></div>
+      </div>
+    </div>`;
+  }
+
+  function renderMore(){
+    const next = filtered.slice(shown, shown + PAGE_SIZE);
+    const list = document.getElementById('anom-list');
+    if (shown === 0 && next.length === 0) {
+      list.innerHTML = '<div class="anom-empty">Niciun rezultat. Schimbă filtrele.</div>';
+      document.getElementById('anom-more').style.display = 'none';
+      return;
+    }
+    list.insertAdjacentHTML('beforeend', next.map(renderCard).join(''));
+    shown += next.length;
+    document.getElementById('anom-more').style.display =
+      shown < filtered.length ? '' : 'none';
+  }
+
+  fetch('data/anomalies_today.json', {cache: 'no-cache'})
+    .then(r => r.json())
+    .then(d => {
+      DATA = d;
+      renderSummary();
+      populateFilters();
+      ['anom-search','anom-cat','anom-cheap','anom-min'].forEach(id => {
+        const ev = id === 'anom-search' ? 'input' : 'change';
+        document.getElementById(id).addEventListener(ev, applyFilters);
+      });
+      document.getElementById('anom-more').addEventListener('click', renderMore);
+      applyFilters();
+    })
+    .catch(err => {
+      document.querySelector('.container').insertAdjacentHTML('beforeend',
+        `<div class="card" style="background:#fee2e2; color:#991b1b">Eroare la încărcarea datelor: ${esc(err.message)}</div>`);
+    });
+})();
+</script>
+"""
+    return page_shell("Anomalii de preț", "anomalii.html", body, extra_head, extra_scripts)
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -2110,6 +3720,7 @@ def main():
     analytics_data  = load_analytics_data(conn)
     stores          = load_stores(conn)
     gas_stations    = load_gas_map_data(conn)
+    metod_stats     = load_metodologie_stats(conn)
 
     print("Building compare data files...")
     n_products = build_compare_data_files(conn, out_dir)
@@ -2119,6 +3730,10 @@ def main():
 
     pages = {
         "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends),
+        "cos.html":         gen_cos(),
+        "anomalii.html":    gen_anomalii(),
+        "categorii.html":   gen_categorii(),
+        "harta.html":       gen_harta(),
         "price-index.html": gen_price_index(price_index, by_category),
         "trends.html":      gen_trends(network_trends, category_trends, fuel_trends),
         "compare.html":     gen_compare(compare_index),
@@ -2127,6 +3742,10 @@ def main():
         "pipeline.html":    gen_pipeline(runs, coverage, summary),
         "stores_map.html":  gen_stores_map(stores),
         "gas_map.html":     gen_gas_map(gas_stations),
+        "inflatie.html":    gen_inflatie(),
+        "povesti.html":     gen_povesti(),
+        "metodologie.html": gen_metodologie(summary, metod_stats),
+        "date-deschise.html": gen_date_deschise(summary, metod_stats),
     }
 
     for name, html in pages.items():

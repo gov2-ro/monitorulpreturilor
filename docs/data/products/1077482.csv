@@ -1,0 +1,9 @@
+network,avg_price,min_price,max_price,stores
+KAUFLAND,2.55,2.55,2.55,2
+CARREFOUR,3.09,3.09,3.09,4
+PROFI,3.69,3.69,3.69,3
+
+network,price_date,avg_price
+CARREFOUR,17.04.2026 04:00,3.09
+KAUFLAND,17.04.2026 04:00,2.55
+PROFI,17.04.2026 04:00,3.69
