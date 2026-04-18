@@ -96,6 +96,9 @@ jobs:
       - name: Build CPI data (Inflație page)
         run: python build_cpi.py --db data/prices_ci.db --out docs/data/cpi.json
 
+      - name: Build stores index (Aproape page)
+        run: python build_stores_index.py --db data/prices_ci.db --baskets docs/data/baskets --out docs/data/stores_index.json
+
       # -----------------------------------------------------------------------
       # Commit DB + checkpoint + docs (skip if nothing changed).
       # Pull --rebase before push to handle concurrent runs / manual triggers
@@ -120,7 +123,8 @@ jobs:
           git add docs/data/categories/*.json 2>/dev/null || true
           git add docs/categorii.html docs/harta.html 2>/dev/null || true
           git add docs/data/uats.geojson docs/data/cpi.json 2>/dev/null || true
-          git add docs/inflatie.html docs/povesti.html docs/metodologie.html docs/date-deschise.html 2>/dev/null || true
+          git add docs/inflatie.html docs/povesti.html docs/metodologie.html docs/date-deschise.html docs/aproape.html 2>/dev/null || true
+          git add docs/data/stores_index.json 2>/dev/null || true
           git add docs/data/products/*.csv 2>/dev/null || true
 
           git diff --staged --quiet && echo "No changes to commit" && exit 0

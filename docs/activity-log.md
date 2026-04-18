@@ -4,6 +4,13 @@
 
 ## General
 
+### 2026-04-18 — Phase D: Aproape de tine — Geolocation Store Finder
+
+- Added `build_stores_index.py`: emits `docs/data/stores_index.json` (2,624 consumer-network stores with coordinates, compact array format, 319 KB). Joins basket camara per-UAT cheapest cost (national fallback 302.61 lei/lună where UAT not scored). B2B (SELGROS) excluded.
+- Added `gen_aproape()` + `aproape.html`: Leaflet map + store card grid. Browser GPS button + **manual lat/lon inputs** (for users outside Romania or with GPS disabled — default pre-filled to Bucharest centre 44.4268, 26.1025). Radius slider (1–50 km), network filter dropdown populated from data. Store cards show distance, network color badge, address, basket cheapest cost for the store's UAT. Map markers colored by network. Cap at 200 displayed results; shows total count above.
+- Added "Aproape" to nav. Wired `build_stores_index.py` into CI daily run (runs after basket build).
+- **Verified:** 175 stores found within 5 km of Bucharest centre, map + cards render correctly, network color coding works, status message shows manual coordinates.
+
 ### 2026-04-18 — Phase C: CPI prototype, Stories, Open Data Hub, Methodology
 
 - **#10 Metodologie & Transparență** (`metodologie.html`): live snapshot grid (products, stores, networks, price rows, dates, gas stats), API endpoint table with limits, known-gaps warning cards (fresh produce absent, 1367 stores with NULL network, 723 products without today's price, 7-day retail history), methodology explanations for each calculator (basket, anomalies, categories, choropleth, price index), code/license card. Data pulled at site-gen time via `load_metodologie_stats()`.

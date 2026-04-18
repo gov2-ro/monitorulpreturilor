@@ -592,6 +592,7 @@ NAV_ITEMS = [
     ("povesti.html",     "Povești"),
     ("date-deschise.html", "Date Deschise"),
     ("metodologie.html", "Metodologie"),
+    ("aproape.html",     "Aproape"),
 ]
 
 
@@ -3692,6 +3693,267 @@ def gen_anomalii() -> str:
     return page_shell("Anomalii de preț", "anomalii.html", body, extra_head, extra_scripts)
 
 
+# ── Aproape de tine ──────────────────────────────────────────────────────
+
+def gen_aproape() -> str:
+    extra_head = """
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+#map { height: 480px; border-radius: 8px; margin: 16px 0; }
+.location-panel { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
+.location-panel label { font-size:13px; font-weight:600; display:block; margin-bottom:4px; color:#555; }
+.location-panel input[type=number], .location-panel input[type=text] {
+  border:1px solid #ccc; border-radius:6px; padding:8px 10px; font-size:14px; width:130px;
+}
+.location-panel button {
+  padding:9px 18px; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:600;
+}
+#btn-geo { background:#1976d2; color:#fff; }
+#btn-geo:hover { background:#1565c0; }
+#btn-manual { background:#43a047; color:#fff; }
+#btn-manual:hover { background:#388e3c; }
+#status-msg { font-size:13px; color:#666; margin-top:6px; min-height:18px; }
+.results-section { margin-top:20px; }
+.results-section h3 { margin:0 0 12px; font-size:16px; }
+.store-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+.store-card {
+  background:#fff; border:1px solid #e0e0e0; border-radius:8px;
+  padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06);
+  display:flex; flex-direction:column; gap:4px;
+}
+.store-card .sname { font-weight:700; font-size:14px; }
+.store-card .snet  { font-size:12px; color:#888; }
+.store-card .sdist { font-size:13px; color:#1976d2; font-weight:600; }
+.store-card .saddr { font-size:12px; color:#666; }
+.store-card .sbask { font-size:13px; color:#2e7d32; font-weight:600; margin-top:4px; }
+.store-card .sbask span { font-weight:400; color:#555; }
+.net-badge {
+  display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px;
+  font-weight:700; color:#fff; background:#555; margin-bottom:4px;
+}
+.filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+.filter-bar label { font-size:13px; color:#555; }
+.filter-bar select { border:1px solid #ccc; border-radius:6px; padding:6px 10px; font-size:13px; }
+#radius-val { font-weight:700; color:#1976d2; }
+.pin-me { width:18px; height:18px; background:#e53935; border-radius:50%; border:3px solid #fff;
+  box-shadow:0 0 0 2px #e53935; display:inline-block; }
+</style>"""
+
+    extra_scripts = """
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DATA_URL = 'data/stores_index.json';
+const FIELDS = ['id','name','addr','lat','lon','network','uat_id','uat_name','basket_min_month'];
+
+let map, userMarker, storeLayer;
+let allStores = [];
+let userLat = null, userLon = null;
+
+// ── Haversine distance (km) ─────────────────────────────────────────────
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── Map init ────────────────────────────────────────────────────────────
+function initMap(lat, lon) {
+  if (!map) {
+    map = L.map('map').setView([lat, lon], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CARTO', maxZoom: 19
+    }).addTo(map);
+    storeLayer = L.layerGroup().addTo(map);
+  } else {
+    map.setView([lat, lon], 13);
+  }
+}
+
+function placeUserPin(lat, lon) {
+  if (userMarker) map.removeLayer(userMarker);
+  userMarker = L.circleMarker([lat, lon], {
+    radius: 10, color: '#e53935', fillColor: '#e53935', fillOpacity: 0.9, weight: 3
+  }).addTo(map).bindPopup('<b>Locația ta</b>').openPopup();
+}
+
+// ── Render results ──────────────────────────────────────────────────────
+const NET_COLORS = {
+  'Lidl':'#0050aa','Kaufland':'#cc0000','Carrefour':'#004a97',
+  'Auchan':'#e2001a','Penny':'#cc0000','Profi':'#e8000d',
+  'Mega Image':'#007d3e','Cora':'#003087','Supeco':'#007e36',
+};
+
+function render(stores, radiusKm, netFilter) {
+  storeLayer.clearLayers();
+  const list = document.getElementById('store-list');
+  const countEl = document.getElementById('result-count');
+  list.innerHTML = '';
+
+  const filtered = stores.filter(s => {
+    if (s._dist > radiusKm) return false;
+    if (netFilter && s.network !== netFilter) return false;
+    return true;
+  });
+
+  filtered.slice(0, 200).forEach(s => {
+    const color = NET_COLORS[s.network] || '#555';
+    L.circleMarker([s.lat, s.lon], {
+      radius: 7, color, fillColor: color, fillOpacity: 0.8, weight: 2
+    }).addTo(storeLayer).bindPopup(
+      `<b>${s.name}</b><br>${s.network}<br>${s.addr}<br><i>${s._dist.toFixed(1)} km</i>`
+    );
+    const bask = s.basket_min_month
+      ? `<div class="sbask">~${s.basket_min_month} lei/lună <span>(coș camara, cel mai ieftin)</span></div>`
+      : '';
+    list.innerHTML += `
+      <div class="store-card">
+        <div><span class="net-badge" style="background:${color}">${s.network}</span></div>
+        <div class="sname">${s.name}</div>
+        <div class="saddr">${s.addr || s.uat_name}</div>
+        <div class="sdist">${s._dist.toFixed(1)} km</div>
+        ${bask}
+      </div>`;
+  });
+
+  const showing = Math.min(filtered.length, 200);
+  countEl.textContent = showing === 0
+    ? 'Niciun magazin în raza selectată.'
+    : `${showing} magazine${filtered.length > 200 ? ` (din ${filtered.length})` : ''} în ${radiusKm} km`;
+}
+
+function updateResults() {
+  if (userLat === null) return;
+  const radiusKm = parseFloat(document.getElementById('radius').value) || 5;
+  const netFilter = document.getElementById('net-filter').value;
+  document.getElementById('radius-val').textContent = radiusKm + ' km';
+
+  const withDist = allStores.map(s => ({...s, _dist: haversine(userLat, userLon, s.lat, s.lon)}));
+  withDist.sort((a, b) => a._dist - b._dist);
+
+  // Populate network filter once
+  const netSel = document.getElementById('net-filter');
+  if (netSel.options.length <= 1) {
+    const nets = [...new Set(allStores.map(s => s.network))].sort();
+    nets.forEach(n => netSel.innerHTML += `<option value="${n}">${n}</option>`);
+  }
+
+  render(withDist, radiusKm, netFilter);
+}
+
+function setLocation(lat, lon, label) {
+  userLat = lat; userLon = lon;
+  document.getElementById('status-msg').textContent = `📍 ${label}`;
+  initMap(lat, lon);
+  placeUserPin(lat, lon);
+  updateResults();
+}
+
+// ── Geolocation ─────────────────────────────────────────────────────────
+document.getElementById('btn-geo').addEventListener('click', () => {
+  if (!navigator.geolocation) {
+    document.getElementById('status-msg').textContent = 'Geolocation not available in this browser.';
+    return;
+  }
+  document.getElementById('status-msg').textContent = 'Se determină locația…';
+  navigator.geolocation.getCurrentPosition(
+    pos => setLocation(pos.coords.latitude, pos.coords.longitude,
+      `GPS (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`),
+    err => {
+      document.getElementById('status-msg').textContent =
+        'Nu s-a putut determina locația. Încearcă coordonatele manuale.';
+    },
+    { timeout: 10000 }
+  );
+});
+
+// ── Manual coordinates ──────────────────────────────────────────────────
+document.getElementById('btn-manual').addEventListener('click', () => {
+  const lat = parseFloat(document.getElementById('inp-lat').value);
+  const lon = parseFloat(document.getElementById('inp-lon').value);
+  if (isNaN(lat) || isNaN(lon) || lat < 43 || lat > 48.5 || lon < 20 || lon > 30) {
+    document.getElementById('status-msg').textContent =
+      'Coordonate invalide. România: lat 43–48.5, lon 20–30.';
+    return;
+  }
+  setLocation(lat, lon, `Manual (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+});
+
+document.getElementById('inp-lat').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-manual').click();
+});
+document.getElementById('inp-lon').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-manual').click();
+});
+
+// ── Filters ─────────────────────────────────────────────────────────────
+document.getElementById('radius').addEventListener('input', updateResults);
+document.getElementById('net-filter').addEventListener('change', updateResults);
+
+// ── Load data ───────────────────────────────────────────────────────────
+fetch(DATA_URL).then(r => r.json()).then(data => {
+  allStores = data.stores.map(arr => {
+    const obj = {};
+    data.fields.forEach((f, i) => obj[f] = arr[i]);
+    return obj;
+  });
+  document.getElementById('status-msg').textContent =
+    `${allStores.length} magazine încărcate. Folosiți butonul GPS sau introduceți coordonatele manual.`;
+}).catch(err => {
+  document.getElementById('status-msg').textContent = 'Eroare la încărcarea datelor.';
+  console.error(err);
+});
+</script>"""
+
+    body = """
+<div class="container" style="max-width:1100px;margin:0 auto;padding:20px">
+  <h1 style="font-size:22px;margin-bottom:4px">Aproape de tine</h1>
+  <p style="color:#666;margin-bottom:20px;font-size:14px">
+    Magazine din apropiere, ordonate după distanță. Alege raza și rețeaua preferată.
+    Costul coșului de cumpărături este calculat pentru cel mai ieftin furnizor din zona ta (UAT).
+  </p>
+
+  <div class="location-panel">
+    <div>
+      <label>Detectare automată</label>
+      <button id="btn-geo">📍 Folosește GPS-ul</button>
+    </div>
+    <div style="display:flex;align-items:center;padding:0 8px;color:#aaa;font-size:18px;align-self:flex-end;padding-bottom:8px">sau</div>
+    <div>
+      <label>Latitudine</label>
+      <input type="number" id="inp-lat" placeholder="44.4268" step="0.0001" min="43" max="48.5" value="44.4268"/>
+    </div>
+    <div>
+      <label>Longitudine</label>
+      <input type="number" id="inp-lon" placeholder="26.1025" step="0.0001" min="20" max="30" value="26.1025"/>
+    </div>
+    <div>
+      <button id="btn-manual">Caută</button>
+    </div>
+  </div>
+  <div id="status-msg">Se încarcă datele…</div>
+
+  <div id="map"></div>
+
+  <div class="filter-bar" style="margin-top:8px">
+    <div>
+      <label>Raza: <span id="radius-val">5 km</span></label>
+      <input type="range" id="radius" min="1" max="50" value="5" step="1" style="width:160px;vertical-align:middle"/>
+    </div>
+    <div>
+      <label>Rețea: </label>
+      <select id="net-filter"><option value="">Toate</option></select>
+    </div>
+  </div>
+
+  <div class="results-section">
+    <div id="result-count" style="font-size:13px;color:#666;margin-bottom:10px"></div>
+    <div class="store-list" id="store-list"></div>
+  </div>
+</div>"""
+
+    return page_shell("Aproape de tine", "aproape.html", body, extra_head, extra_scripts)
+
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 def main():
@@ -3746,6 +4008,7 @@ def main():
         "povesti.html":     gen_povesti(),
         "metodologie.html": gen_metodologie(summary, metod_stats),
         "date-deschise.html": gen_date_deschise(summary, metod_stats),
+        "aproape.html":       gen_aproape(),
     }
 
     for name, html in pages.items():
