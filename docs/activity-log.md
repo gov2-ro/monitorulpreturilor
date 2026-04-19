@@ -4,6 +4,22 @@
 
 ## General
 
+### 2026-04-19 — Phase 1 UI Redesign (editorial homepage + design system)
+
+Complete redesign of the static site toward an editorial data-journalism aesthetic (Datawrapper / old FiveThirtyEight / Pudding ethos). All 18 existing pages preserved; 1 new page added (`tablou.html`).
+
+**What changed:**
+- `docs/assets/app.css` — new ~500-line design system: CSS custom property tokens (paper/ink palette, rust accent, 6-hue chart palette), fluid type scale (`clamp()`), Fraunces + IBM Plex Sans + IBM Plex Mono font stacks, spacing grid, and components: `.masthead`, `.nav`, `.lede` (drop cap), `.section-title` (auto-numbered §01–§N), `.stats`/`.stat`, `.chart-block`, `.spread-chart`, `.story-grid`/`.story`, `.tool-grid`/`.tool`, `.strip`, `.disclaimer`, `.footer`.
+- `docs/assets/charts.js` — Chart.js 4 defaults: paper palette, no animations, tabular numerals in tooltips, horizontal grid only, legend at bottom.
+- `docs/assets/logo.svg` — rust circle + Fraunces wordmark + v2 badge.
+- `generate_site.py`: new `NAV_ITEMS` (13 items, 2 separators), `nav_html()`, `page_shell()` (external CSS, skip link, masthead, disclaimer, footer), `_masthead()`, `_disclaimer()`, `_footer()`, `date_ro()` helpers, `FONTS_HEAD` (Google Fonts preconnect). Old `gen_index` renamed to `gen_tablou` (→ `tablou.html`). New `gen_index` produces "Buletinul prețurilor" editorial homepage: lede with spread-chart (no canvas), 4 stat tiles, 3 story cards, 6 tool cards, compact strip.
+
+**Decisions:**
+- Stack A kept (Python → static HTML, no bundler), editorial-led positioning chosen. Options doc saved in `docs/design-notes/2026-04-19-ui-redesign-options.md`.
+- Google Fonts CDN used for Phase 1 speed; self-hosting deferred to Phase 5.
+- Hero chart = CSS-only spread-chart (no Chart.js), so it renders with JS disabled.
+- All old URLs preserved; old `gen_index` body lives on as `gen_tablou`.
+
 ### 2026-04-18 — API Endpoint Discovery
 
 Wrote `explore_api.py` and probed 50+ candidate endpoints systematically. Strategy: WCF metadata first (WSDL/MEX), then pattern-based candidates, then known-endpoint variations.

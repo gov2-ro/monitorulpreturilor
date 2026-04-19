@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 48" role="img" aria-label="Monitorul Prețurilor">
+  <title>Monitorul Prețurilor</title>
+  <circle cx="14" cy="24" r="6" fill="#b45c39"/>
+  <text x="28" y="32"
+        font-family="Fraunces, Georgia, serif"
+        font-size="26"
+        font-weight="700"
+        font-style="normal"
+        fill="#1a1a1a"
+        style="font-variation-settings:'opsz' 48,'SOFT' 80;letter-spacing:-0.02em">
+    Monitorul Prețurilor
+  </text>
+  <text x="292" y="16"
+        font-family="IBM Plex Mono, monospace"
+        font-size="9"
+        font-weight="600"
+        fill="#b45c39"
+        style="letter-spacing:0.1em">v2</text>
+</svg>

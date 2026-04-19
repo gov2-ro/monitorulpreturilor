@@ -72,4 +72,5 @@
 - [ ] Add `get_uats(conn)` read helper to `db.py` — both `fetch_prices.py` and `fetch_gas_prices.py` run the same `SELECT id, name, center_lat, center_lon FROM uats` query inline; moving it to `db.py` keeps DB queries in one place
 - [ ] **Short network IDs config file** — current network names from the API are verbose (`MEGA IMAGE SRL`, `CARREFOUR`, `PROFI`, etc.) and inconsistent in length. Create a static config (e.g. `config/networks.json`) that maps `retail_networks.id → short_name` (e.g. `"MEGA IMAGE SRL" → "Mega"`, `"CARREFOUR" → "Carrefour"`). Use these short names in analysis outputs, map popups, and future UI. Populate manually — only ~10 retail networks and ~6 gas networks.
 - [x] add disclaimer: Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)
-    - [ ] add dismissable notification in header
+    - [x] add dismissable notification in header (Phase 1 UI redesign)
+- [ ] **Short network display name for stat tiles** — the first stat tile on the homepage shows the raw API name ("LIDL DISCOUNT SRL") which is verbose and 3 lines on mobile. Map to short names (e.g. "Lidl") using a lookup dict in `generate_site.py`; same dict used for the price-index spread chart labels. Requires `config/networks.json` (see Short network IDs config file item above).

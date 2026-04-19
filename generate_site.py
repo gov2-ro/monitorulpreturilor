@@ -575,38 +575,129 @@ tr:hover td { background: #f8fafc; }
 """
 
 NAV_ITEMS = [
-    ("index.html",       "Dashboard"),
-    ("cos.html",         "Coșul"),
-    ("anomalii.html",    "Anomalii"),
-    ("categorii.html",   "Categorii"),
-    ("harta.html",       "Hartă Costuri"),
-    ("price-index.html", "Index Prețuri"),
-    ("trends.html",      "Tendințe"),
-    ("compare.html",     "Comparare"),
-    ("fuel.html",        "Carburanți"),
-    ("analytics.html",   "Analiză"),
-    ("pipeline.html",    "Pipeline"),
-    ("stores_map.html",  "Hartă"),
-    ("gas_map.html",     "Hartă Carburanți"),
-    ("inflatie.html",    "Inflație"),
-    ("povesti.html",     "Povești"),
-    ("date-deschise.html", "Date Deschise"),
-    ("metodologie.html", "Metodologie"),
-    ("aproape.html",     "Aproape"),
+    ("index.html",         "Acasă"),
+    ("povesti.html",       "Povești"),
+    ("tablou.html",        "Tablou"),
+    ("__sep__",            ""),
+    ("aproape.html",       "Aproape"),
+    ("cos.html",           "Coșul"),
+    ("harta.html",         "Hartă"),
+    ("anomalii.html",      "Anomalii"),
+    ("compare.html",       "Comparare"),
+    ("fuel.html",          "Carburanți"),
+    ("__sep__",            ""),
+    ("date-deschise.html", "Date"),
+    ("metodologie.html",   "Metodologie"),
 ]
+
+# ── Romanian date helper ───────────────────────────────────────────────
+_RO_DAYS   = ["luni", "marți", "miercuri", "joi", "vineri", "sâmbătă", "duminică"]
+_RO_MONTHS = ["ianuarie", "februarie", "martie", "aprilie", "mai", "iunie",
+              "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"]
+
+def date_ro(d=None) -> str:
+    import datetime
+    if d is None:
+        d = datetime.date.today()
+    elif isinstance(d, str):
+        d = datetime.date.fromisoformat(d)
+    return f"{_RO_DAYS[d.weekday()]}, {d.day} {_RO_MONTHS[d.month - 1]} {d.year}"
 
 
 def nav_html(active_page: str) -> str:
-    links = []
+    parts = []
     for href, label in NAV_ITEMS:
-        cls = ' class="active"' if href == active_page else ""
-        links.append(f'<a href="{href}"{cls}>{label}</a>')
+        if href == "__sep__":
+            parts.append('<span class="sep" aria-hidden="true"></span>')
+            continue
+        cls = ' class="active" aria-current="page"' if href == active_page else ""
+        parts.append(f'<a href="{href}"{cls}>{label}</a>')
     return (
-        '<nav class="nav">'
-        '<span class="nav-brand">Monitorul Prețurilor<sup>+</sup></span>'
-        + "".join(links) +
+        '<nav class="nav" aria-label="Navigare principală">'
+        + "".join(parts) +
         '</nav>'
     )
+
+
+def _masthead(active_page: str) -> str:
+    return f"""<header class="masthead">
+  <div class="masthead-row">
+    <a href="index.html" class="wordmark" aria-label="Monitorul Prețurilor — acasă">
+      <span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup>
+    </a>
+    <span class="dateline"><span class="num">{date_ro()}</span><span class="dot">·</span>ediția zilei</span>
+  </div>
+  {nav_html(active_page)}
+</header>"""
+
+
+def _disclaimer() -> str:
+    return """<div class="disclaimer" id="disclaimer">
+  Acest site nu este un proiect oficial al Guvernului României. Date publice preluate de pe <a href="https://monitorulpreturilor.info/">monitorulpreturilor.info</a> (Consiliul Concurenței).
+  <button class="close" type="button" aria-label="Închide" onclick="this.parentElement.style.display='none';try{localStorage.setItem('mp-dis','1')}catch(e){}">×</button>
+</div>
+<script>try{if(localStorage.getItem('mp-dis')==='1'){var d=document.getElementById('disclaimer');if(d)d.style.display='none';}}catch(e){}</script>"""
+
+
+def _footer() -> str:
+    return """<footer class="footer">
+  <div class="footer-inner">
+    <div class="about">
+      <a href="index.html" class="wordmark"><span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup></a>
+      <p>Monitorizare independentă a prețurilor de consum din România. Date publice, colectate zilnic, prezentate fără intermediari.</p>
+    </div>
+    <div>
+      <h4>Citește</h4>
+      <ul>
+        <li><a href="index.html">Buletin</a></li>
+        <li><a href="povesti.html">Povești</a></li>
+        <li><a href="inflatie.html">Inflație</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Instrumente</h4>
+      <ul>
+        <li><a href="aproape.html">Aproape de tine</a></li>
+        <li><a href="cos.html">Coșul</a></li>
+        <li><a href="harta.html">Hartă costuri</a></li>
+        <li><a href="anomalii.html">Anomalii</a></li>
+        <li><a href="categorii.html">Categorii</a></li>
+        <li><a href="compare.html">Comparare</a></li>
+        <li><a href="trends.html">Tendințe</a></li>
+        <li><a href="fuel.html">Carburanți</a></li>
+        <li><a href="stores_map.html">Hartă magazine</a></li>
+        <li><a href="gas_map.html">Hartă carburanți</a></li>
+        <li><a href="price-index.html">Index prețuri</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Transparență</h4>
+      <ul>
+        <li><a href="tablou.html">Tablou de bord</a></li>
+        <li><a href="date-deschise.html">Date deschise</a></li>
+        <li><a href="metodologie.html">Metodologie</a></li>
+        <li><a href="pipeline.html">Status pipeline</a></li>
+        <li><a href="analytics.html">Analiză date</a></li>
+        <li><a href="https://github.com/gov2-ro/monitorulpreturilor" rel="nofollow">Cod sursă</a></li>
+      </ul>
+    </div>
+    <div class="credit">
+      <span>Date sub <a href="https://creativecommons.org/licenses/by/4.0/" rel="nofollow">CC BY 4.0</a> · Cod sub licența MIT</span>
+      <span>Actualizat automat zilnic · <a href="https://github.com/gov2-ro/monitorulpreturilor" rel="nofollow">contribuie</a></span>
+    </div>
+  </div>
+</footer>"""
+
+
+FONTS_HEAD = (
+    '<link rel="preconnect" href="https://fonts.googleapis.com"/>'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>'
+    '<link href="https://fonts.googleapis.com/css2?'
+    'family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100&'
+    'family=IBM+Plex+Sans:wght@300;400;500;600;700&'
+    'family=IBM+Plex+Mono:wght@400;500;600&'
+    'display=swap" rel="stylesheet"/>'
+)
 
 
 def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
@@ -616,16 +707,21 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{title} — Monitorul Prețurilor+ – gov2.ro</title>
-<style>{SHARED_CSS}</style>
+<title>{title} — Monitorul Prețurilor</title>
+<meta name="description" content="Monitorul prețurilor din România — date publice, comparații între rețele, analize zilnice."/>
+{FONTS_HEAD}
+<link rel="stylesheet" href="assets/app.css"/>
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg"/>
 {extra_head}
 </head>
 <body>
-{nav_html(active_page)}
+<a href="#main" class="skip">Sări la conținut</a>
+{_disclaimer()}
+{_masthead(active_page)}
+<main id="main">
 {body}
-<footer class="footer">
-  <b>Monitorul Prețurilor<sup>+</sup></b> (WIP) &middot; Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a>  &middot; <a href="https://github.com/gov2-ro/monitorulpreturilor">GitHub</a>
-</footer>
+</main>
+{_footer()}
 {extra_scripts}
 </body>
 </html>"""
@@ -637,8 +733,8 @@ def jdump(obj):
 
 # ── Page generators ─────────────────────────────────────────────────────
 
-def gen_index(summary, price_index, fuel_prices, fuel_trends):
-    """Dashboard / landing page."""
+def gen_tablou(summary, price_index, fuel_prices, fuel_trends):
+    """Tablou de bord — dashboard for power users (formerly the homepage)."""
     # Fuel summary: cheapest network per fuel type
     fuel_by_type = {}
     for fp in fuel_prices:
@@ -655,8 +751,9 @@ def gen_index(summary, price_index, fuel_prices, fuel_trends):
 
     body = f"""
 <div class="container">
-  <h1>Dashboard</h1>
-  <p class="subtitle">Monitorizarea prețurilor din România — date publice publicate de către <a href="https://www.consiliulconcurentei.ro/" target=_blank rel="nofollow">Consiliul Concurenței</a> &rarr; <a href="https://monitorulpreturilor.info/" target=_blank rel="nofollow">monitorulpreturilor.info</a></p>
+  <span class="eyebrow accent">Tablou de bord</span>
+  <h1 style="font-family:var(--font-display);font-size:var(--step-4);margin:var(--s-3) 0 var(--s-2);letter-spacing:-0.02em;line-height:1.1">Toate datele, dintr-o privire</h1>
+  <p class="subtitle" style="color:var(--ink-soft);max-width:var(--measure-read);margin-bottom:var(--s-6)">Indexul de preț al rețelelor retail, carburanții, și starea colectării. Date publice publicate de <a href="https://www.consiliulconcurentei.ro/" target="_blank" rel="nofollow">Consiliul Concurenței</a> prin <a href="https://monitorulpreturilor.info/" target="_blank" rel="nofollow">monitorulpreturilor.info</a>.</p>
 
   <div class="kpi-grid">
     <div class="kpi">
@@ -825,7 +922,188 @@ if (fuelTrendRawDash.length) {{
 }}
 </script>"""
 
-    return page_shell("Dashboard", "index.html", body, extra_scripts=scripts)
+    return page_shell("Tablou de bord", "tablou.html", body, extra_scripts=scripts)
+
+
+def gen_index(summary, price_index, fuel_prices, fuel_trends):
+    """Buletinul prețurilor — editorial homepage."""
+    import datetime
+
+    # ── Lead: cheapest vs. most expensive network ──────────────────────────
+    if price_index:
+        cheapest  = price_index[0]   # price_index sorted asc
+        priciest  = price_index[-1]
+        spread_pct = round(priciest["price_index"] - 100)
+        n_products = cheapest["products"]
+        n_networks = len(price_index)
+        headline = (
+            f'La <span class="num">{cheapest["network"]}</span>, '
+            f'coșul costă cu '
+            f'<strong style="color:var(--accent)" class="num">{spread_pct}%</strong> '
+            f'mai puțin decât la {priciest["network"]}'
+        )
+        deck = (
+            f'Comparăm {n_networks} rețele retail pe {n_products:,} produse '
+            f'disponibile simultan. Indexul de preț arată abaterea față de cea mai ieftină rețea — '
+            f'cu cât e mai mare, cu atât plătești mai mult pentru același coș.'
+        )
+        eyebrow_cat  = "INDEX PREȚURI REȚELE"
+        cheapest_net = cheapest["network"]
+        priciest_net = priciest["network"]
+    else:
+        headline     = "Monitorul prețurilor din România"
+        deck         = "Date publice despre prețurile produselor alimentare și carburanților, colectate zilnic."
+        eyebrow_cat  = "BULETIN ZILNIC"
+        spread_pct   = 0
+        cheapest_net = ""
+        priciest_net = ""
+        n_networks   = 0
+        n_products   = 0
+
+    latest_date = summary.get("latest_retail") or datetime.date.today().isoformat()
+
+    # ── Stat tiles ─────────────────────────────────────────────────────────
+    stat_tiles = [
+        (cheapest_net or "—", "Cea mai ieftină rețea", "accent", None),
+        (f'{summary["stores"]:,}', "Magazine monitorizate", "", None),
+        (f'{summary["prices"]:,}', "Prețuri colectate", "", None),
+        (f'{summary["uats"]:,}', "UAT-uri acoperite", "", None),
+    ] if summary.get("uats") else [
+        (cheapest_net or "—", "Cea mai ieftină rețea", "accent", None),
+        (f'{summary["stores"]:,}', "Magazine monitorizate", "", None),
+        (f'{summary["prices"]:,}', "Prețuri colectate", "", None),
+        (f'{n_networks}', "Rețele comparate", "", None),
+    ]
+
+    stats_html = ""
+    for val, lbl, extra_cls, sub in stat_tiles:
+        val_cls = f"val {extra_cls}".strip()
+        sub_html = f'<span class="sub">{sub}</span>' if sub else ""
+        stats_html += f"""<div class="stat reveal">
+  <div class="{val_cls}">{val}</div>
+  <div class="lbl">{lbl}</div>{sub_html}
+</div>"""
+
+    # ── Hero chart: price index bars ───────────────────────────────────────
+    # Build spread-chart rows (CSS grid, no canvas for hero)
+    if price_index:
+        max_idx = price_index[-1]["price_index"]
+        min_idx = 100.0
+        rng     = max(max_idx - min_idx, 1)
+        spread_rows = ""
+        for row in price_index:
+            pct  = (row["price_index"] - min_idx) / rng * 100
+            is_cheap = (row["network"] == cheapest_net)
+            mark_cls  = "mark cheap" if is_cheap else "mark"
+            spread_rows += f"""<div class="row">
+  <div class="n">{row["network"]}</div>
+  <div class="bar" style="--pct:{pct:.1f}%"><div class="{mark_cls}" style="left:{pct:.1f}%"></div></div>
+  <div class="v">{row["price_index"]}</div>
+</div>"""
+        hero_chart = f"""<div class="spread-chart">{spread_rows}</div>
+<p style="font-size:var(--step--1);color:var(--ink-softer);margin-top:var(--s-4)">100 = cea mai ieftină rețea · produse prezente în cel puțin 3 rețele · date din {latest_date}</p>"""
+    else:
+        hero_chart = ""
+
+    # ── Story cards (linking to key tools as if editorial stories) ─────────
+    story_cards = [
+        ("COȘ DE CUMPĂRĂTURI", "Unde e cel mai ieftin coș complet?",
+         "Comparăm coșul standard în toate rețelele retail din România.",
+         "cos.html"),
+        ("HARTĂ COSTURI", "Cum variază prețurile pe județe?",
+         "Choropleth interactiv: costul mediu pe UAT pentru produse de bază.",
+         "harta.html"),
+        ("ANOMALII", "Ce produse au avut salturi de preț azi?",
+         "Detectăm automat creșteri și scăderi bruște față de ziua precedentă.",
+         "anomalii.html"),
+    ]
+    stories_html = ""
+    for eyebrow, title, desc, href in story_cards:
+        stories_html += f"""<a class="story reveal" href="{href}">
+  <span class="eyebrow">{eyebrow}</span>
+  <h3>{title}</h3>
+  <p>{desc}</p>
+  <span class="more">Explorează →</span>
+</a>"""
+
+    # ── Tool grid ──────────────────────────────────────────────────────────
+    tools = [
+        ("aproape.html",  "Retail",     "Aproape de tine",  "Magazine ieftine lângă tine"),
+        ("cos.html",      "Retail",     "Coșul",            "Cel mai ieftin coș per rețea"),
+        ("harta.html",    "Analiză",    "Hartă costuri",    "Variație geografică a prețurilor"),
+        ("anomalii.html", "Analiză",    "Anomalii",         "Salturi bruște de preț azi"),
+        ("compare.html",  "Instrumente","Comparare",        "Prețul unui produs în toate rețelele"),
+        ("fuel.html",     "Carburanți", "Carburanți",       "Prețuri medii pe rețea și tip"),
+    ]
+    tools_html = ""
+    for href, cat, name, desc in tools:
+        tools_html += f"""<a class="tool reveal" href="{href}">
+  <div class="k">{cat}</div>
+  <div class="t">{name}</div>
+  <div class="d">{desc}</div>
+  <div class="arrow">→</div>
+</a>"""
+
+    # ── Compact strip ──────────────────────────────────────────────────────
+    strip_html = f"""<div class="strip reveal">
+  <div class="item"><div class="v">{summary['stores']:,}</div><div class="l">magazine</div></div>
+  <div class="item"><div class="v">{summary['prices']:,}</div><div class="l">prețuri retail</div></div>
+  <div class="item"><div class="v">{summary.get('gas_stations', 0):,}</div><div class="l">benzinării</div></div>
+  <div class="item"><div class="v">{summary.get('gas_prices', 0):,}</div><div class="l">prețuri carburanți</div></div>
+  <div class="spacer"></div>
+  <a class="link" href="tablou.html">Tablou complet →</a>
+</div>"""
+
+    body = f"""
+<div class="container">
+  <article class="lede reveal">
+    <span class="eyebrow accent">{eyebrow_cat} · {latest_date}</span>
+    <h1>{headline}</h1>
+    <p class="deck drop">{deck}</p>
+
+    <div class="chart-block">
+      <div class="title">Index de preț per rețea retail</div>
+      {hero_chart}
+      <div class="foot">
+        <span class="label">Sursă</span>
+        <a href="https://monitorulpreturilor.info/" rel="nofollow">monitorulpreturilor.info</a>
+        · <a href="metodologie.html">Metodologie</a>
+        · <a href="price-index.html">Date complete →</a>
+      </div>
+    </div>
+  </article>
+
+  <section aria-labelledby="s01">
+    <div class="section-title">
+      <h2 id="s01">În numere</h2>
+    </div>
+    <div class="stats">{stats_html}</div>
+  </section>
+
+  <section aria-labelledby="s02">
+    <div class="section-title">
+      <h2 id="s02">Povești</h2>
+      <div class="after"><a href="povesti.html">toate →</a></div>
+    </div>
+    <div class="story-grid">{stories_html}</div>
+  </section>
+
+  <section aria-labelledby="s03">
+    <div class="section-title">
+      <h2 id="s03">Instrumente</h2>
+    </div>
+    <div class="tool-grid">{tools_html}</div>
+  </section>
+
+  <section aria-labelledby="s04">
+    <div class="section-title">
+      <h2 id="s04">Tablou rapid</h2>
+    </div>
+    {strip_html}
+  </section>
+</div>"""
+
+    return page_shell("Buletinul prețurilor", "index.html", body)
 
 
 def gen_price_index(price_index, by_category):
@@ -3992,6 +4270,7 @@ def main():
 
     pages = {
         "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends),
+        "tablou.html":      gen_tablou(summary, price_index, fuel_prices, fuel_trends),
         "cos.html":         gen_cos(),
         "anomalii.html":    gen_anomalii(),
         "categorii.html":   gen_categorii(),
