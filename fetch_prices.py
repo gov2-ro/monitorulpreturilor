@@ -318,6 +318,7 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
                     tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
                                f"Checkpoint saved — resume with next run.")
                     finish_run(conn, run_id, "interrupted", stores_done, total_prices)
+                    print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
                     return  # finally block closes conn
                 store_bar.set_description(name[:30])
 
@@ -375,14 +376,20 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
 
         _finish_checkpoint(checkpoint_path, fetched_at, done)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
+        elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
+        print(f"SUMMARY status=completed stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
 
     except KeyboardInterrupt:
+        elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "interrupted", stores_done, total_prices)
         tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
+        print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
         raise
     except Exception as exc:
+        elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
+        print(f"SUMMARY status=error stores={stores_done} prices={total_prices} elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)
         raise
     finally:
         conn.close()

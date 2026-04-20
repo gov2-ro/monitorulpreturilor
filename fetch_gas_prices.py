@@ -98,6 +98,7 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
                     tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
                                f"Checkpoint saved — resume with next run.")
                     finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+                    print(f"SUMMARY status=timelimit uats={uats_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
                     return
                 uat_bar.set_description((uat_name or str(uat_id))[:30])
                 all_stations = {}  # keyed by id for dedup / summary
@@ -155,13 +156,19 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
 
         _finish_checkpoint(CHECKPOINT_PATH, fetched_at, done)
         finish_run(conn, run_id, "completed", uats_done, total_prices)
+        elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} gas price records inserted.")
+        print(f"SUMMARY status=completed uats={uats_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
     except KeyboardInterrupt:
+        elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "interrupted", uats_done, total_prices)
         tqdm.write(f"\nInterrupted. {total_prices} gas price records written so far.")
+        print(f"SUMMARY status=interrupted uats={uats_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
         raise
     except Exception as exc:
+        elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "error", uats_done, total_prices, notes=str(exc))
+        print(f"SUMMARY status=error uats={uats_done} prices={total_prices} elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)
         raise
     finally:
         conn.close()
