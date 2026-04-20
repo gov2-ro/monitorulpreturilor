@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Preview: Tool-led Dashboard — Monitorul Prețurilor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../assets/app.css"/>
+<style>
+/* Preview-only badge */
+.preview-bar {
+  position: sticky; top: 0; z-index: 200;
+  background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: var(--step--1);
+  letter-spacing: 0.06em; text-align: center;
+  padding: var(--s-2) var(--s-4);
+  display: flex; align-items: center; justify-content: center; gap: var(--s-5);
+}
+.preview-bar a { color: var(--accent); text-decoration: none; }
+.preview-bar a:hover { text-decoration: underline; }
+
+/* Dashboard-specific overrides */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
+  margin-bottom: var(--s-7);
+}
+@media (max-width: 640px) { .dash-grid { grid-template-columns: 1fr; } }
+.dash-full { grid-column: 1 / -1; }
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0;
+  border: 1px solid var(--rule);
+  margin-bottom: var(--s-6);
+}
+.kpi-cell {
+  padding: var(--s-5) var(--s-5);
+  border-right: 1px solid var(--rule);
+  background: var(--paper);
+}
+.kpi-cell:last-child { border-right: none; }
+.kpi-cell .v {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 30, "opsz" 144, "wght" 500;
+  font-size: clamp(1.6rem, 2vw + 1rem, 2.4rem);
+  line-height: 1; color: var(--ink);
+  font-feature-settings: "tnum" 1; letter-spacing: -0.02em;
+}
+.kpi-cell .v.accent { color: var(--accent); }
+.kpi-cell .l {
+  margin-top: var(--s-2);
+  font-size: var(--step--1); color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: var(--s-5) var(--s-6);
+}
+.panel-title {
+  font-family: var(--font-body); font-size: var(--step-1);
+  font-weight: 600; margin-bottom: var(--s-4);
+  color: var(--ink); border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--s-3);
+}
+
+/* Inline bar chart */
+.bar-list { display: flex; flex-direction: column; gap: var(--s-3); }
+.bar-row { display: grid; grid-template-columns: 8rem 1fr 4rem; align-items: center; gap: var(--s-3); }
+.bar-row .label { font-size: var(--step-0); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-row .track { position: relative; height: 1.25rem; background: var(--paper-soft); border: 1px solid var(--rule); }
+.bar-row .fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--c-1); }
+.bar-row .fill.accent { background: var(--accent); }
+.bar-row .val { font-family: var(--font-mono); font-size: var(--step--1); color: var(--ink); text-align: right; font-feature-settings: "tnum" 1; }
+
+/* Fuel table */
+.fuel-table { width: 100%; border-collapse: collapse; font-size: var(--step-0); }
+.fuel-table th { text-align: left; font-size: var(--step--1); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-softer); padding-bottom: var(--s-3); border-bottom: 1px solid var(--rule); font-weight: 500; }
+.fuel-table td { padding: var(--s-2) 0; border-bottom: 1px solid var(--paper-soft); color: var(--ink); vertical-align: middle; }
+.fuel-table td.net { font-weight: 500; }
+.fuel-table td.price { font-family: var(--font-mono); text-align: right; font-feature-settings: "tnum" 1; color: var(--accent); }
+.fuel-badge { display: inline-block; padding: 1px 6px; font-size: var(--step--1); font-family: var(--font-mono); background: var(--paper-soft); border: 1px solid var(--rule); letter-spacing: 0.04em; }
+
+/* Coverage bars */
+.cov-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.cov-row { display: grid; grid-template-columns: 7rem 1fr 2.5rem; align-items: center; gap: var(--s-3); font-size: var(--step-0); }
+.cov-row .net { color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cov-row .bar { background: var(--paper-soft); border: 1px solid var(--rule); height: 0.75rem; position: relative; }
+.cov-row .bar .fill { position: absolute; left: 0; top: 0; height: 100%; }
+.cov-row .pct { font-family: var(--font-mono); font-size: var(--step--1); color: var(--ink-soft); text-align: right; }
+
+.net-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4em; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  PREVIZUALIZARE: Abordare B — Dashboard orientat spre date
+  <span style="color:var(--ink-soft)">|</span>
+  <a href="preview-hybrid.html">Hybrid split →</a>
+  <span style="color:var(--ink-soft)">|</span>
+  <a href="../index.html">← Acasă (actuala)</a>
+</div>
+
+<a href="#main" class="skip">Sări la conținut</a>
+
+<header class="masthead">
+  <div class="masthead-row">
+    <a href="../index.html" class="wordmark" aria-label="Monitorul Prețurilor — acasă">
+      <span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup>
+    </a>
+    <span class="dateline"><span class="num">duminică, 19 aprilie 2026</span><span class="dot">·</span>ediția zilei</span>
+  </div>
+  <nav class="nav" aria-label="Navigare principală">
+    <a href="../index.html" class="active" aria-current="page">Acasă</a>
+    <a href="../povesti.html">Povești</a>
+    <a href="../tablou.html">Tablou</a>
+    <span class="sep" aria-hidden="true"></span>
+    <a href="../aproape.html">Aproape</a>
+    <a href="../cos.html">Coșul</a>
+    <a href="../harta.html">Hartă</a>
+    <a href="../anomalii.html">Anomalii</a>
+    <a href="../compare.html">Comparare</a>
+    <a href="../fuel.html">Carburanți</a>
+    <span class="sep" aria-hidden="true"></span>
+    <a href="../date-deschise.html">Date</a>
+    <a href="../metodologie.html">Metodologie</a>
+  </nav>
+</header>
+
+<main id="main">
+<div class="container container--wide">
+
+  <!-- Page title -->
+  <div style="margin: var(--s-6) 0 var(--s-6); border-bottom: 2px solid var(--ink); padding-bottom: var(--s-4); display: flex; align-items: baseline; gap: var(--s-4);">
+    <h1 style="font-family:var(--font-body);font-size:var(--step-3);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;margin:0;color:var(--ink);">Monitorul Prețurilor</h1>
+    <span style="font-family:var(--font-mono);font-size:var(--step--1);color:var(--ink-softer);letter-spacing:0.08em;">19 APR 2026 · 04:00</span>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="kpi-row">
+    <div class="kpi-cell">
+      <div class="v accent">Lidl</div>
+      <div class="l">Cea mai ieftină rețea</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="v">4.011</div>
+      <div class="l">Magazine</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="v">2,25M</div>
+      <div class="l">Prețuri colectate</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="v">366</div>
+      <div class="l">UAT-uri acoperite</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="v">10</div>
+      <div class="l">Rețele retail</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="v">6.932</div>
+      <div class="l">Produse indexate</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="dash-grid">
+
+    <!-- Price index bar chart -->
+    <div class="panel dash-full">
+      <div class="panel-title">Index de preț per rețea retail <span style="font-weight:400;color:var(--ink-softer);font-size:var(--step-0)">— 100 = cea mai ieftină · produse în ≥ 3 rețele</span></div>
+      <div class="bar-list">
+        <div class="bar-row">
+          <span class="label">Lidl</span>
+          <div class="track"><div class="fill accent" style="width:0%"></div></div>
+          <span class="val">119,6</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Supeco</span>
+          <div class="track"><div class="fill" style="width:11%"></div></div>
+          <span class="val">127,4</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Profi</span>
+          <div class="track"><div class="fill" style="width:12%"></div></div>
+          <span class="val">128,1</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Penny</span>
+          <div class="track"><div class="fill" style="width:14%"></div></div>
+          <span class="val">129,2</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Kaufland</span>
+          <div class="track"><div class="fill" style="width:29%"></div></div>
+          <span class="val">139,1</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Auchan</span>
+          <div class="track"><div class="fill" style="width:30%"></div></div>
+          <span class="val">139,7</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Carrefour</span>
+          <div class="track"><div class="fill" style="width:34%"></div></div>
+          <span class="val">143,2</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Selgros</span>
+          <div class="track"><div class="fill" style="width:35%"></div></div>
+          <span class="val">143,7</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Mega Image</span>
+          <div class="track"><div class="fill" style="width:55%"></div></div>
+          <span class="val">194,6</span>
+        </div>
+        <div class="bar-row">
+          <span class="label">Cora</span>
+          <div class="track"><div class="fill" style="width:100%"></div></div>
+          <span class="val">255,4</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fuel cheapest per type -->
+    <div class="panel">
+      <div class="panel-title">Cel mai ieftin carburant</div>
+      <table class="fuel-table">
+        <thead>
+          <tr><th>Tip</th><th>Rețea</th><th style="text-align:right">Preț mediu</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="fuel-badge">Benzină 95</span></td><td class="net">Rompetrol</td><td class="price">7,24 RON</td></tr>
+          <tr><td><span class="fuel-badge">Motorină</span></td><td class="net">Rompetrol</td><td class="price">7,11 RON</td></tr>
+          <tr><td><span class="fuel-badge">GPL</span></td><td class="net">Mol</td><td class="price">3,48 RON</td></tr>
+          <tr><td><span class="fuel-badge">Benzină Premium</span></td><td class="net">Petrom</td><td class="price">7,74 RON</td></tr>
+          <tr><td><span class="fuel-badge">Motorină Premium</span></td><td class="net">Petrom</td><td class="price">7,58 RON</td></tr>
+          <tr><td><span class="fuel-badge">AdBlue</span></td><td class="net">Mol</td><td class="price">5,12 RON</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Store coverage per network -->
+    <div class="panel">
+      <div class="panel-title">Acoperire magazine pe rețea</div>
+      <div class="cov-list">
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-2)"></span>Profi</span>
+          <div class="bar"><div class="fill" style="width:100%;background:var(--c-2);opacity:.5"></div></div>
+          <span class="pct">1.242</span>
+        </div>
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-4)"></span>Kaufland</span>
+          <div class="bar"><div class="fill" style="width:68%;background:var(--c-4);opacity:.5"></div></div>
+          <span class="pct">847</span>
+        </div>
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-1)"></span>Lidl</span>
+          <div class="bar"><div class="fill" style="width:61%;background:var(--c-1);opacity:.5"></div></div>
+          <span class="pct">756</span>
+        </div>
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-3)"></span>Mega Image</span>
+          <div class="bar"><div class="fill" style="width:58%;background:var(--c-3);opacity:.5"></div></div>
+          <span class="pct">724</span>
+        </div>
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-6)"></span>Penny</span>
+          <div class="bar"><div class="fill" style="width:31%;background:var(--c-6);opacity:.5"></div></div>
+          <span class="pct">381</span>
+        </div>
+        <div class="cov-row">
+          <span class="net"><span class="net-dot" style="background:var(--c-5)"></span>Carrefour</span>
+          <div class="bar"><div class="fill" style="width:14%;background:var(--c-5);opacity:.5"></div></div>
+          <span class="pct">175</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick links to tools -->
+    <div class="panel dash-full" style="padding: var(--s-5) var(--s-6);">
+      <div class="panel-title">Instrumente</div>
+      <div class="tool-grid" style="border:none;gap:var(--s-4);grid-template-columns:repeat(auto-fit,minmax(13rem,1fr))">
+        <a class="tool" href="../aproape.html" style="border:1px solid var(--rule)">
+          <div class="k">Retail</div><div class="t">Aproape de tine</div>
+          <div class="d">Magazine ieftine lângă tine</div><div class="arrow">→</div>
+        </a>
+        <a class="tool" href="../cos.html" style="border:1px solid var(--rule)">
+          <div class="k">Retail</div><div class="t">Coșul</div>
+          <div class="d">Cel mai ieftin coș per rețea</div><div class="arrow">→</div>
+        </a>
+        <a class="tool" href="../harta.html" style="border:1px solid var(--rule)">
+          <div class="k">Analiză</div><div class="t">Hartă costuri</div>
+          <div class="d">Variație geografică a prețurilor</div><div class="arrow">→</div>
+        </a>
+        <a class="tool" href="../anomalii.html" style="border:1px solid var(--rule)">
+          <div class="k">Analiză</div><div class="t">Anomalii</div>
+          <div class="d">Salturi bruște de preț azi</div><div class="arrow">→</div>
+        </a>
+        <a class="tool" href="../compare.html" style="border:1px solid var(--rule)">
+          <div class="k">Instrumente</div><div class="t">Comparare</div>
+          <div class="d">Prețul unui produs în toate rețelele</div><div class="arrow">→</div>
+        </a>
+        <a class="tool" href="../fuel.html" style="border:1px solid var(--rule)">
+          <div class="k">Carburanți</div><div class="t">Carburanți</div>
+          <div class="d">Prețuri medii pe rețea și tip</div><div class="arrow">→</div>
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /dash-grid -->
+
+  <!-- Pipeline status -->
+  <div style="border-top:1px solid var(--rule);padding:var(--s-4) 0 var(--s-7);display:flex;align-items:center;gap:var(--s-5);flex-wrap:wrap;">
+    <span style="font-family:var(--font-mono);font-size:var(--step--1);color:var(--ink-softer);letter-spacing:0.06em;">PIPELINE</span>
+    <span style="display:flex;align-items:center;gap:var(--s-2);font-size:var(--step-0);color:var(--ink-soft)">
+      <span style="width:0.6rem;height:0.6rem;border-radius:50%;background:#4a7c4e;display:inline-block"></span>
+      Retail: 17 apr 2026 · 04:00
+    </span>
+    <span style="display:flex;align-items:center;gap:var(--s-2);font-size:var(--step-0);color:var(--ink-soft)">
+      <span style="width:0.6rem;height:0.6rem;border-radius:50%;background:#4a7c4e;display:inline-block"></span>
+      Carburanți: 17 apr 2026 · 04:00
+    </span>
+    <a href="../pipeline.html" style="font-family:var(--font-mono);font-size:var(--step--1);color:var(--ink-softer);letter-spacing:0.06em;margin-left:auto">Status complet →</a>
+  </div>
+
+</div><!-- /container -->
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="about">
+      <a href="../index.html" class="wordmark"><span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup></a>
+      <p>Monitorizare independentă a prețurilor de consum din România.</p>
+    </div>
+    <div>
+      <h4>Transparență</h4>
+      <ul>
+        <li><a href="../date-deschise.html">Date deschise</a></li>
+        <li><a href="../metodologie.html">Metodologie</a></li>
+        <li><a href="../pipeline.html">Status pipeline</a></li>
+      </ul>
+    </div>
+    <div class="credit">
+      <span>Date sub <a href="https://creativecommons.org/licenses/by/4.0/" rel="nofollow">CC BY 4.0</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

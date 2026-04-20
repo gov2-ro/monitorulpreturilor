@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Preview: Hybrid Split — Monitorul Prețurilor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="../assets/app.css"/>
+<style>
+.preview-bar {
+  position: sticky; top: 0; z-index: 200;
+  background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: var(--step--1);
+  letter-spacing: 0.06em; text-align: center;
+  padding: var(--s-2) var(--s-4);
+  display: flex; align-items: center; justify-content: center; gap: var(--s-5);
+}
+.preview-bar a { color: var(--accent); text-decoration: none; }
+.preview-bar a:hover { text-decoration: underline; }
+
+/* Hybrid: thin horizontal rule between hero and dashboard below */
+.fold-marker {
+  border: none; border-top: 2px dashed var(--rule);
+  margin: var(--s-7) 0;
+  position: relative;
+}
+.fold-marker::after {
+  content: "▼ dobor";
+  position: absolute; left: 50%; top: -0.7em;
+  transform: translateX(-50%);
+  font-family: var(--font-mono); font-size: var(--step--1);
+  color: var(--ink-softer); letter-spacing: 0.08em;
+  background: var(--paper); padding: 0 var(--s-3);
+}
+
+/* Dashboard section below the fold */
+.dash-section-title {
+  font-family: var(--font-body);
+  font-size: var(--step-1); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: var(--s-3);
+  margin-bottom: var(--s-5);
+  margin-top: var(--s-7);
+}
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--s-5);
+  margin-bottom: var(--s-6);
+}
+.kpi-strip .k {
+  border-top: 2px solid var(--rule);
+  padding-top: var(--s-3);
+}
+.kpi-strip .k .v {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 30, "opsz" 96, "wght" 500;
+  font-size: clamp(1.5rem, 2vw + 0.8rem, 2rem);
+  line-height: 1; color: var(--ink);
+  font-feature-settings: "tnum" 1; letter-spacing: -0.02em;
+}
+.kpi-strip .k .v.accent { color: var(--accent); }
+.kpi-strip .k .l { font-size: var(--step--1); color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.1em; margin-top: var(--s-2); }
+
+.two-col {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-6);
+  margin-bottom: var(--s-7);
+}
+@media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: var(--s-5) var(--s-6);
+}
+.panel-title {
+  font-size: var(--step-1); font-weight: 600;
+  margin-bottom: var(--s-4); color: var(--ink);
+  border-bottom: 1px solid var(--rule); padding-bottom: var(--s-3);
+}
+
+.bar-list { display: flex; flex-direction: column; gap: var(--s-3); }
+.bar-row { display: grid; grid-template-columns: 6rem 1fr 3.5rem; align-items: center; gap: var(--s-3); }
+.bar-row .label { font-size: var(--step-0); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-row .track { position: relative; height: 1rem; background: var(--paper-soft); border: 1px solid var(--rule); }
+.bar-row .fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--c-1); }
+.bar-row .fill.accent { background: var(--accent); }
+.bar-row .val { font-family: var(--font-mono); font-size: var(--step--1); color: var(--ink); text-align: right; font-feature-settings: "tnum" 1; }
+
+.fuel-row { display: flex; justify-content: space-between; align-items: baseline; padding: var(--s-2) 0; border-bottom: 1px solid var(--paper-soft); font-size: var(--step-0); }
+.fuel-row .type { color: var(--ink-soft); }
+.fuel-row .price { font-family: var(--font-mono); color: var(--accent); font-feature-settings: "tnum" 1; }
+
+/* Hero annotations inline */
+.annotation {
+  display: inline-block;
+  background: var(--accent); color: var(--paper);
+  font-family: var(--font-mono); font-size: var(--step--1);
+  letter-spacing: 0.06em; padding: 1px 6px;
+  vertical-align: middle; margin: 0 2px;
+}
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  PREVIZUALIZARE: Abordare C — Hybrid split (editorial + dashboard)
+  <span style="color:var(--ink-soft)">|</span>
+  <a href="preview-tool-led.html">Tool-led →</a>
+  <span style="color:var(--ink-soft)">|</span>
+  <a href="../index.html">← Acasă (actuala)</a>
+</div>
+
+<a href="#main" class="skip">Sări la conținut</a>
+
+<header class="masthead">
+  <div class="masthead-row">
+    <a href="../index.html" class="wordmark" aria-label="Monitorul Prețurilor — acasă">
+      <span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup>
+    </a>
+    <span class="dateline"><span class="num">duminică, 19 aprilie 2026</span><span class="dot">·</span>ediția zilei</span>
+  </div>
+  <nav class="nav" aria-label="Navigare principală">
+    <a href="../index.html" class="active" aria-current="page">Acasă</a>
+    <a href="../povesti.html">Povești</a>
+    <a href="../tablou.html">Tablou</a>
+    <span class="sep" aria-hidden="true"></span>
+    <a href="../aproape.html">Aproape</a>
+    <a href="../cos.html">Coșul</a>
+    <a href="../harta.html">Hartă</a>
+    <a href="../anomalii.html">Anomalii</a>
+    <a href="../compare.html">Comparare</a>
+    <a href="../fuel.html">Carburanți</a>
+    <span class="sep" aria-hidden="true"></span>
+    <a href="../date-deschise.html">Date</a>
+    <a href="../metodologie.html">Metodologie</a>
+  </nav>
+</header>
+
+<main id="main">
+<div class="container">
+
+  <!-- ── ABOVE THE FOLD: Editorial hero ────────────────────────────────── -->
+  <article class="lede reveal">
+    <span class="eyebrow accent">INDEX PREȚURI REȚELE · 19 APR 2026</span>
+    <h1>La <span style="color:var(--accent)">Lidl</span>, coșul costă cu <strong style="color:var(--accent)" class="num">135%</strong> mai puțin decât la Cora</h1>
+    <p class="deck drop">Comparăm 10 rețele retail pe 63 de produse disponibile simultan. Indexul de preț arată abaterea față de cea mai ieftină rețea — cu cât e mai mare, cu atât plătești mai mult pentru același coș.</p>
+
+    <!-- Compact spread chart — condensed for hybrid -->
+    <div class="chart-block" style="margin: var(--s-6) 0;">
+      <div class="title">Index de preț per rețea retail</div>
+      <div class="spread-chart">
+        <div class="row"><div class="n">Lidl</div><div class="bar"><div class="mark cheap" style="left:0%"></div></div><div class="v">119,6</div></div>
+        <div class="row"><div class="n">Supeco</div><div class="bar"><div class="mark" style="left:6%"></div></div><div class="v">127,4</div></div>
+        <div class="row"><div class="n">Profi</div><div class="bar"><div class="mark" style="left:7%"></div></div><div class="v">128,1</div></div>
+        <div class="row"><div class="n">Penny</div><div class="bar"><div class="mark" style="left:7%"></div></div><div class="v">129,2</div></div>
+        <div class="row"><div class="n">Kaufland</div><div class="bar"><div class="mark" style="left:14%"></div></div><div class="v">139,1</div></div>
+        <div class="row"><div class="n">Auchan</div><div class="bar"><div class="mark" style="left:15%"></div></div><div class="v">139,7</div></div>
+        <div class="row"><div class="n">Carrefour</div><div class="bar"><div class="mark" style="left:17%"></div></div><div class="v">143,2</div></div>
+        <div class="row"><div class="n">Selgros</div><div class="bar"><div class="mark" style="left:18%"></div></div><div class="v">143,7</div></div>
+        <div class="row"><div class="n">Mega Image</div><div class="bar"><div class="mark" style="left:55%"></div></div><div class="v">194,6</div></div>
+        <div class="row"><div class="n">Cora</div><div class="bar"><div class="mark" style="left:100%"></div></div><div class="v">255,4</div></div>
+      </div>
+      <div class="foot">
+        <span class="label">Sursă</span>
+        <a href="https://monitorulpreturilor.info/" rel="nofollow">monitorulpreturilor.info</a>
+        · <a href="../price-index.html">Date complete →</a>
+      </div>
+    </div>
+
+    <div class="lede actions" style="display:flex;gap:var(--s-5);flex-wrap:wrap;margin-top:var(--s-5);">
+      <a href="../price-index.html">Index complet →</a>
+      <a href="../povesti.html">Toate poveștile →</a>
+    </div>
+  </article>
+
+  <!-- ── FOLD MARKER ──────────────────────────────────────────────────── -->
+  <hr class="fold-marker"/>
+
+  <!-- ── BELOW THE FOLD: Dashboard ───────────────────────────────────── -->
+
+  <div class="dash-section-title">Date de astăzi</div>
+
+  <div class="kpi-strip">
+    <div class="k"><div class="v">4.011</div><div class="l">Magazine</div></div>
+    <div class="k"><div class="v accent">Lidl</div><div class="l">Cel mai ieftin</div></div>
+    <div class="k"><div class="v">2,25M</div><div class="l">Prețuri</div></div>
+    <div class="k"><div class="v">366</div><div class="l">UAT-uri</div></div>
+    <div class="k"><div class="v">1.325</div><div class="l">Benzinării</div></div>
+    <div class="k"><div class="v">7.932</div><div class="l">Preț. carb.</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Index prețuri (top 6)</div>
+      <div class="bar-list">
+        <div class="bar-row"><span class="label">Lidl</span><div class="track"><div class="fill accent" style="width:0%"></div></div><span class="val">119,6</span></div>
+        <div class="bar-row"><span class="label">Supeco</span><div class="track"><div class="fill" style="width:11%"></div></div><span class="val">127,4</span></div>
+        <div class="bar-row"><span class="label">Profi</span><div class="track"><div class="fill" style="width:12%"></div></div><span class="val">128,1</span></div>
+        <div class="bar-row"><span class="label">Penny</span><div class="track"><div class="fill" style="width:14%"></div></div><span class="val">129,2</span></div>
+        <div class="bar-row"><span class="label">Kaufland</span><div class="track"><div class="fill" style="width:29%"></div></div><span class="val">139,1</span></div>
+        <div class="bar-row"><span class="label">Auchan</span><div class="track"><div class="fill" style="width:30%"></div></div><span class="val">139,7</span></div>
+      </div>
+      <p style="margin-top:var(--s-4);font-family:var(--font-mono);font-size:var(--step--1);color:var(--ink-softer)"><a href="../price-index.html">Toate 10 rețelele →</a></p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Cel mai ieftin carburant</div>
+      <div class="fuel-row"><span class="type">Benzină 95</span><span><strong>Rompetrol</strong></span><span class="price">7,24 RON</span></div>
+      <div class="fuel-row"><span class="type">Motorină</span><span><strong>Rompetrol</strong></span><span class="price">7,11 RON</span></div>
+      <div class="fuel-row"><span class="type">GPL</span><span><strong>Mol</strong></span><span class="price">3,48 RON</span></div>
+      <div class="fuel-row"><span class="type">Benzină Premium</span><span><strong>Petrom</strong></span><span class="price">7,74 RON</span></div>
+      <div class="fuel-row"><span class="type">Motorină Premium</span><span><strong>Petrom</strong></span><span class="price">7,58 RON</span></div>
+      <div class="fuel-row"><span class="type">AdBlue</span><span><strong>Mol</strong></span><span class="price">5,12 RON</span></div>
+      <p style="margin-top:var(--s-4);font-family:var(--font-mono);font-size:var(--step--1);color:var(--ink-softer)"><a href="../fuel.html">Toți carburanții →</a></p>
+    </div>
+  </div>
+
+  <div class="dash-section-title">Instrumente</div>
+  <div class="tool-grid" style="margin-bottom:var(--s-8)">
+    <a class="tool reveal" href="../aproape.html"><div class="k">Retail</div><div class="t">Aproape de tine</div><div class="d">Magazine ieftine lângă tine</div><div class="arrow">→</div></a>
+    <a class="tool reveal" href="../cos.html"><div class="k">Retail</div><div class="t">Coșul</div><div class="d">Cel mai ieftin coș per rețea</div><div class="arrow">→</div></a>
+    <a class="tool reveal" href="../harta.html"><div class="k">Analiză</div><div class="t">Hartă costuri</div><div class="d">Variație geografică a prețurilor</div><div class="arrow">→</div></a>
+    <a class="tool reveal" href="../anomalii.html"><div class="k">Analiză</div><div class="t">Anomalii</div><div class="d">Salturi bruște de preț azi</div><div class="arrow">→</div></a>
+    <a class="tool reveal" href="../compare.html"><div class="k">Instrumente</div><div class="t">Comparare</div><div class="d">Prețul unui produs în toate rețelele</div><div class="arrow">→</div></a>
+    <a class="tool reveal" href="../fuel.html"><div class="k">Carburanți</div><div class="t">Carburanți</div><div class="d">Prețuri medii pe rețea și tip</div><div class="arrow">→</div></a>
+  </div>
+
+</div><!-- /container -->
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="about">
+      <a href="../index.html" class="wordmark"><span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup></a>
+      <p>Monitorizare independentă a prețurilor de consum din România.</p>
+    </div>
+    <div>
+      <h4>Transparență</h4>
+      <ul>
+        <li><a href="../date-deschise.html">Date deschise</a></li>
+        <li><a href="../metodologie.html">Metodologie</a></li>
+        <li><a href="../pipeline.html">Status pipeline</a></li>
+      </ul>
+    </div>
+    <div class="credit">
+      <span>Date sub <a href="https://creativecommons.org/licenses/by/4.0/" rel="nofollow">CC BY 4.0</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
