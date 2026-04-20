@@ -1,29 +1,28 @@
 network,product_id,product,stores,min_price,avg_price,max_price,spread_pct
-CORA,1018415,La Minut Mustar 300g,4,0.92,5.17,9.19,898.9
-MEGA IMAGE SRL,1010835,Baton Protein-R 60g,70,3.89,14.17,36.59,840.6
-CORA,1012834,Dr Oetker Zahar Pudra Aroma Van80g,4,1.85,5.63,16.96,816.8
-SELGROS,1012168,Heinz Ketchup De Rosii 570g,5,1.66,11.96,14.53,775.3
-CARREFOUR,1018415,La Minut Mustar 300g,54,0.96,5.46,6.69,596.9
-PROFI,1018415,La Minut Mustar 300g,138,0.99,6.08,6.29,535.4
-AUCHAN,1013048,Jacobs Kronung Cafea Macinata 250g,13,5.19,15.33,31.69,510.6
-AUCHAN,1019726,Haribo Wummis 100g,14,7.15,31.82,42.99,501.3
-KAUFLAND,1018415,La Minut Mustar 300g,25,1.05,3.22,5.99,470.5
-PROFI,1018323,Jacobs Cafea Boabe Barista Crema 1kg,12,22.07,63.82,88.29,300.0
-PROFI,1010747,Baton Cu Cereale Si Ciocolata Bio All Green 25 G,46,0.59,1.23,2.09,254.2
-CARREFOUR,1017806,Dr Oetker Esenta De Vanilie 38 Ml,54,5.19,9.13,14.49,179.2
-CORA,1011709,Bunica Ulei Floarea Soarelui 1l,4,7.49,17.13,20.34,171.6
+CORA,1018415,La Minut Mustar 300g,4,0.92,6.15,9.19,898.9
+MEGA IMAGE SRL,1010835,Baton Protein-R 60g,70,3.89,15.57,36.59,840.6
+SELGROS,1012168,Heinz Ketchup De Rosii 570g,5,1.66,9.38,14.53,775.3
+CARREFOUR,1018415,La Minut Mustar 300g,54,0.96,5.14,6.69,596.9
+PROFI,1018415,La Minut Mustar 300g,142,0.99,6.08,6.29,535.4
+AUCHAN,1013048,Jacobs Kronung Cafea Macinata 250g,11,5.19,14.76,31.69,510.6
+AUCHAN,1019726,Haribo Wummis 100g,13,7.15,30.96,42.99,501.3
+KAUFLAND,1018415,La Minut Mustar 300g,25,1.05,3.82,5.99,470.5
+PROFI,1018323,Jacobs Cafea Boabe Barista Crema 1kg,13,22.07,63.34,88.29,300.0
+PROFI,1010747,Baton Cu Cereale Si Ciocolata Bio All Green 25 G,48,0.59,1.23,2.09,254.2
+CARREFOUR,1017806,Dr Oetker Esenta De Vanilie 38 Ml,54,5.19,9.81,14.49,179.2
+CORA,1011709,Bunica Ulei Floarea Soarelui 1l,4,7.49,13.91,20.34,171.6
 KAUFLAND,1017806,Dr Oetker Esenta De Vanilie 38 Ml,25,4.99,10.43,13.49,170.3
-PROFI,1010591,Panzani Paste Tagliatelle 500g,128,5.49,10.39,11.15,103.1
+PROFI,1010591,Panzani Paste Tagliatelle 500g,132,5.49,10.4,11.15,103.1
 AUCHAN,1018323,Jacobs Cafea Boabe Barista Crema 1kg,13,69.0,125.63,138.99,101.4
 AUCHAN,1017806,Dr Oetker Esenta De Vanilie 38 Ml,12,5.29,9.6,9.99,88.8
-MEGA IMAGE SRL,1017806,Dr Oetker Esenta De Vanilie 38 Ml,130,6.39,7.58,11.99,87.6
-PROFI,1010453,Belin Ceai Verde 20x2g,55,2.85,5.25,5.29,85.6
+MEGA IMAGE SRL,1017806,Dr Oetker Esenta De Vanilie 38 Ml,128,6.39,7.47,11.99,87.6
+PROFI,1010453,Belin Ceai Verde 20x2g,56,2.85,5.25,5.29,85.6
 AUCHAN,1099136,Vodka Pure 40% 0.5l Stumbras,17,20.0,32.36,36.9,84.5
-PROFI,1014152,Cafea Boabe  Beans 500gjacobs,140,37.39,63.79,67.99,81.8
+PROFI,1014152,Cafea Boabe  Beans 500gjacobs,143,37.39,63.8,67.99,81.8
 CARREFOUR,1014291,Bicarbonat Amoniu 7g Dr.Oetker,54,0.49,0.64,0.89,81.6
 CARREFOUR,1021242,Bomb Cioco&Lapte 68g Maltesers,54,5.99,8.53,10.49,75.1
 PROFI,1010430,Cafea Mac Classique R&G250glor,4,16.79,24.75,28.45,69.4
-PROFI,1004815,Mici La Cuptor/Kg,5,39.9,59.8,66.4,66.4
+PROFI,1004815,Mici La Cuptor/Kg,4,39.9,58.15,66.4,66.4
 CARREFOUR,1011353,Cafea Boabe Crema E Aroma,38,108.09,133.4,177.9,64.6
 CARREFOUR,1014076,La Minut Mustar Dulce 290g,53,4.09,5.97,6.69,63.6
 AUCHAN,1016507,Tassimo Morning Cafe 124.8g,15,25.99,40.66,41.71,60.5
@@ -32,48 +31,48 @@ AUCHAN,1050016,"Bricheta Mecanica Atomic, Diverse Culori",15,1.2,1.76,1.9,58.3
 AUCHAN,1056089,B. Spirtoasa 70% 0.5l,6,31.95,38.13,50.5,58.1
 AUCHAN,1017097,Palinca De Maramures Din Mere 0.5 L,16,53.0,78.52,83.1,56.8
 PROFI,999775,Carnati Subtiri La Gratar /Kg,19,29.59,44.18,45.9,55.1
-PROFI,1010585,Amigo Cafea Solubila 200g,101,26.39,39.62,39.99,51.5
+PROFI,1010585,Amigo Cafea Solubila 200g,103,26.39,39.6,39.99,51.5
 AUCHAN,1129634,Bricheta Atomic Electronic Antivant Cu Siguranta Pentru Copii,17,3.9,5.78,5.9,51.3
 AUCHAN,1023527,"Pachet Cadou Whiskey Single Malt Glenfiddich 12 Ani + Pahar, 0.7l",15,229.95,251.56,345.0,50.0
-PROFI,1007373,Pulpa Pui Cu Spate La Cuptor /Kg,22,18.6,27.48,27.9,50.0
+PROFI,1007373,Pulpa Pui Cu Spate La Cuptor /Kg,23,18.6,27.5,27.9,50.0
 AUCHAN,1233801,Bricheta Mecanica Atomic Festival Football Idols,17,2.34,2.65,3.5,49.6
 AUCHAN,1109315,J&B Rare 0.7l + 2 Pah,17,52.95,65.19,78.95,49.1
 AUCHAN,1114565,"Vodka Spirit Blueberry, 0.275 L",6,6.99,9.43,10.4,48.8
-CARREFOUR,1016154,Maggi Secretul Gustului Legume75g,54,3.29,3.99,4.89,48.6
+CARREFOUR,1016154,Maggi Secretul Gustului Legume75g,54,3.29,3.95,4.89,48.6
 CARREFOUR,1012834,Dr Oetker Zahar Pudra Aroma Van80g,54,1.89,2.31,2.79,47.6
 AUCHAN,1195034,"Gin Greenalls Original, Alcool 40%, 0.7l",17,47.95,52.69,70.7,47.4
 AUCHAN,1025085,"Lichior Zarea Royal Cream Cu Ciocolata, 0.5l",17,20.5,26.76,30.2,47.3
-SELGROS,1014705,Panzani Malai Pt Mamaliga Rapid 500g,5,6.99,8.31,10.29,47.2
+SELGROS,1014705,Panzani Malai Pt Mamaliga Rapid 500g,5,6.99,9.63,10.29,47.2
 CARREFOUR,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,54,1.49,1.79,2.19,47.0
 AUCHAN,1028713,"Pachet Cadou Whisky Johnnie Walker Black Label + 2 Pahare 40% Alcool, 0.7l",17,109.95,133.48,159.95,45.5
+SELGROS,1016548,Hellmann'S Sos Original Burger 250ml,5,12.01,14.61,17.47,45.5
 CARREFOUR,1010834,Vegeta Baza Mancare Leg.250g,25,8.59,10.33,12.49,45.4
 CARREFOUR,1013565,Ketchup Picant 500g Tomi,54,7.19,10.14,10.45,45.3
 CARREFOUR,1014629,M&M'S Choco 45gr,54,4.49,5.43,6.49,44.5
-KAUFLAND,1016548,Hellmann'S Sos Original Burger 250ml,25,11.49,14.09,16.49,43.5
+CARREFOUR,1016548,Hellmann'S Sos Original Burger 250ml,54,12.49,16.59,17.99,44.0
+CORA,1016548,Hellmann'S Sos Original Burger 250ml,4,10.79,14.31,15.49,43.6
+KAUFLAND,1016548,Hellmann'S Sos Original Burger 250ml,25,11.49,14.89,16.49,43.5
 CARREFOUR,1011077,M&M Ciocolata Drajeuri Cu Arahide 250g,54,14.99,19.51,21.49,43.4
-CARREFOUR,1014705,Panzani Malai Pt Mamaliga Rapid 500g,54,5.89,6.33,8.39,42.4
+CARREFOUR,1014705,Panzani Malai Pt Mamaliga Rapid 500g,54,5.89,6.56,8.39,42.4
 CARREFOUR,1017576,"Bomboane M&M' S Cu Arahide, 45g",54,4.49,5.44,6.39,42.3
 PROFI,1007182,Pui La Cuptor /Kg,6,18.9,25.57,26.9,42.3
 AUCHAN,1013565,Ketchup Picant 500g Tomi,12,6.69,9.05,9.49,41.9
 AUCHAN,1010610,Sly Tableta Dietetica De Lapte  25gr,4,1.69,2.21,2.39,41.4
-CARREFOUR,1016548,Hellmann'S Sos Original Burger 250ml,54,12.75,16.77,17.99,41.1
-PROFI,1015719,Barilla Spaghete No.5,140,4.49,4.58,6.29,40.1
-PROFI,1013048,Jacobs Kronung Cafea Macinata 250g,140,19.99,20.49,27.99,40.0
-AUCHAN,1010570,Bisc.Fara Zahar170g Fibra Gull,8,8.79,11.85,12.29,39.8
+PROFI,1015719,Barilla Spaghete No.5,143,4.49,4.58,6.29,40.1
+PROFI,1013048,Jacobs Kronung Cafea Macinata 250g,137,19.99,20.56,27.99,40.0
 AUCHAN,1019553,Pachet Promo Whiskey Ballantines Cu 2 Pahare Cadou,17,54.95,60.99,75.5,37.4
 CARREFOUR,1010454,Alpro Bautura Din Soia Neindulcita 1l,44,12.39,13.51,16.99,37.1
-PROFI,1011353,Cafea Boabe Crema E Aroma,112,115.99,150.09,158.99,37.1
+PROFI,1011353,Cafea Boabe Crema E Aroma,114,115.99,150.09,158.99,37.1
 CARREFOUR,1024060,Dr Oetker Esenta De Rom 38 Ml,54,5.19,6.23,7.09,36.6
 CARREFOUR,1010610,Sly Tableta Dietetica De Lapte  25gr,54,2.19,2.56,2.99,36.5
 CARREFOUR,1015719,Barilla Spaghete No.5,54,4.99,6.29,6.79,36.1
 AUCHAN,1195038,"Gin Pink Cherry Jj Whitley, Alcool 40%, 0.7l",17,55.95,60.41,75.9,35.7
-AUCHAN,1014629,M&M'S Choco 45gr,11,3.59,4.47,4.85,35.1
+AUCHAN,1014629,M&M'S Choco 45gr,10,3.59,4.43,4.85,35.1
 AUCHAN,1017576,"Bomboane M&M' S Cu Arahide, 45g",11,3.59,4.46,4.85,35.1
 PROFI,1007283,Pulpa De Pui Cu Spate Condim La Cuptor/Kg,4,29.9,37.77,40.4,35.1
 CARREFOUR,1034389,Set 2 Toiuri Afinata Si Visinata Bran 2 X 0.45 L,18,44.19,46.1,59.49,34.6
 CARREFOUR,1021630,Boromir Foi Cremsnit 380 G,54,13.39,14.77,17.99,34.4
 AUCHAN,1055113,Scotch Whisky Glengoyne 0.7 L,9,150.0,195.33,201.0,34.0
-SELGROS,1016548,Hellmann'S Sos Original Burger 250ml,5,13.04,15.7,17.47,34.0
 CARREFOUR,1010376,Spornic Bun La Toate Ulei 1l,52,6.99,7.48,9.35,33.8
 CARREFOUR,1010551,Olympia Sos Sweet Chilli 250ml,42,11.59,12.31,15.49,33.6
 CARREFOUR,1014741,Acadea Chupa Chups Melody Pop 15 G,53,2.09,2.35,2.79,33.5
@@ -95,73 +94,72 @@ CARREFOUR,1011062,Barilla Paste Fusilli Nr98 500g,54,5.39,5.88,7.09,31.5
 PROFI,1000381,Ceafa De Porc La Gratar /Kg,15,37.99,46.98,49.9,31.4
 CARREFOUR,1010392,Riso Scotti Orez Basmati 500g,31,11.49,12.15,14.99,30.5
 AUCHAN,1109673,"Pachet Cadou Rom Captain Morgan, Original Spiced Gold + Pahar 0.7l",16,69.9,75.11,90.8,29.9
-AUCHAN,1010568,"Cafea Capsule Nescafe Dolce Gusto Ristretto Napoli Style, 16 Capsule, 128g",6,24.99,26.22,32.39,29.6
 AUCHAN,1013501,Dolce Gusto Cafe Au Lait  160g,4,24.99,27.99,32.39,29.6
 CARREFOUR,1011126,R&B Paine Alba Tava Fl 400g,42,32.09,32.7,41.49,29.3
-PROFI,998655,Aripi La Cuptor /Kg,8,30.9,36.52,39.9,29.1
-PROFI,1010834,Vegeta Baza Mancare Leg.250g,126,8.99,10.94,11.55,28.5
-PROFI,1014022,Brasero Cafea Instant,140,18.99,20.76,24.39,28.4
-PROFI,1021630,Boromir Foi Cremsnit 380 G,120,13.49,16.12,17.29,28.2
+PROFI,998655,Aripi La Cuptor /Kg,9,30.9,36.9,39.9,29.1
+PROFI,1010834,Vegeta Baza Mancare Leg.250g,130,8.99,10.95,11.55,28.5
+PROFI,1014022,Brasero Cafea Instant,144,18.99,20.81,24.39,28.4
+PROFI,1021630,Boromir Foi Cremsnit 380 G,122,13.49,16.13,17.29,28.2
 AUCHAN,1011481,Discovery Vodka 40% 0.5l L,17,20.9,24.78,26.6,27.3
 AUCHAN,1011126,R&B Paine Alba Tava Fl 400g,4,24.99,26.69,31.79,27.2
 CARREFOUR,1010522,Amidon Din Cartofi 75g Dr Oetk,45,2.35,2.66,2.99,27.2
 CARREFOUR,1010545,Hellmanns Original Sos Maioneza 625ml,42,27.89,30.78,35.49,27.2
-PROFI,1014679,Baneasa Malai 1kg,134,3.69,4.18,4.69,27.1
+PROFI,1014679,Baneasa Malai 1kg,136,3.69,4.17,4.69,27.1
 CARREFOUR,1022679,Dr.Oetker Bourbon Zahar Vanilat 8g,54,2.59,2.9,3.29,27.0
 AUCHAN,1068622,Gin Wild Berry 37.5% 0.7l,17,55.95,60.52,70.9,26.7
 PROFI,999665,Carnati Grosi Afumati La Gratar /Kg,14,28.49,34.94,35.9,26.0
 AUCHAN,1079355,Red Vodka 0.7l 40% Smirnoff,8,49.95,52.66,62.9,25.9
-PROFI,1021242,Bomb Cioco&Lapte 68g Maltesers,137,6.99,7.08,8.79,25.8
+PROFI,1021242,Bomb Cioco&Lapte 68g Maltesers,141,6.99,7.09,8.79,25.8
 PROFI,1010620,"Cafea Instant Tchibo Exclusive Decofeinizata, 100 G",3,15.99,17.86,20.09,25.6
 CARREFOUR,1018736,"Coniac Metaxa 12* Alc. 40%, 0.700l",54,2.79,3.06,3.49,25.1
 AUCHAN,1071412,Bacardi Carta Blanca 0.7l,15,50.32,60.38,62.9,25.0
-PROFI,1023646,Bomboane Kinder Schokobons 125g,119,11.99,14.06,14.99,25.0
+PROFI,1023646,Bomboane Kinder Schokobons 125g,121,11.99,14.07,14.99,25.0
 AUCHAN,1084909,Aperol 0.7+Cinzano Spritz 0.75,17,89.95,93.84,112.0,24.5
 CARREFOUR,1011288,Salrom Sare Iodata Recristalizata 1kg,54,4.49,5.07,5.59,24.5
-PROFI,1010570,Bisc.Fara Zahar170g Fibra Gull,139,11.99,14.01,14.89,24.2
-PROFI,999771,Carnati Subtiri Afumati La Gratar /Kg,13,36.99,44.6,45.9,24.1
+PROFI,1010570,Bisc.Fara Zahar170g Fibra Gull,143,11.99,14.02,14.89,24.2
+PROFI,999771,Carnati Subtiri Afumati La Gratar /Kg,14,36.99,44.12,45.9,24.1
 CARREFOUR,1010776,Bomb Halls Miere&Lamaie 33.5g,54,4.99,5.32,6.19,24.0
-KAUFLAND,1013742,Kfc Sos Cu Usturoi,25,16.49,18.83,20.39,23.7
+KAUFLAND,1013742,Kfc Sos Cu Usturoi,25,16.49,17.58,20.39,23.7
 CARREFOUR,1010570,Bisc.Fara Zahar170g Fibra Gull,54,12.99,14.14,15.99,23.1
 CARREFOUR,1011111,Ceai Fares De Musetel 20 G / 20 De Plicuri,54,3.89,4.11,4.79,23.1
-CARREFOUR,1016588,Tassimo Cappuccino Capsule 260g,54,38.99,41.13,47.99,23.1
-CARREFOUR,1013446,Chips Cu Gust Ardei 165gpring,54,10.49,12.27,12.89,22.9
+CARREFOUR,1016588,Tassimo Cappuccino Capsule 260g,54,38.99,41.11,47.99,23.1
+CARREFOUR,1013446,Chips Cu Gust Ardei 165gpring,54,10.49,12.29,12.89,22.9
 AUCHAN,1053665,Pachet Cadou Whiskey Jameson Triple Distilled 0.7 L + 2 Pahare,17,75.7,79.76,92.95,22.8
 CARREFOUR,1010430,Cafea Mac Classique R&G250glor,38,41.99,44.9,51.49,22.6
 AUCHAN,1069793,Tigari Filtre Smoking Slim Long 120 Buc,14,4.0,4.19,4.9,22.5
-PROFI,1016154,Maggi Secretul Gustului Legume75g,137,3.59,3.88,4.39,22.3
-AUCHAN,1016154,Maggi Secretul Gustului Legume75g,5,2.99,3.42,3.65,22.1
+PROFI,1016154,Maggi Secretul Gustului Legume75g,141,3.59,3.88,4.39,22.3
 CARREFOUR,1016507,Tassimo Morning Cafe 124.8g,54,38.49,39.68,46.99,22.1
 AUCHAN,1064925,"Pachet Lichior Cu Fructe De Padure, 62% Alcool, 0.75l + 2 Pahare",17,126.95,133.96,154.0,21.3
 AUCHAN,1073709,"Aperitiv Florentino Zarea, Visine, 0.5l",17,14.5,15.62,17.5,20.7
-MEGA IMAGE SRL,1014291,Bicarbonat Amoniu 7g Dr.Oetker,130,0.49,0.5,0.59,20.4
-CORA,1016154,Maggi Secretul Gustului Legume75g,4,2.99,3.14,3.59,20.1
-PROFI,1012168,Heinz Ketchup De Rosii 570g,139,1.79,2.01,2.15,20.1
+MEGA IMAGE SRL,1014291,Bicarbonat Amoniu 7g Dr.Oetker,128,0.49,0.49,0.59,20.4
+CORA,1016154,Maggi Secretul Gustului Legume75g,4,2.99,3.29,3.59,20.1
+PROFI,1012168,Heinz Ketchup De Rosii 570g,143,1.79,2.01,2.15,20.1
 AUCHAN,1093256,Bricheta Bic J38,17,4.5,4.61,5.4,20.0
 CARREFOUR,1011149,"Bautura Espresso Machiatto Muller, 0.25l",18,7.49,7.74,8.99,20.0
 CARREFOUR,1014319,Drajeuri Mix Fructe 18gtic Tac,53,4.49,4.86,5.39,20.0
 CARREFOUR,1023304,Draj Cu Gust Menta 18g Tic Tac,54,4.49,4.85,5.39,20.0
 AUCHAN,1082220,Horinca De Prune Chechis 0.2l,14,32.4,36.97,38.8,19.8
 CARREFOUR,1010352,Dr.Oetker Crema Prajituri Cu Gust Fructe De Padure 50g,24,5.59,5.87,6.69,19.7
-MEGA IMAGE SRL,1016588,Tassimo Cappuccino Capsule 260g,130,37.69,40.12,44.99,19.4
-PROFI,1010376,Spornic Bun La Toate Ulei 1l,139,7.49,8.87,8.89,18.7
+PROFI,1010376,Spornic Bun La Toate Ulei 1l,143,7.49,8.87,8.89,18.7
 AUCHAN,1145591,Havana Club 3yo 40% 0.35l,6,31.95,33.93,37.9,18.6
-AUCHAN,1021242,Bomb Cioco&Lapte 68g Maltesers,10,7.79,9.06,9.2,18.1
+AUCHAN,1021242,Bomb Cioco&Lapte 68g Maltesers,9,7.79,9.04,9.2,18.1
 AUCHAN,1076330,Pachet Cadou Vodka Stalinskaya 0.7l Cu 2 Pahare,17,45.9,48.98,54.2,18.1
 AUCHAN,1069794,"Irish Whisky Jameson, 50 Ml",16,8.05,9.29,9.5,18.0
 AUCHAN,1010392,Riso Scotti Orez Basmati 500g,5,8.99,10.23,10.59,17.8
 CARREFOUR,1010620,"Cafea Instant Tchibo Exclusive Decofeinizata, 100 G",37,28.89,29.25,33.99,17.7
-PROFI,1018430,Condiment Bors 70g Maggi,140,4.29,4.75,5.05,17.7
+PROFI,1018430,Condiment Bors 70g Maggi,144,4.29,4.75,5.05,17.7
 AUCHAN,1050482,Absolut Lime 0.70l 40% 6k,16,56.1,62.14,66.0,17.6
 PROFI,1006559,Piept Pui Strips Gastro,14,39.9,46.4,46.9,17.5
 AUCHAN,1015633,Pachet Bautura Alcoolica Jagermeister 0.7l + 2 Pahare,15,62.95,65.14,73.9,17.4
-MEGA IMAGE SRL,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,130,1.49,1.5,1.75,17.4
+MEGA IMAGE SRL,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,128,1.49,1.5,1.75,17.4
 CARREFOUR,1023646,Bomboane Kinder Schokobons 125g,45,14.49,15.42,16.99,17.3
-KAUFLAND,1016154,Maggi Secretul Gustului Legume75g,25,3.49,3.78,4.09,17.2
+KAUFLAND,1016154,Maggi Secretul Gustului Legume75g,25,3.49,3.68,4.09,17.2
+MEGA IMAGE SRL,1016154,Maggi Secretul Gustului Legume75g,121,3.49,3.75,4.09,17.2
 AUCHAN,1015089,Vodka 40% 1.75l Stalinskaya,15,85.5,93.7,100.0,17.0
 AUCHAN,1049460,Cocktail Rtd Old Nick Mojito 16% 0.7 L,17,38.7,42.82,45.2,16.8
-KAUFLAND,1013048,Jacobs Kronung Cafea Macinata 250g,25,29.99,32.19,34.99,16.7
-PROFI,1014705,Panzani Malai Pt Mamaliga Rapid 500g,132,5.99,6.92,6.99,16.7
+AUCHAN,1016154,Maggi Secretul Gustului Legume75g,4,2.99,3.24,3.49,16.7
+KAUFLAND,1013048,Jacobs Kronung Cafea Macinata 250g,25,29.99,31.79,34.99,16.7
+PROFI,1014705,Panzani Malai Pt Mamaliga Rapid 500g,134,5.99,6.92,6.99,16.7
 AUCHAN,1033130,Vodca Absolut 0.05 L,16,6.7,7.66,7.8,16.4
 AUCHAN,1036401,Lichior De Portocale Grand Marnier 0.7 L,5,128.0,139.4,149.0,16.4
 AUCHAN,1089116,Bickens Gin 40%,15,69.8,80.44,81.2,16.3
@@ -171,31 +169,31 @@ AUCHAN,1034213,Vodka Stalinskaya 0.2l,16,12.25,13.1,14.2,15.9
 AUCHAN,1044054,Bautura Spirtoasa Saniuta 0.5l,17,15.45,16.84,17.9,15.9
 CARREFOUR,1010554,Cub Aliment Gust Gaina 60g Mag,54,3.79,4.03,4.39,15.8
 AUCHAN,1034256,"Vodca Absolut 40% Alc, 0.7 L",17,55.0,56.84,63.6,15.6
-PROFI,1010272,Cafea  Exclusive Intense. 250g,74,25.99,29.73,29.99,15.4
+PROFI,1010272,Cafea  Exclusive Intense. 250g,75,25.99,29.74,29.99,15.4
 AUCHAN,1043809,Finlandia 40% 1.75l,8,112.0,122.88,129.0,15.2
 AUCHAN,1065568,Vodka 40% 0.5l Stalinskaya,16,25.95,28.38,29.9,15.2
-MEGA IMAGE SRL,1014152,Cafea Boabe  Beans 500gjacobs,130,54.99,55.44,63.29,15.1
+MEGA IMAGE SRL,1014152,Cafea Boabe  Beans 500gjacobs,128,54.99,55.38,63.29,15.1
 AUCHAN,1021132,"Scotch Whisky Johnnie Walker, Red Label 0.2 L",15,23.5,26.53,27.0,14.9
 AUCHAN,1026177,Captain Morgan Tiki 0.7l,17,66.5,72.96,76.4,14.9
 AUCHAN,1090426,Crema Di Whisky 0.5l Angelli,17,26.9,27.89,30.9,14.9
-AUCHAN,1014679,Baneasa Malai 1kg,7,3.39,3.82,3.89,14.7
+AUCHAN,1014679,Baneasa Malai 1kg,6,3.39,3.81,3.89,14.7
 AUCHAN,1026963,Cf Plantation Rum Dark 40% 0.7,17,74.95,79.32,85.9,14.6
 AUCHAN,1019753,"Gin Wembley Pink, 37.5%, 0.7l",12,44.9,49.77,51.4,14.5
 AUCHAN,1024443,"Cocktail Rtd Old Nick Pinacolada, 0.7l",17,38.7,42.35,44.3,14.5
-PROFI,1010610,Sly Tableta Dietetica De Lapte  25gr,67,2.35,2.51,2.69,14.5
+PROFI,1010610,Sly Tableta Dietetica De Lapte  25gr,70,2.35,2.51,2.69,14.5
 AUCHAN,1014023,"Bricheta Clipper, Diverse Modele",15,3.5,3.67,4.0,14.3
 AUCHAN,1023258,Havana Club Spiced 35% 0.70l,15,69.9,72.57,79.9,14.3
 AUCHAN,1063247,Bricheta Atomic Midi Hard Colors,15,2.1,2.14,2.4,14.3
 CARREFOUR,1010591,Panzani Paste Tagliatelle 500g,19,10.49,10.86,11.99,14.3
-MEGA IMAGE SRL,1014705,Panzani Malai Pt Mamaliga Rapid 500g,130,6.99,7.43,7.99,14.3
-MEGA IMAGE SRL,1016154,Maggi Secretul Gustului Legume75g,122,3.49,3.7,3.99,14.3
+MEGA IMAGE SRL,1014705,Panzani Malai Pt Mamaliga Rapid 500g,128,6.99,7.44,7.99,14.3
+MEGA IMAGE SRL,1016588,Tassimo Cappuccino Capsule 260g,128,37.69,39.85,43.09,14.3
 AUCHAN,1012227,Scotch Whisky Ballantine'S Finest 0.5 L,11,43.75,44.31,49.95,14.2
 AUCHAN,1013607,"Bautura Spirtoasa Prodvinalco V33, 1 L",16,31.9,34.51,36.4,14.1
-MEGA IMAGE SRL,1013565,Ketchup Picant 500g Tomi,130,9.99,10.06,11.39,14.0
+MEGA IMAGE SRL,1013565,Ketchup Picant 500g Tomi,128,9.99,10.05,11.39,14.0
 CARREFOUR,1020843,Cioc Cu Lapte Din Stevia 25 G,43,3.59,3.9,4.09,13.9
 AUCHAN,1049795,"Bautura Spirtoasa Alba V33, 0.5 L",12,16.7,17.63,19.0,13.8
 CARREFOUR,1010771,Maille Dijon Mustar Fin 215 G,27,12.29,13.09,13.99,13.8
-PROFI,1013020,Dr Oetker Drojdie Uscata Instant7g,139,1.89,2.01,2.15,13.8
+PROFI,1013020,Dr Oetker Drojdie Uscata Instant7g,143,1.89,2.01,2.15,13.8
 AUCHAN,1037164,Smirnoff Ice 0.275 L 4%,17,8.5,9.25,9.65,13.5
 AUCHAN,1053111,"Premium Vodka Original Stalinskaya, 1l",17,51.9,56.75,58.9,13.5
 AUCHAN,1054733,Crema Whisky Bailey`S 17% 0.7l,17,82.9,87.51,94.1,13.5
@@ -213,7 +211,7 @@ AUCHAN,1064349,Gentleman Jack 0.7l,9,115.95,119.74,130.0,12.1
 AUCHAN,1068445,"Crema De Whisky Zarea Royal, 0.5l",17,26.95,29.05,30.2,12.1
 CARREFOUR,1013742,Kfc Sos Cu Usturoi,53,16.49,17.51,18.49,12.1
 PROFI,1007480,Pulpe Intregi La Cuptor /Kg,5,24.9,25.5,27.9,12.0
-PROFI,1018736,"Coniac Metaxa 12* Alc. 40%, 0.700l",81,2.99,3.11,3.35,12.0
+PROFI,1018736,"Coniac Metaxa 12* Alc. 40%, 0.700l",82,2.99,3.11,3.35,12.0
 PROFI,1002384,File Piept Pui La Gratar /Kg,22,41.9,45.35,46.9,11.9
 AUCHAN,1014152,Cafea Boabe  Beans 500gjacobs,14,50.99,55.28,56.99,11.8
 AUCHAN,1048643,Whisky 1l J&B Rare 40%,17,62.6,66.92,69.95,11.7
@@ -221,7 +219,7 @@ AUCHAN,1109146,Lichior Cafea 0.5l Sheridan'S,16,77.8,81.79,86.9,11.7
 AUCHAN,1057671,"Bautura Spirtoasa Prodvinalco R26, 0.5 L",16,13.9,14.65,15.5,11.5
 AUCHAN,1074711,Dimple De Luxe 0.7l 43%,8,178.4,193.31,198.85,11.5
 AUCHAN,1091343,Horinca De Maramures Din Prune 0.5 L,15,84.3,92.06,94.0,11.5
-PROFI,1013446,Chips Cu Gust Ardei 165gpring,137,12.99,13.42,14.49,11.5
+PROFI,1013446,Chips Cu Gust Ardei 165gpring,141,12.99,13.44,14.49,11.5
 AUCHAN,1010988,Garrone Cherry 16% Vol. 1l,5,29.9,32.62,33.3,11.4
 AUCHAN,1022656,Pachet Cadou Whisky Chivas Regal 0.7 L + 2 Pahare,17,122.95,126.24,136.95,11.4
 AUCHAN,1059308,Vodka Premium Tazovsky 0.7 L,17,35.9,36.14,40.0,11.4
@@ -233,134 +231,135 @@ AUCHAN,1015251,Vermut Alb Zarea 1l A15%,5,31.95,32.66,35.5,11.1
 AUCHAN,1024418,Bfl Zarea Cherry Aperitiv Baut. 16% 1l,17,31.95,33.2,35.5,11.1
 CARREFOUR,1043842,Tigari Pall Mall Extra Cut Balance (Blue),21,8.99,9.19,9.99,11.1
 AUCHAN,1228369,"Chivas Regal Whiskey, 12yo, 40% Alcool, 0.2l",14,38.2,41.5,42.4,11.0
-PROFI,1011348,Cus Cus 500g Panzani,127,8.69,9.15,9.65,11.0
-PROFI,1010287,Antonio Di Vaio Fusilli 3 Minute 500g,82,6.99,7.32,7.75,10.9
+PROFI,1011348,Cus Cus 500g Panzani,130,8.69,9.15,9.65,11.0
+PROFI,1010287,Antonio Di Vaio Fusilli 3 Minute 500g,84,6.99,7.32,7.75,10.9
 AUCHAN,1028465,Bautura Spirtoasa R26 1 L,8,30.2,31.8,33.4,10.6
 AUCHAN,1039543,Horinca De Maramures Din Prune 0.7 L,16,94.0,101.5,104.0,10.6
-CARREFOUR,1013048,Jacobs Kronung Cafea Macinata 250g,54,34.79,35.35,38.49,10.6
+CARREFOUR,1013048,Jacobs Kronung Cafea Macinata 250g,54,34.79,35.47,38.49,10.6
 PROFI,1010392,Riso Scotti Orez Basmati 500g,37,11.65,12.19,12.89,10.6
 AUCHAN,1010545,Hellmanns Original Sos Maioneza 625ml,4,18.99,19.49,20.99,10.5
 AUCHAN,1011108,Havana Club 3yo 0.7l,17,61.7,63.21,68.1,10.4
 AUCHAN,1037765,Bautura Alcoolica Jagermeister 0.7 L,17,55.6,57.99,61.4,10.4
 CARREFOUR,1014679,Baneasa Malai 1kg,54,3.89,4.07,4.29,10.3
-PROFI,1014629,M&M'S Choco 45gr,139,4.85,5.02,5.35,10.3
-PROFI,1017576,"Bomboane M&M' S Cu Arahide, 45g",140,4.85,5.02,5.35,10.3
+PROFI,1014629,M&M'S Choco 45gr,143,4.85,5.03,5.35,10.3
+PROFI,1017576,"Bomboane M&M' S Cu Arahide, 45g",144,4.85,5.03,5.35,10.3
 AUCHAN,1052767,Bautura Spirtoasa Saniuta 2l,7,57.95,61.29,63.8,10.1
 AUCHAN,1068161,"Aperitiv Jagermeister, 1.75 L",17,149.0,160.18,164.0,10.1
 CARREFOUR,1011709,Bunica Ulei Floarea Soarelui 1l,54,8.49,8.89,9.35,10.1
-MEGA IMAGE SRL,1013020,Dr Oetker Drojdie Uscata Instant7g,130,1.49,1.5,1.64,10.1
-PROFI,1011126,R&B Paine Alba Tava Fl 400g,137,35.65,37.21,39.25,10.1
-PROFI,1014291,Bicarbonat Amoniu 7g Dr.Oetker,140,0.99,1.0,1.09,10.1
+MEGA IMAGE SRL,1013020,Dr Oetker Drojdie Uscata Instant7g,128,1.49,1.5,1.64,10.1
+PROFI,1011126,R&B Paine Alba Tava Fl 400g,139,35.65,37.22,39.25,10.1
+PROFI,1014291,Bicarbonat Amoniu 7g Dr.Oetker,144,0.99,1.0,1.09,10.1
 AUCHAN,1012704,Vodka Premium Tazovsky 1 L,17,49.9,51.96,54.9,10.0
 AUCHAN,1027799,Dry Gin 0.7l 37.5% Gordon'S,17,62.8,65.66,69.1,10.0
 AUCHAN,1048406,Vermut Rosso 1l Angelli,5,34.0,35.74,37.4,10.0
 CARREFOUR,1010272,Cafea  Exclusive Intense. 250g,54,29.99,30.75,32.99,10.0
-MEGA IMAGE SRL,1014022,Brasero Cafea Instant,130,23.09,23.44,25.39,10.0
-MEGA IMAGE SRL,1021242,Bomb Cioco&Lapte 68g Maltesers,130,7.99,8.03,8.79,10.0
-MEGA IMAGE SRL,1022679,Dr.Oetker Bourbon Zahar Vanilat 8g,130,2.69,2.7,2.96,10.0
-PROFI,1013565,Ketchup Picant 500g Tomi,140,9.99,10.51,10.99,10.0
+MEGA IMAGE SRL,1014022,Brasero Cafea Instant,128,23.09,23.46,25.39,10.0
+MEGA IMAGE SRL,1021242,Bomb Cioco&Lapte 68g Maltesers,128,7.99,8.03,8.79,10.0
+MEGA IMAGE SRL,1022679,Dr.Oetker Bourbon Zahar Vanilat 8g,128,2.69,2.7,2.96,10.0
+PROFI,1013565,Ketchup Picant 500g Tomi,143,9.99,10.52,10.99,10.0
 CARREFOUR,1077962,Pachet 5*0.05l Jack Daniel'S,28,69.99,73.3,76.89,9.9
 AUCHAN,1041463,Skyy Vodka 40%Alc 0.7l,17,58.9,64.02,64.7,9.8
-PROFI,1014741,Acadea Chupa Chups Melody Pop 15 G,131,2.45,2.5,2.69,9.8
+PROFI,1014741,Acadea Chupa Chups Melody Pop 15 G,133,2.45,2.5,2.69,9.8
 AUCHAN,1011577,Vodka Premium Tazovsky 0.5 L,17,26.7,27.92,29.3,9.7
 AUCHAN,1010948,Jacobs Kronung Solubila 200g,11,49.38,50.23,54.13,9.6
 AUCHAN,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,10,1.35,1.46,1.48,9.6
 AUCHAN,1195031,"Gin Hendricks Neptunia, Alcool 43.4%, 0.7l",16,219.0,228.19,240.0,9.6
-PROFI,1007179,Pui La Cuptor Condimentat Cu Usturoi,28,20.9,22.76,22.9,9.6
-PROFI,1019726,Haribo Wummis 100g,134,7.29,7.5,7.99,9.6
-PROFI,1011709,Bunica Ulei Floarea Soarelui 1l,138,8.39,9.14,9.19,9.5
+PROFI,1007179,Pui La Cuptor Condimentat Cu Usturoi,30,20.9,22.77,22.9,9.6
+PROFI,1019726,Haribo Wummis 100g,136,7.29,7.5,7.99,9.6
+PROFI,1011709,Bunica Ulei Floarea Soarelui 1l,142,8.39,9.14,9.19,9.5
 AUCHAN,1037488,Carolans 0.7l 17%,17,67.9,70.16,74.3,9.4
-MEGA IMAGE SRL,1016507,Tassimo Morning Cafe 124.8g,130,37.19,37.38,40.69,9.4
+MEGA IMAGE SRL,1016507,Tassimo Morning Cafe 124.8g,128,37.19,37.35,40.69,9.4
 AUCHAN,1074113,"Aperitiv Carpaten Bitter Zarea, 0.5l",17,18.5,18.94,20.2,9.2
 CARREFOUR,1013940,"L-Carnitin Instant, Plic 15 G",54,7.5,7.54,8.19,9.2
-PROFI,1010776,Bomb Halls Miere&Lamaie 33.5g,118,4.99,5.11,5.45,9.2
-PROFI,1011288,Salrom Sare Iodata Recristalizata 1kg,139,4.99,5.19,5.45,9.2
-PROFI,1014319,Drajeuri Mix Fructe 18gtic Tac,133,4.99,5.12,5.45,9.2
-PROFI,1023304,Draj Cu Gust Menta 18g Tic Tac,139,4.99,5.13,5.45,9.2
-AUCHAN,1016548,Hellmann'S Sos Original Burger 250ml,4,10.99,11.24,11.99,9.1
+PROFI,1010776,Bomb Halls Miere&Lamaie 33.5g,120,4.99,5.11,5.45,9.2
+PROFI,1011288,Salrom Sare Iodata Recristalizata 1kg,143,4.99,5.19,5.45,9.2
+PROFI,1014319,Drajeuri Mix Fructe 18gtic Tac,136,4.99,5.13,5.45,9.2
+PROFI,1023304,Draj Cu Gust Menta 18g Tic Tac,143,4.99,5.13,5.45,9.2
+AUCHAN,1016548,Hellmann'S Sos Original Burger 250ml,3,10.99,11.32,11.99,9.1
 AUCHAN,1019318,Absolut Blue 1.75l,17,121.0,127.24,132.0,9.1
-MEGA IMAGE SRL,1018430,Condiment Bors 70g Maggi,130,4.39,4.41,4.79,9.1
+MEGA IMAGE SRL,1018430,Condiment Bors 70g Maggi,128,4.39,4.41,4.79,9.1
+SELGROS,1016588,Tassimo Cappuccino Capsule 260g,5,41.75,44.01,45.51,9.0
 AUCHAN,1014919,"Gin Beefeater Pink, 37.5% 0.7l + 1 Pahar",15,71.95,74.13,78.3,8.8
-KAUFLAND,1014705,Panzani Malai Pt Mamaliga Rapid 500g,25,5.69,5.99,6.19,8.8
+KAUFLAND,1014705,Panzani Malai Pt Mamaliga Rapid 500g,25,5.69,5.91,6.19,8.8
 AUCHAN,1035728,Cpt Morgan Black Spiced 0.7l,17,77.9,83.18,84.7,8.7
 CARREFOUR,1010585,Amigo Cafea Solubila 200g,52,42.75,44.85,46.49,8.7
-MEGA IMAGE SRL,1011077,M&M Ciocolata Drajeuri Cu Arahide 250g,129,18.29,18.36,19.89,8.7
-PROFI,1012834,Dr Oetker Zahar Pudra Aroma Van80g,140,2.99,3.03,3.25,8.7
+MEGA IMAGE SRL,1011077,M&M Ciocolata Drajeuri Cu Arahide 250g,128,18.29,18.36,19.89,8.7
+PROFI,1012834,Dr Oetker Zahar Pudra Aroma Van80g,144,2.99,3.03,3.25,8.7
 AUCHAN,1028164,"Aperitiv Garrone Cherry, 0.75 L",5,26.9,28.74,29.2,8.6
-PROFI,1022679,Dr.Oetker Bourbon Zahar Vanilat 8g,140,3.49,3.53,3.79,8.6
+PROFI,1022679,Dr.Oetker Bourbon Zahar Vanilat 8g,144,3.49,3.53,3.79,8.6
 MEGA IMAGE SRL,1010288,"Chipsuri Lay'S Cu Gust De Cascaval, 60 G",106,5.89,5.9,6.39,8.5
-PROFI,1010457,Fursecuri Fara Zahar Gullon Cu Ciocolata 125 G,70,17.75,18.1,19.25,8.5
+PROFI,1010457,Fursecuri Fara Zahar Gullon Cu Ciocolata 125 G,73,17.75,18.11,19.25,8.5
 AUCHAN,1016588,Tassimo Cappuccino Capsule 260g,13,38.49,40.51,41.71,8.4
-MEGA IMAGE SRL,1010945,Dr Oetker Crema Praj Gust C&T&R 57g,112,5.99,5.99,6.49,8.3
+MEGA IMAGE SRL,1010945,Dr Oetker Crema Praj Gust C&T&R 57g,111,5.99,5.99,6.49,8.3
 AUCHAN,1010935,Kuznetzoff Vodka 0.5l 40%,17,21.9,23.59,23.7,8.2
-MEGA IMAGE SRL,1010430,Cafea Mac Classique R&G250glor,130,43.19,43.38,46.69,8.1
-MEGA IMAGE SRL,1010554,Cub Aliment Gust Gaina 60g Mag,130,3.69,3.71,3.99,8.1
-PROFI,1016507,Tassimo Morning Cafe 124.8g,140,36.99,39.0,39.99,8.1
+MEGA IMAGE SRL,1010430,Cafea Mac Classique R&G250glor,128,43.19,43.35,46.69,8.1
+MEGA IMAGE SRL,1010554,Cub Aliment Gust Gaina 60g Mag,128,3.69,3.7,3.99,8.1
+PROFI,1016507,Tassimo Morning Cafe 124.8g,144,36.99,39.0,39.99,8.1
 CARREFOUR,1010948,Jacobs Kronung Solubila 200g,52,59.25,59.96,63.99,8.0
 MEGA IMAGE SRL,1010568,"Cafea Capsule Nescafe Dolce Gusto Ristretto Napoli Style, 16 Capsule, 128g",86,32.59,32.62,35.19,8.0
-PROFI,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,140,2.49,2.52,2.69,8.0
+PROFI,1015660,Dr.Oetker Original Pudding Praf Budinca Gust Vanilie 40g,144,2.49,2.52,2.69,8.0
 AUCHAN,1101884,Aperitiv Bardinet Cu Portocala 0.7 L,4,48.0,48.95,51.8,7.9
 AUCHAN,1080657,Gin Tanqueray 43.1% 0.7l,17,90.9,93.79,97.9,7.7
 CARREFOUR,1011315,Capsule Amhsbld 102g Starbucks,23,31.09,32.34,33.49,7.7
-PROFI,1010945,Dr Oetker Crema Praj Gust C&T&R 57g,108,6.49,6.98,6.99,7.7
+PROFI,1010945,Dr Oetker Crema Praj Gust C&T&R 57g,110,6.49,6.97,6.99,7.7
 AUCHAN,1075626,J&B Rare & Cola 0.25l 6.4%,17,8.6,8.92,9.25,7.6
-MEGA IMAGE SRL,1013048,Jacobs Kronung Cafea Macinata 250g,130,32.69,33.76,35.19,7.6
-MEGA IMAGE SRL,1013446,Chips Cu Gust Ardei 165gpring,130,11.89,11.97,12.79,7.6
-MEGA IMAGE SRL,1016548,Hellmann'S Sos Original Burger 250ml,130,15.79,15.91,16.99,7.6
+MEGA IMAGE SRL,1013048,Jacobs Kronung Cafea Macinata 250g,128,32.69,33.88,35.19,7.6
+MEGA IMAGE SRL,1013446,Chips Cu Gust Ardei 165gpring,128,11.89,11.97,12.79,7.6
+MEGA IMAGE SRL,1016548,Hellmann'S Sos Original Burger 250ml,128,15.79,15.91,16.99,7.6
 AUCHAN,1034076,Vodka Premium Tazovsky 0.2 L,17,13.5,14.44,14.5,7.4
 AUCHAN,1028539,Beefeater Bl.Oran.0.7l,17,61.6,65.61,66.1,7.3
 AUCHAN,1041783,Vodka 40% Stumbras Gutuie 0.5l,15,36.8,38.78,39.5,7.3
 AUCHAN,1076905,Vodca Scandic 0.5 L,16,23.2,24.79,24.9,7.3
-MEGA IMAGE SRL,1010348,Alba 700g De Vel Pitar,130,6.89,6.92,7.39,7.3
-PROFI,1010835,Baton Protein-R 60g,138,4.09,4.13,4.39,7.3
-PROFI,1020843,Cioc Cu Lapte Din Stevia 25 G,139,4.09,4.13,4.39,7.3
+MEGA IMAGE SRL,1010348,Alba 700g De Vel Pitar,128,6.89,6.91,7.39,7.3
+PROFI,1010835,Baton Protein-R 60g,141,4.09,4.13,4.39,7.3
+PROFI,1020843,Cioc Cu Lapte Din Stevia 25 G,143,4.09,4.13,4.39,7.3
 PROFI,1043261,Jacobs Cafea Boabe Barista Espresso1kg,3,82.29,86.29,88.29,7.3
 CARREFOUR,1010932,"Bautura Cafea Arabica Starbucks, Fara Lactoza, 0.22l",36,13.99,14.55,14.99,7.1
-MEGA IMAGE SRL,1011149,"Bautura Espresso Machiatto Muller, 0.25l",130,8.49,8.52,9.09,7.1
+MEGA IMAGE SRL,1011149,"Bautura Espresso Machiatto Muller, 0.25l",128,8.49,8.52,9.09,7.1
 AUCHAN,1072579,"Whiskey Jameson 0.20 L, 40%",14,25.8,27.47,27.6,7.0
-MEGA IMAGE SRL,1019726,Haribo Wummis 100g,130,7.19,7.22,7.69,7.0
+MEGA IMAGE SRL,1019726,Haribo Wummis 100g,128,7.19,7.21,7.69,7.0
 AUCHAN,1051410,Cocktail Vodka+Mar4% 0.33l Mix,17,8.65,9.14,9.25,6.9
 AUCHAN,1058867,Cocktail Vodka+Pep4% 0.33l Mix,17,8.65,9.14,9.25,6.9
-MEGA IMAGE SRL,1014741,Acadea Chupa Chups Melody Pop 15 G,128,2.33,2.34,2.49,6.9
-MEGA IMAGE SRL,1018415,La Minut Mustar 300g,130,5.79,5.81,6.19,6.9
+MEGA IMAGE SRL,1014741,Acadea Chupa Chups Melody Pop 15 G,126,2.33,2.34,2.49,6.9
+MEGA IMAGE SRL,1018415,La Minut Mustar 300g,128,5.79,5.81,6.19,6.9
 AUCHAN,1010522,Amidon Din Cartofi 75g Dr Oetk,3,2.2,2.3,2.35,6.8
 AUCHAN,1016998,"Aperitiv Aperol, 0.7l",17,63.7,66.84,68.0,6.8
 AUCHAN,1029569,Vodca 1l 40% Finlandia,17,67.95,68.22,72.6,6.8
-MEGA IMAGE SRL,1021630,Boromir Foi Cremsnit 380 G,125,13.29,13.3,14.19,6.8
-MEGA IMAGE SRL,1011348,Cus Cus 500g Panzani,130,8.89,8.92,9.49,6.7
-MEGA IMAGE SRL,1015719,Barilla Spaghete No.5,130,5.99,6.01,6.39,6.7
+MEGA IMAGE SRL,1021630,Boromir Foi Cremsnit 380 G,124,13.29,13.3,14.19,6.8
+MEGA IMAGE SRL,1011348,Cus Cus 500g Panzani,128,8.89,8.92,9.49,6.7
+MEGA IMAGE SRL,1015719,Barilla Spaghete No.5,128,5.99,6.01,6.39,6.7
 AUCHAN,1056957,Ballantine'S 7yo 0.7,17,69.4,72.7,73.95,6.6
 AUCHAN,1066358,Digestiv Ramazzotti Amaro Lichior 0.7 L,5,52.9,55.7,56.4,6.6
 SELGROS,1016154,Maggi Secretul Gustului Legume75g,5,3.65,3.79,3.89,6.6
 AUCHAN,1086774,"Rom Captain Morgan Gold, Alc. 35%, 0.2l",16,24.7,25.6,26.3,6.5
-PROFI,1011111,Ceai Fares De Musetel 20 G / 20 De Plicuri,136,3.99,4.03,4.25,6.5
+PROFI,1011111,Ceai Fares De Musetel 20 G / 20 De Plicuri,140,3.99,4.03,4.25,6.5
 AUCHAN,1115441,Tigari Sobranie Redefined White,17,23.5,24.53,25.0,6.4
 CARREFOUR,1014022,Brasero Cafea Instant,54,23.49,24.08,24.99,6.4
-MEGA IMAGE SRL,1011062,Barilla Paste Fusilli Nr98 500g,130,6.1,6.12,6.49,6.4
-MEGA IMAGE SRL,1013940,"L-Carnitin Instant, Plic 15 G",130,7.79,7.82,8.29,6.4
-PROFI,1011077,M&M Ciocolata Drajeuri Cu Arahide 250g,112,18.79,19.36,19.99,6.4
+MEGA IMAGE SRL,1011062,Barilla Paste Fusilli Nr98 500g,128,6.1,6.12,6.49,6.4
+MEGA IMAGE SRL,1013940,"L-Carnitin Instant, Plic 15 G",128,7.79,7.81,8.29,6.4
+PROFI,1011077,M&M Ciocolata Drajeuri Cu Arahide 250g,116,18.79,19.37,19.99,6.4
 AUCHAN,1103479,Vodka Kuznetzoff  40% 2l,9,81.6,85.57,86.7,6.3
 AUCHAN,1014688,"Aperitiv Florentino Zarea, Ciocolata, 0.5l",5,14.5,14.86,15.4,6.2
 AUCHAN,1053634,"Aperitiv Florentino Zarea, Piersici, 0.5l",5,14.5,14.68,15.4,6.2
 AUCHAN,1096847,"Aperitiv Florentino Zarea, Fructe De Padure, 0.5l",5,14.5,14.68,15.4,6.2
-MEGA IMAGE SRL,1013742,Kfc Sos Cu Usturoi,130,16.49,16.54,17.49,6.1
+MEGA IMAGE SRL,1013742,Kfc Sos Cu Usturoi,128,16.49,16.54,17.49,6.1
 AUCHAN,1069925,Beefeater Pink 0 70l 37 5% 6k,17,61.6,64.21,65.3,6.0
 AUCHAN,1102776,"Dry Gin Wembley London , 0.5l",17,33.5,34.79,35.5,6.0
-PROFI,1010288,"Chipsuri Lay'S Cu Gust De Cascaval, 60 G",123,5.65,5.8,5.99,6.0
-PROFI,1013123,Nescafe Dg Espresso Inteso 128g,138,33.19,33.47,35.19,6.0
-PROFI,1013501,Dolce Gusto Cafe Au Lait  160g,138,33.19,33.47,35.19,6.0
+PROFI,1010288,"Chipsuri Lay'S Cu Gust De Cascaval, 60 G",127,5.65,5.8,5.99,6.0
+PROFI,1013123,Nescafe Dg Espresso Inteso 128g,141,33.19,33.49,35.19,6.0
+PROFI,1013501,Dolce Gusto Cafe Au Lait  160g,141,33.19,33.49,35.19,6.0
 CARREFOUR,1010568,"Cafea Capsule Nescafe Dolce Gusto Ristretto Napoli Style, 16 Capsule, 128g",38,31.19,32.28,32.99,5.8
 CARREFOUR,1013123,Nescafe Dg Espresso Inteso 128g,54,31.19,32.41,32.99,5.8
 CARREFOUR,1013501,Dolce Gusto Cafe Au Lait  160g,53,31.19,32.43,32.99,5.8
-MEGA IMAGE SRL,1013123,Nescafe Dg Espresso Inteso 128g,130,32.99,33.09,34.89,5.8
-PROFI,1016588,Tassimo Cappuccino Capsule 260g,139,37.79,39.88,39.99,5.8
+MEGA IMAGE SRL,1013123,Nescafe Dg Espresso Inteso 128g,128,32.99,33.08,34.89,5.8
+PROFI,1016588,Tassimo Cappuccino Capsule 260g,143,37.79,39.87,39.99,5.8
 AUCHAN,1093819,Blended Scotch Whisky Chivas Regal 700 Ml,17,122.95,125.01,129.95,5.7
 AUCHAN,1011062,Barilla Paste Fusilli Nr98 500g,10,5.39,5.52,5.69,5.6
-MEGA IMAGE SRL,1013501,Dolce Gusto Cafe Au Lait  160g,130,32.29,32.39,34.09,5.6
+MEGA IMAGE SRL,1013501,Dolce Gusto Cafe Au Lait  160g,128,32.29,32.37,34.09,5.6
 AUCHAN,1011111,Ceai Fares De Musetel 20 G / 20 De Plicuri,7,3.69,3.8,3.89,5.4
 AUCHAN,1106887,Rum Plant.Xaymaca 43%0.7l,7,150.0,155.14,158.0,5.3
 AUCHAN,1042779,Brugal Rom Anejo 40% 0.7l,7,77.6,81.03,81.6,5.2
 MEGA IMAGE SRL,1010932,"Bautura Cafea Arabica Starbucks, Fara Lactoza, 0.22l",116,13.49,13.5,14.19,5.2
-PROFI,1013742,Kfc Sos Cu Usturoi,113,17.29,17.57,18.19,5.2
+PROFI,1013742,Kfc Sos Cu Usturoi,116,17.29,17.58,18.19,5.2
 AUCHAN,1056479,Gin Wembley London Dry Gin 0.7l,17,46.9,47.68,49.3,5.1
-MEGA IMAGE SRL,1010585,Amigo Cafea Solubila 200g,130,45.49,47.67,47.79,5.1
+MEGA IMAGE SRL,1010585,Amigo Cafea Solubila 200g,128,45.49,47.68,47.79,5.1
