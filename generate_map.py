@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Generate docs/stores_map.html from data/prices.db.
+Generate site/stores_map.html from data/prices.db.
 Reads retail stores with network names and writes a self-contained Leaflet map.
 
 Usage:
     python generate_map.py
-    python generate_map.py --db data/prices.db --out docs/stores_map.html
+    python generate_map.py --db data/prices.db --out site/stores_map.html
 """
 
 import argparse
@@ -14,7 +14,7 @@ import sqlite3
 from pathlib import Path
 
 DB_PATH  = Path("data/prices.db")
-OUT_PATH = Path("docs/stores_map.html")
+OUT_PATH = Path("site/stores_map.html")
 
 # Color palette per network (by normalized name substring)
 NETWORK_COLORS = {

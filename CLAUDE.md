@@ -16,7 +16,7 @@ source ~/devbox/envs/240826/bin/activate
 python fetch_reference.py        # one-shot: fetch networks, UATs, categories, products
 python fetch_prices.py           # daily: fetch current prices for all stores × product batches
 python fetch_prices.py --resume  # re-run after adding new stores; skips already-fetched store×batch keys
-python generate_map.py           # regenerate docs/stores_map.html from DB (run after store discovery)
+python generate_map.py           # regenerate site/stores_map.html from DB (run after store discovery)
 ```
 
 ### Gas
@@ -104,7 +104,7 @@ Sample responses: `docs/reference/sampleResponses/` (retail), `docs/carburanti/r
 
 
 Please keep your answers concise and to the point.
-Don’t just agree with me — feel free to challenge my assumptions or offer a different perspective.
+Don't just agree with me — feel free to challenge my assumptions or offer a different perspective.
 Act as a senior full-stack developer with deep knowledge. Suggest improvements, optimizations, or best practices where applicable.
 If a question or request is ambiguous or would benefit from clarification, ask follow-up questions before answering or getting to work.
 
