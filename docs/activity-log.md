@@ -2,6 +2,38 @@
 
 ---
 
+## Retail
+
+### 2026-04-28 — DB size optimization: change-based deduplication + price analysis
+
+**Problem:** prices.db grew to 3.66GB in 15 days of VPN-based fetching with ~23M rows. Root cause: the API's `price_date` field (retailer's last update timestamp) increments daily even when prices don't change. The current schema (`UNIQUE(product_id, store_id, price_date)`) creates a new row for every date tick, even for unchanged prices.
+
+**Solution:** Implemented change-based deduplication pattern (Step 2 of 4):
+- Added `prices_current` table (UNIQUE on `product_id, store_id`) to hold the current snapshot
+- Modified `insert_price()` to check if price+promo have actually changed:
+  - If unchanged: only UPDATE `last_checked_at` in prices_current (no changelog row)
+  - If changed: INSERT to prices (changelog) + UPSERT prices_current
+- Expected row reduction: 5-7× if prices are stable 5+ days/week
+- The `prices` table becomes a true changelog; `prices_current` is the denormalized snapshot for fast lookup
+
+**Supporting changes:**
+- New `analyze_prices.py` script to analyze price uniformity per (product, network, date) group with ≥3 stores
+- Identifies % of groups with uniform pricing vs. variance distribution
+- Output: summary stats + `docs/price_uniformity.csv` for drill-down
+
+**Next steps:**
+- Backfill `prices_current` from existing prices (one-time migration, deferred)
+- Update `fetch_prices.py` to use new insert_price() logic (already compatible)
+- Monitor DB size on next fetch cycles; expect sub-1GB for 30+ days if dedup works as planned
+- Step 3 (optional): normalize high-cardinality text columns (brand, unit, retail_categ) if size still an issue after Step 2
+
+**Technical notes:**
+- DB corruption (101 integrity errors in B-tree) discovered during analysis; recovery attempted but full migration deferred due to SQLite .dump format complexities
+- The recovered DB (319-809MB clean vs. 3.4GB corrupted) suggests bloat from transaction journals and invalid index pages
+- Corruption does not prevent write operations going forward; insert_price() changes are safe for new data
+
+---
+
 ## General
 
 ### 2026-04-19 — Phase 1 UI Redesign (editorial homepage + design system)

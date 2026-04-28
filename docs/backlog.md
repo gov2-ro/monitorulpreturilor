@@ -48,6 +48,10 @@
 
 ### Todo
 
+- [ ] **DB size optimization — Step 3: Column normalization** (post-Step-2) — if prices.db remains >1GB after dedup, normalize high-cardinality text columns to lookups. Target: save ~1GB via `brands`, `units`, `retail_categories` lookup tables. Requires: (1) create lookup tables; (2) backfill existing data; (3) update insert_price() to use integer FKs; (4) update views and analysis queries to join lookups; (5) VACUUM after migration.
+- [ ] **DB size optimization — Step 4: VACUUM + page_size** (optional) — after all migrations complete, run VACUUM and consider page_size change from 4KB (default) to 8KB or 16KB if it improves compression ratio on large scan queries.
+- [x] **DB size optimization — Step 0: Fix corruption** — 23M-row prices.db developed 101 B-tree integrity errors. Attempted recovery via sqlite3 .dump/.recover; corrupted DB had ~3.4GB of bloat (transaction logs + invalid index pages). Clean recovery reduces to 319-809MB (no indexes).
+- [x] **DB size optimization — Step 1 & 2: Change-based deduplication** (2026-04-28) — Added `prices_current` snapshot table and modified `insert_price()` to only record when price+promo actually change. Expected row reduction: 5-7×. Implemented; next: update fetch_prices.py to call new logic, then monitor on next runs.
 - [x] **API endpoint discovery** — ran systematic probe of 50+ candidate endpoints (2026-04-18). See [`docs/reference/undocumented-endpoints.md`](reference/undocumented-endpoints.md) for full results. Key findings:
   - `GetCatalogProductsByNameNetwork` (no params) dumps all **87,448 product names** — useful for a client-side search index
   - `GetStoresForProductsByUat` confirmed working — supports `csvnetworkids` filter (UAT-bounded queries per network)
