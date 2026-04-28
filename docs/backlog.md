@@ -48,6 +48,7 @@
 
 ### Todo
 
+- [ ] **AFTER COMPACTION: Archive VPS_DATA_COMPACTION.md** — once `backfill_prices_current.py` and VACUUM complete on VPS (reducing prices.db from 3.66GB → ~500MB), delete `docs/VPS_DATA_COMPACTION.md` from the repo. It's a one-time runbook; save the execution summary in CLAUDE.md or git notes instead if needed for reference.
 - [ ] **DB size optimization — Step 3: Column normalization** (post-Step-2) — if prices.db remains >1GB after dedup, normalize high-cardinality text columns to lookups. Target: save ~1GB via `brands`, `units`, `retail_categories` lookup tables. Requires: (1) create lookup tables; (2) backfill existing data; (3) update insert_price() to use integer FKs; (4) update views and analysis queries to join lookups; (5) VACUUM after migration.
 - [ ] **DB size optimization — Step 4: VACUUM + page_size** (optional) — after all migrations complete, run VACUUM and consider page_size change from 4KB (default) to 8KB or 16KB if it improves compression ratio on large scan queries.
 - [x] **DB size optimization — Step 0: Fix corruption** — 23M-row prices.db developed 101 B-tree integrity errors. Attempted recovery via sqlite3 .dump/.recover; corrupted DB had ~3.4GB of bloat (transaction logs + invalid index pages). Clean recovery reduces to 319-809MB (no indexes).
