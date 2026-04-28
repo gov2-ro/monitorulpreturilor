@@ -55,6 +55,20 @@ def init_db(path="data/prices.db"):
         last_checked_at  TEXT,
         UNIQUE(product_id, store_id, price_date)
     );
+    CREATE TABLE IF NOT EXISTS prices_current (
+        product_id        INTEGER NOT NULL,
+        store_id          INTEGER NOT NULL,
+        price             REAL NOT NULL,
+        price_date        TEXT,
+        promo             TEXT,
+        brand             TEXT,
+        unit              TEXT,
+        retail_categ_id   TEXT,
+        retail_categ_name TEXT,
+        first_seen_at     TEXT,
+        last_checked_at   TEXT,
+        PRIMARY KEY (product_id, store_id)
+    );
     CREATE TABLE IF NOT EXISTS gas_networks (
         id       TEXT PRIMARY KEY,
         name     TEXT,
@@ -267,17 +281,54 @@ def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
 def insert_price(conn, product_id, store_id, price, price_date, promo,
                  brand, unit, retail_categ_id, retail_categ_name, fetched_at,
                  last_checked_at=None):
-    conn.execute(
-        """INSERT INTO prices
-           (product_id, store_id, price, price_date, promo, brand, unit,
-            retail_categ_id, retail_categ_name, fetched_at, last_checked_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(product_id, store_id, price_date)
-           DO UPDATE SET last_checked_at = excluded.last_checked_at""",
-        (product_id, store_id, price, price_date, promo, brand, unit,
-         retail_categ_id, retail_categ_name, fetched_at,
-         last_checked_at if last_checked_at is not None else fetched_at),
+    """
+    Insert or update a price. Uses change-based deduplication:
+    - If price+promo unchanged: only update last_checked_at in prices_current
+    - If changed or new: insert to prices (changelog) + upsert prices_current
+    """
+    if last_checked_at is None:
+        last_checked_at = fetched_at
+
+    # Check current price for this (product_id, store_id)
+    cur = conn.execute(
+        "SELECT price, promo FROM prices_current WHERE product_id=? AND store_id=?",
+        (product_id, store_id)
     )
+    existing = cur.fetchone()
+
+    if existing and existing[0] == price and existing[1] == promo:
+        # Price unchanged — only update last_checked_at
+        conn.execute(
+            "UPDATE prices_current SET last_checked_at=? WHERE product_id=? AND store_id=?",
+            (last_checked_at, product_id, store_id)
+        )
+    else:
+        # New or changed price — write to history and update snapshot
+        conn.execute(
+            """INSERT INTO prices
+               (product_id, store_id, price, price_date, promo, brand, unit,
+                retail_categ_id, retail_categ_name, fetched_at, last_checked_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(product_id, store_id, price_date)
+               DO UPDATE SET last_checked_at = excluded.last_checked_at""",
+            (product_id, store_id, price, price_date, promo, brand, unit,
+             retail_categ_id, retail_categ_name, fetched_at, last_checked_at),
+        )
+        # Upsert current snapshot
+        conn.execute(
+            """INSERT INTO prices_current
+               (product_id, store_id, price, price_date, promo, brand, unit,
+                retail_categ_id, retail_categ_name, first_seen_at, last_checked_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(product_id, store_id) DO UPDATE SET
+                 price=excluded.price, price_date=excluded.price_date,
+                 promo=excluded.promo, brand=excluded.brand, unit=excluded.unit,
+                 retail_categ_id=excluded.retail_categ_id,
+                 retail_categ_name=excluded.retail_categ_name,
+                 last_checked_at=excluded.last_checked_at""",
+            (product_id, store_id, price, price_date, promo, brand, unit,
+             retail_categ_id, retail_categ_name, fetched_at, last_checked_at),
+        )
 
 
 # ---------------------------------------------------------------------------
