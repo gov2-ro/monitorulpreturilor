@@ -4,6 +4,20 @@
 
 ## Retail
 
+### 2026-05-02 — Diagnosed 75-hour fetch cycle; fixed cron schedule
+
+**Problem:** healthchecks.io reported "last ping 3 days 7 hours ago". `fetch_prices.py` (PID 152866) had been running since May 1 04:00 UTC — 32+ hours — with ETA of 34 more hours.
+
+**Root cause:** `fetch_reference.py` ran Monday 2026-04-28 and grew the product catalog from ~20K → 86,994 items. This raised batches/anchor from ~100 → 435 (200 products/batch, API hard-limits at 200). At 1.3 s/batch × 480 anchor stores = **~75 hours per full cycle**. The API returns 404 for any request with >200 product IDs in the CSV.
+
+**Secondary cause:** The May 1 run resumed the unfinished April 27 checkpoint (status=in_progress, 192,760 done keys). It used `fetched_at=2026-04-27` metadata for all inserted prices, but `price_date` comes from the API so actual price dates are correct. No data integrity issue.
+
+**Current state at diagnosis:** 93% complete (193K / 208K keys); run finished ~May 2 17:00 UTC. DB is 5.6 GB (backfill populated `prices_current` with 12.3M rows; VACUUM not yet run; 0 freelist pages so VACUUM won't reduce size without deleting rows).
+
+**Fix applied:** Changed cron from `0 4 */2 * *` (every 2 days) to `0 4 * * *` (daily) and added `--max-runtime 82800` (23 hours). The script already has max-runtime support: it saves the checkpoint and exits 0 on timeout, so `&&` proceeds to `fetch_gas_prices.py` and the healthchecks.io ping fires every day. A full 480-anchor cycle now spreads across ~3–4 daily runs; the checkpoint/resume mechanism handles continuity.
+
+**Backlog added:** Per-anchor network-aware product filtering (estimated 2–4× speedup) and ghost product cleanup (12,372 products never return prices — ~17% of catalog).
+
 ### 2026-04-28 — DB size optimization: change-based deduplication + price analysis
 
 **Problem:** prices.db grew to 3.66GB in 15 days of VPN-based fetching with ~23M rows. Root cause: the API's `price_date` field (retailer's last update timestamp) increments daily even when prices don't change. The current schema (`UNIQUE(product_id, store_id, price_date)`) creates a new row for every date tick, even for unchanged prices.
