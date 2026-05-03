@@ -204,6 +204,33 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
         raise ValueError("--product-ids-file and --limit-products are mutually exclusive")
 
     checkpoint_path = db_path.replace(".db", "_checkpoint.json")
+    lock_path = db_path.replace(".db", "_fetch.lock")
+
+    # Prevent two instances running simultaneously.
+    if os.path.exists(lock_path):
+        with open(lock_path) as _lf:
+            old_pid = _lf.read().strip()
+        if old_pid and os.path.exists(f"/proc/{old_pid}"):
+            tqdm.write(f"Another fetch_prices is running (PID {old_pid}). Exiting.")
+            return
+        # Stale lock — previous run crashed without cleanup.
+        os.remove(lock_path)
+
+    with open(lock_path, "w") as _lf:
+        _lf.write(str(os.getpid()))
+
+    try:
+        _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
+                   limit_products, store_ids_file, product_ids_file, fresh,
+                   resume, max_runtime, no_cluster, products_order)
+    finally:
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+
+
+def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
+               limit_products, store_ids_file, product_ids_file, fresh,
+               resume, max_runtime, no_cluster, products_order):
     conn = init_db(db_path)
 
     cp = None if fresh else _load_checkpoint(checkpoint_path)
