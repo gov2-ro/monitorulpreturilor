@@ -4,6 +4,14 @@
 
 ## Retail
 
+### 2026-05-05 — Pipeline health & price flags quality layer (Phase 1+2+3)
+
+- **Phase 1:** Added `generate_pipeline_report.py` — reads DB post-fetch and writes `docs/pipeline-health.html` with traffic-light indicators for store freshness, run completion, outlier rates, price change velocity, and promo depth sanity.
+- **Phase 2:** Added `price_flags` table to `db.py` (`init_db()` idempotent) with `upsert_price_flag()` helper. Added `build_price_flags.py` with three flag types: `outlier_price` (median+MAD modified z-score, threshold 3.0), `price_spike` (>50% day-over-day change), `promo_too_deep` (promo < 20% of product regular avg). First run: 518K `outlier_price` flags out of 21.7M prices (2.4%) — under the 5% investigate threshold; no spike/promo flags (single-date history).
+- **Phase 3:** Extended `export_analytics.py` to output `price_flags_summary.csv` and exclude flagged prices from clean-data analytics CSVs. Extended `generate_site.py` with network price comparison, price change tracker, promo effectiveness, and store price index sections.
+- Added `build_price_flags.py` to CI workflow (`.github/workflows/`) — runs before `generate_pipeline_report.py` after each daily fetch.
+- Decision: used median+MAD (modified z-score) instead of mean+stddev — the standard approach is susceptible to masking when a single extreme outlier skews the distribution.
+
 ### 2026-05-02 — Diagnosed 75-hour fetch cycle; fixed cron schedule
 
 **Problem:** healthchecks.io reported "last ping 3 days 7 hours ago". `fetch_prices.py` (PID 152866) had been running since May 1 04:00 UTC — 32+ hours — with ETA of 34 more hours.
