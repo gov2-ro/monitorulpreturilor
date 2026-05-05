@@ -274,8 +274,8 @@ def render_html(data):
         ["ID", "Script", "Started", "Status", "UATs", "Records"],
         run_rows,
         lambda r: (
-            f"<td>{r['id']}</td><td>{r['script']}</td><td>{(r['started_at'] or '')[:16]}</td>"
-            f"<td>{r['status']}</td><td>{r['uats_processed'] or '—'}</td>"
+            f"<td>{r['id']}</td><td>{html.escape(str(r['script']))}</td><td>{(r['started_at'] or '')[:16]}</td>"
+            f"<td>{html.escape(str(r['status']))}</td><td>{r['uats_processed'] or '—'}</td>"
             f"<td>{r['records_written'] or '—'}</td>"
         )
     )
@@ -351,11 +351,11 @@ def main(db_path=DEFAULT_DB, out_path=DEFAULT_OUT, as_of_date=None):
     conn = sqlite3.connect(str(db_path))
     data = build_report_data(conn, as_of_date=as_of_date)
     conn.close()
-    html = render_html(data)
+    report_html = render_html(data)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html, encoding="utf-8")
-    print(f"  Written {out} ({len(html) // 1024} KB)")
+    out.write_text(report_html, encoding="utf-8")
+    print(f"  Written {out} ({len(report_html) // 1024} KB)")
     v = data["price_velocity"]
     s = data["outlier_summary"]
     stale = sum(1 for r in data["store_freshness"] if r["stale"])
