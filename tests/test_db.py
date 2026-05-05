@@ -32,3 +32,11 @@ def test_upsert_price_flag_idempotent():
     conn.commit()
     count = conn.execute("SELECT COUNT(*) FROM price_flags").fetchone()[0]
     assert count == 1
+
+
+def test_upsert_price_flag_none_details():
+    conn = init_db(":memory:")
+    upsert_price_flag(conn, 1, 1, "2026-04-30", "stale_store")
+    conn.commit()
+    row = conn.execute("SELECT details FROM price_flags").fetchone()
+    assert row[0] is None
