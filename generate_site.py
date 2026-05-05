@@ -65,6 +65,25 @@ def query(conn, sql, params=()):
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def _has_price_flags(conn):
+    """True if the price_flags table exists."""
+    return bool(conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='price_flags'"
+    ).fetchone())
+
+
+def _clean_join(conn, price_table_alias="p"):
+    """Return (join_clause, where_clause) to exclude flagged prices.
+    Returns empty strings if price_flags table doesn't exist yet.
+    """
+    if not _has_price_flags(conn):
+        return "", ""
+    a = price_table_alias
+    j = f" LEFT JOIN price_flags pf ON pf.product_id={a}.product_id AND pf.store_id={a}.store_id AND pf.price_date={a}.price_date"
+    w = " AND pf.id IS NULL"
+    return j, w
+
+
 def load_summary(conn):
     """KPI counts and latest dates."""
     counts = {}
@@ -81,13 +100,14 @@ def load_summary(conn):
 
 def load_price_index(conn):
     """Network price index: for products in 3+ networks, avg(price / cheapest * 100)."""
-    rows = query(conn, """
+    j, w = _clean_join(conn)
+    rows = query(conn, f"""
         WITH pnp AS (
           SELECT p.product_id, n.name AS network, AVG(p.price) AS avg_price
           FROM prices p
           JOIN stores s ON p.store_id = s.id
-          JOIN retail_networks n ON s.network_id = n.id
-          WHERE p.price > 0
+          JOIN retail_networks n ON s.network_id = n.id{j}
+          WHERE p.price > 0{w}
           GROUP BY p.product_id, n.name
         ),
         multi AS (
@@ -113,7 +133,8 @@ def load_price_index(conn):
 
 def load_price_index_by_category(conn):
     """Network price index broken down by top-level category."""
-    rows = query(conn, """
+    j, w = _clean_join(conn)
+    rows = query(conn, f"""
         WITH pnp AS (
           SELECT p.product_id, n.name AS network, AVG(p.price) AS avg_price,
                  c.name AS category
@@ -121,8 +142,8 @@ def load_price_index_by_category(conn):
           JOIN stores s ON p.store_id = s.id
           JOIN retail_networks n ON s.network_id = n.id
           JOIN products pr ON p.product_id = pr.id
-          JOIN categories c ON pr.categ_id = c.id
-          WHERE p.price > 0 AND c.parent_id = 1
+          JOIN categories c ON pr.categ_id = c.id{j}
+          WHERE p.price > 0 AND c.parent_id = 1{w}
           GROUP BY p.product_id, n.name, c.name
         ),
         multi AS (
@@ -190,6 +211,144 @@ def load_coverage(conn):
         GROUP BY n.name
         ORDER BY stores_with_prices DESC
     """)
+
+
+def load_price_changes_week(conn):
+    """Products with biggest price changes across the last 7 days.
+
+    Compares each product's earliest vs latest average price within the window,
+    requires price in ≥2 networks to filter noise.
+    Returns top 50 increases and top 50 decreases.
+    """
+    j, w = _clean_join(conn)
+    rows = query(conn, f"""
+        WITH win AS (
+          SELECT p.product_id, p.store_id, p.price, p.price_date,
+                 SUBSTR(p.price_date,7,4)||'-'||SUBSTR(p.price_date,4,2)||'-'||SUBSTR(p.price_date,1,2) AS iso_date,
+                 s.network_id
+          FROM prices p
+          JOIN stores s ON p.store_id = s.id{j}
+          WHERE p.price > 0{w}
+        ),
+        max_iso AS (
+          SELECT MAX(iso_date) AS m FROM win
+        ),
+        window AS (
+          SELECT * FROM win, max_iso
+          WHERE iso_date >= date(max_iso.m, '-7 days')
+        ),
+        bounds AS (
+          SELECT product_id,
+                 MIN(iso_date) AS first_iso, MAX(iso_date) AS last_iso,
+                 COUNT(DISTINCT network_id) AS networks
+          FROM window GROUP BY product_id HAVING networks >= 2
+        ),
+        first_p AS (
+          SELECT w.product_id, AVG(w.price) AS avg_first
+          FROM window w JOIN bounds b ON w.product_id=b.product_id
+          WHERE w.iso_date = b.first_iso GROUP BY w.product_id
+        ),
+        last_p AS (
+          SELECT w.product_id, AVG(w.price) AS avg_last
+          FROM window w JOIN bounds b ON w.product_id=b.product_id
+          WHERE w.iso_date = b.last_iso GROUP BY w.product_id
+        )
+        SELECT pr.name AS product, c.name AS category,
+               ROUND(fp.avg_first, 2) AS price_start,
+               ROUND(lp.avg_last,  2) AS price_end,
+               ROUND((lp.avg_last - fp.avg_first) / fp.avg_first * 100, 1) AS change_pct,
+               b.first_iso AS first_date, b.last_iso AS last_date
+        FROM bounds b
+        JOIN first_p fp ON b.product_id = fp.product_id
+        JOIN last_p  lp ON b.product_id = lp.product_id
+        JOIN products pr ON b.product_id = pr.id
+        JOIN categories c ON pr.categ_id = c.id
+        WHERE fp.avg_first > 0
+        ORDER BY change_pct DESC
+    """)
+    increases = [r for r in rows if r["change_pct"] > 0][:50]
+    decreases = sorted([r for r in rows if r["change_pct"] < 0], key=lambda r: r["change_pct"])[:50]
+    return {"increases": increases, "decreases": decreases}
+
+
+def load_promo_effectiveness(conn):
+    """Per-network: what % of promo prices are genuinely cheaper than all regular prices?
+
+    'Genuinely cheap' = promo price < global MIN regular price for that product.
+    Excludes SELGROS. Requires ≥5 promo products to qualify a network.
+    """
+    j, w = _clean_join(conn)
+    return query(conn, f"""
+        WITH reg AS (
+          SELECT p.product_id, MIN(p.price) AS global_min_regular
+          FROM prices_current p
+          JOIN stores s ON p.store_id = s.id{j}
+          WHERE (p.promo IS NULL OR p.promo = '') AND p.price > 0{w}
+          GROUP BY p.product_id
+        ),
+        promo AS (
+          SELECT p.product_id, s.network_id, MIN(p.price) AS best_promo
+          FROM prices_current p
+          JOIN stores s ON p.store_id = s.id{j}
+          WHERE p.promo IS NOT NULL AND p.promo != '' AND p.price > 0{w}
+          GROUP BY p.product_id, s.network_id
+        )
+        SELECT n.name AS network,
+               COUNT(*) AS promo_products,
+               SUM(CASE WHEN pr.best_promo < r.global_min_regular THEN 1 ELSE 0 END) AS genuinely_cheap,
+               ROUND(100.0 * SUM(CASE WHEN pr.best_promo < r.global_min_regular THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_genuinely_cheap,
+               ROUND(AVG(pr.best_promo / r.global_min_regular * 100), 1) AS avg_promo_vs_market_min_pct
+        FROM promo pr
+        JOIN reg r ON pr.product_id = r.product_id
+        JOIN retail_networks n ON pr.network_id = n.id
+        WHERE n.name NOT LIKE '%SELGROS%'
+        GROUP BY n.name
+        HAVING promo_products >= 5
+        ORDER BY pct_genuinely_cheap DESC
+    """)
+
+
+def load_store_price_index(conn):
+    """Rank stores by average price across the most common products.
+
+    Uses prices_current (snapshot) not prices (history) for speed.
+    Requires ≥20 products in common with the popular set to qualify a store.
+    Excludes SELGROS. Returns top 100 cheapest + last 20 (most expensive).
+    """
+    j, w = _clean_join(conn, price_table_alias="pc")
+    rows = query(conn, f"""
+        WITH popular AS (
+          SELECT product_id FROM prices_current
+          GROUP BY product_id
+          HAVING COUNT(DISTINCT store_id) >= 50
+          ORDER BY COUNT(DISTINCT store_id) DESC
+          LIMIT 200
+        ),
+        store_avg AS (
+          SELECT pc.store_id,
+                 COUNT(DISTINCT pc.product_id) AS products_priced,
+                 AVG(pc.price) AS avg_price
+          FROM prices_current pc
+          JOIN popular p ON pc.product_id = p.product_id
+          JOIN stores s ON pc.store_id = s.id
+          LEFT JOIN retail_networks n ON s.network_id = n.id{j}
+          WHERE pc.price > 0
+            AND (n.name IS NULL OR n.name NOT LIKE '%SELGROS%'){w}
+          GROUP BY pc.store_id
+          HAVING products_priced >= 20
+        )
+        SELECT s.name AS store, COALESCE(n.name,'Unknown') AS network,
+               u.name AS city,
+               ROUND(sa.avg_price, 2) AS avg_price,
+               sa.products_priced
+        FROM store_avg sa
+        JOIN stores s ON sa.store_id = s.id
+        LEFT JOIN retail_networks n ON s.network_id = n.id
+        LEFT JOIN uats u ON s.uat_id = u.id
+        ORDER BY sa.avg_price
+        LIMIT 120
+    """)
+    return {"cheapest": rows[:100], "priciest": rows[-20:] if len(rows) >= 20 else rows}
 
 
 def load_network_trends(conn):

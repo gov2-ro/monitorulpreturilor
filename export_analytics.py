@@ -60,6 +60,17 @@ EXPORTS = [
         """,
         "desc": "Last 30 pipeline run records",
     },
+    {
+        "file": "price_flags_summary.csv",
+        "sql": """
+            SELECT flag_type, COUNT(*) AS total,
+                   COUNT(DISTINCT product_id) AS products,
+                   COUNT(DISTINCT store_id) AS stores
+            FROM price_flags
+            GROUP BY flag_type
+        """,
+        "desc": "Summary count of price flags by type",
+    },
 ]
 
 
