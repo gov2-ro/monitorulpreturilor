@@ -1,10 +1,9 @@
 # tests/test_pipeline_report.py
-import sys, math
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-import sqlite3
 from db import init_db
 
 

@@ -11,9 +11,10 @@ Usage:
 """
 
 import argparse
+import html
 import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -43,7 +44,6 @@ def load_store_freshness(conn, stale_days=STALE_DAYS, as_of_date=None):
     for store_id, name, network, last_date in rows:
         last_day = (last_date or "")[:10]
         if last_day:
-            from datetime import date
             d0 = date.fromisoformat(last_day)
             d1 = date.fromisoformat(as_of_date[:10])
             days = (d1 - d0).days
@@ -263,8 +263,8 @@ def render_html(data):
         ["Store", "Network", "Last seen", "Days stale", "Status"],
         freshness[:50],
         lambda r: (
-            f"<td>{r['name']}</td><td>{r['network']}</td>"
-            f"<td>{r['last_date']}</td><td>{r['days_stale']}</td>"
+            f"<td>{html.escape(str(r['name']))}</td><td>{html.escape(str(r['network']))}</td>"
+            f"<td>{html.escape(str(r['last_date']))}</td><td>{r['days_stale']}</td>"
             f"<td>{'Stale' if r['stale'] else 'OK'}</td>"
         )
     )
@@ -274,7 +274,7 @@ def render_html(data):
         ["ID", "Script", "Started", "Status", "UATs", "Records"],
         run_rows,
         lambda r: (
-            f"<td>{r['id']}</td><td>{r['script']}</td><td>{r['started_at'][:16]}</td>"
+            f"<td>{r['id']}</td><td>{r['script']}</td><td>{(r['started_at'] or '')[:16]}</td>"
             f"<td>{r['status']}</td><td>{r['uats_processed'] or '—'}</td>"
             f"<td>{r['records_written'] or '—'}</td>"
         )
@@ -284,14 +284,14 @@ def render_html(data):
     outlier_table = rows_table(
         ["Product", "Outlier records", "Avg price"],
         outlier_rows,
-        lambda r: f"<td>{r['name']}</td><td>{r['outlier_count']}</td><td>{r['avg']}</td>"
+        lambda r: f"<td>{html.escape(str(r['name']))}</td><td>{r['outlier_count']}</td><td>{r['avg']}</td>"
     )
 
     promo_table = rows_table(
         ["Product", "Store", "Promo price", "Regular avg", "% of regular"],
         promos[:20],
         lambda r: (
-            f"<td>{r['product']}</td><td>{r['store']}</td>"
+            f"<td>{html.escape(str(r['product']))}</td><td>{html.escape(str(r['store']))}</td>"
             f"<td>{r['promo_price']}</td><td>{round(r['regular_avg'], 2)}</td>"
             f"<td>{r['pct_of_regular']}%</td>"
         )
@@ -326,7 +326,7 @@ def render_html(data):
 <div class="grid">
   <div class="card"><h3>Store Freshness</h3>{rag_badge(rag_fresh)}<br><small>{stale_count} of {len(freshness)} stores stale</small></div>
   <div class="card"><h3>Price Outliers</h3>{rag_badge(rag_outlier)}<br><small>{outlier['flagged_count']} records ({outlier['flagged_pct']}%)</small></div>
-  <div class="card"><h3>Price Velocity</h3>{rag_badge(rag_vel)}<br><small>{velocity.get('changed_count', 0)} changes on {velocity.get('curr_date', '—')}</small></div>
+  <div class="card"><h3>Price Velocity</h3>{rag_badge(rag_vel)}<br><small>{velocity.get('changed_count', 0)} changes on {velocity.get('curr_date') or '—'}</small></div>
   <div class="card"><h3>Promo Sanity</h3>{rag_badge(rag_promo)}<br><small>{len(promos)} deep promo anomalies</small></div>
 </div>
 
