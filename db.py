@@ -110,6 +110,18 @@ def init_db(path="data/prices.db"):
         records_written INTEGER,
         notes           TEXT
     );
+    CREATE TABLE IF NOT EXISTS price_flags (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id  INTEGER NOT NULL,
+        store_id    INTEGER NOT NULL,
+        price_date  TEXT NOT NULL,
+        flag_type   TEXT NOT NULL,
+        details     TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(product_id, store_id, price_date, flag_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_price_flags_lookup
+        ON price_flags(product_id, store_id, price_date);
     """)
     conn.commit()
     # Migrate existing DBs that predate last_checked_at columns
@@ -394,4 +406,16 @@ def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at
            DO UPDATE SET last_checked_at = excluded.last_checked_at""",
         (product_id, station_id, price, price_date, fetched_at,
          last_checked_at if last_checked_at is not None else fetched_at),
+    )
+
+
+def upsert_price_flag(conn, product_id, store_id, price_date, flag_type, details=None):
+    """Insert a price flag, ignoring duplicates (same product/store/date/type)."""
+    import json as _json
+    conn.execute(
+        """INSERT OR IGNORE INTO price_flags
+           (product_id, store_id, price_date, flag_type, details)
+           VALUES (?,?,?,?,?)""",
+        (product_id, store_id, price_date, flag_type,
+         _json.dumps(details) if details is not None else None),
     )
