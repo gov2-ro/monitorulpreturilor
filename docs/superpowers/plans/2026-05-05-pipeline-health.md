@@ -658,9 +658,9 @@ git commit -m "feat: add price_flags table and upsert helper to db.py"
 ### Background
 
 Three flag types:
-- `outlier_price`: price deviates > 3σ from the per-product mean in `prices_current`. Uses `(price - avg)² > 9 * variance` — avoids SQRT in SQL.
-- `price_spike`: price changed > 50% vs the most recent prior price for the same (product, store) in `prices` history. Compares last two distinct dates.
-- `promo_too_deep`: promo price < 20% of the product's average regular price in `prices_current`.
+- `outlier_price`: price deviates > 3 modified-z from the per-product **median** in `prices_current`. Uses median+MAD (modified z-score: `0.6745 * |price - median| / MAD > z_threshold`). Details keys: `{"price", "median", "mad", "z_score"}`. **Note:** mean+stdev was originally spec'd but has a masking-effect bug on small N (e.g. 3 stores: [10, 10.2, 999] → mean=340, z(999)=1.4, outlier undetected). Median+MAD is the standard fix.
+- `price_spike`: price changed > 50% vs the most recent prior price for the same (product, store) in `prices` history. Compares last two distinct dates. Details keys: `{"curr_price", "prev_price", "pct_change", "curr_date", "prev_date"}`.
+- `promo_too_deep`: promo price < 20% of the product's average regular price in `prices_current`. Details keys: `{"promo_price", "regular_avg", "pct_of_regular"}`.
 
 Phase 2 writes individual records to `price_flags`. Phase 1's `compute_outlier_summary()` was an estimate; this is the authoritative record.
 
