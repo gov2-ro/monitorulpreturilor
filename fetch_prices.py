@@ -92,15 +92,18 @@ def _cluster_anchors(stores, radius_m=5000):
 
     uncovered = set(range(n))
     anchors = []
+    anchor_covers = {}  # anchor store_id → all store_ids within radius (for per-anchor product filter)
     while uncovered:
         # Pick store covering the most uncovered neighbors
         best = max(uncovered,
                    key=lambda i: sum(1 for j in neighbors[i] if j in uncovered))
+        anchor_sid = stores[best][0]
         anchors.append(stores[best])
+        anchor_covers[anchor_sid] = [stores[j][0] for j in neighbors[best]] + [anchor_sid]
         uncovered.discard(best)
         for j in neighbors[best]:
             uncovered.discard(j)
-    return anchors
+    return anchors, anchor_covers
 
 
 def _geo_sort_key(lat, lon):
@@ -141,18 +144,30 @@ def _load_checkpoint(path):
     return None
 
 
-def _save_checkpoint(path, fetched_at, done, product_ids=None):
+def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
+                     anchor_batch_counts=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
     if product_ids is not None:
         data["product_ids"] = product_ids
+    if iso_week is not None:
+        data["iso_week"] = iso_week
+    if anchor_batch_counts is not None:
+        data["anchor_batch_counts"] = anchor_batch_counts
     with open(path, "w") as f:
         json.dump(data, f)
 
 
-def _finish_checkpoint(path, fetched_at, done):
+def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
+                       product_ids=None):
+    data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
+    if iso_week is not None:
+        data["iso_week"] = iso_week
+    if anchor_batch_counts is not None:
+        data["anchor_batch_counts"] = anchor_batch_counts
+    if product_ids is not None:
+        data["product_ids"] = product_ids
     with open(path, "w") as f:
-        json.dump({"fetched_at": fetched_at, "status": "completed",
-                   "done": sorted(done)}, f)
+        json.dump(data, f)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +197,46 @@ def _order_products(conn, prod_ids, mode):
         f"then {len(prod_ids) - never} sorted by oldest fetch date."
     )
     return ordered
+
+
+def _ghost_filter(conn, prod_ids, cp):
+    """Remove products never seen in prices_current; skip on first run of ISO week.
+
+    First run of each ISO week uses the full product list so newly added
+    products are discovered.  All other runs skip ghost products (never
+    returned a price) — ~17 % of the catalogue currently — cutting batch
+    count proportionally.
+    """
+    today_week = datetime.now(timezone.utc).isocalendar()[1]
+    cp_week = cp.get("iso_week") if cp else None
+    if cp_week != today_week:
+        tqdm.write(f"Ghost filter: new ISO week {today_week} — scanning all {len(prod_ids)} products.")
+        return prod_ids, today_week
+    seen = {r[0] for r in conn.execute("SELECT DISTINCT product_id FROM prices_current")}
+    filtered = [pid for pid in prod_ids if pid in seen]
+    tqdm.write(f"Ghost filter: removed {len(prod_ids) - len(filtered)} ghost products, "
+               f"{len(filtered)} remain.")
+    return filtered, today_week
+
+
+def _products_for_anchor(conn, store_ids, fallback):
+    """Return product IDs seen in prices_current for these stores, intersected with fallback.
+
+    fallback is the global (ghost-filtered) product list; it acts as both the
+    allowed-set and the result when prices_current has no records for these stores.
+    Intersecting ensures --limit-products and ghost filter are always respected.
+    """
+    if not store_ids:
+        return fallback
+    ph = ",".join("?" * len(store_ids))
+    rows = conn.execute(
+        f"SELECT DISTINCT product_id FROM prices_current WHERE store_id IN ({ph})",
+        store_ids,
+    ).fetchall()
+    if not rows:
+        return fallback
+    allowed = set(fallback)
+    return [pid for pid in (r[0] for r in rows) if pid in allowed]
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +341,11 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             stores = stores[:limit_stores]
 
     # Spatial clustering: reduce anchors so every store is within 5 km of one
+    anchor_covers = {}  # anchor store_id → all store_ids within 5 km (for per-anchor product filter)
     if not no_cluster and not store_ids_file:
         n_before = len(stores)
         tqdm.write(f"Clustering {n_before} stores (radius={BUFFER_M}m)...")
-        stores = _cluster_anchors(stores, radius_m=BUFFER_M)
+        stores, anchor_covers = _cluster_anchors(stores, radius_m=BUFFER_M)
         stores = _order_stores(stores, order)
         tqdm.write(
             f"Clustered {n_before} stores → {len(stores)} anchors "
@@ -299,36 +355,45 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if product_ids_file:
         allowed_prods = set(_load_ids_file(product_ids_file))
         prod_ids = [p for p in prod_ids if p in allowed_prods]
+        iso_week = datetime.now(timezone.utc).isocalendar()[1]
         tqdm.write(f"Product filter: {len(prod_ids)} products from {product_ids_file}")
-    elif cp and cp.get("product_ids") and products_order == "stale":
-        # Mid-run resume of a stale run — restore saved order so batch indices stay stable
+    elif cp and cp.get("product_ids"):
+        # Resuming mid-run: restore saved product list so batch indices stay stable
         prod_ids = cp["product_ids"]
+        iso_week = cp.get("iso_week")
         if limit_products:
             prod_ids = prod_ids[:limit_products]
-        tqdm.write(f"Products: restored {len(prod_ids)} from checkpoint (stale order).")
+        tqdm.write(f"Products: restored {len(prod_ids)} from checkpoint.")
     else:
+        prod_ids, iso_week = _ghost_filter(conn, prod_ids, cp)
         if products_order == "stale":
             prod_ids = _order_products(conn, prod_ids, "stale")
         if limit_products:
             prod_ids = prod_ids[:limit_products]
 
-    batches_list = list(_batches(prod_ids, BATCH_SIZE))
-    n_batches = len(batches_list)
+    # Restore per-anchor batch counts from checkpoint (needed for correct pre-filter on resume)
+    anchor_batch_counts = {}
+    if cp and cp.get("anchor_batch_counts"):
+        anchor_batch_counts = {int(k): v for k, v in cp["anchor_batch_counts"].items()}
 
-    # Pre-filter stores that are fully done (all batches in checkpoint)
+    global_batches = list(_batches(prod_ids, BATCH_SIZE))
+    n_batches = len(global_batches)
+    started_anchors = {int(k.split(":")[0]) for k in done} if done else set()
+
+    # Pre-filter anchors fully done in checkpoint.
+    # Uses anchor_batch_counts so per-anchor and global-batch anchors are handled correctly.
     if done:
-        stores_skipped = [(sid, name, lat, lon, pop)
-                          for sid, name, lat, lon, pop in stores
-                          if all(f"{sid}:{i}" in done for i in range(n_batches))]
-        stores = [(sid, name, lat, lon, pop)
-                  for sid, name, lat, lon, pop in stores
-                  if not all(f"{sid}:{i}" in done for i in range(n_batches))]
-        if stores_skipped:
-            tqdm.write(f"Skipping {len(stores_skipped)} fully-done stores from checkpoint.")
+        n_before_filter = len(stores)
+        stores = [(sid, name, lat, lon, pop) for sid, name, lat, lon, pop in stores
+                  if not all(f"{sid}:{i}" in done
+                             for i in range(anchor_batch_counts.get(sid, n_batches)))]
+        n_skipped = n_before_filter - len(stores)
+        if n_skipped:
+            tqdm.write(f"Skipping {n_skipped} fully-done anchors from checkpoint.")
 
     tqdm.write(
-        f"Fetching prices: {len(stores)} stores × {len(prod_ids)} products "
-        f"({n_batches} batch{'es' if n_batches != 1 else ''}/store)  "
+        f"Fetching prices: {len(stores)} anchors × ~{len(prod_ids)} products "
+        f"(≤{n_batches} batches/anchor; new anchors per-anchor filtered)  "
         f"order={order}  fetched_at={fetched_at}"
     )
 
@@ -350,6 +415,18 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 store_bar.set_description(name[:30])
 
                 store_prices = 0
+                # Per-anchor product filtering:
+                # - Started anchors (have resume keys): use global list for stable batch indices.
+                # - New anchors: query prices_current for nearby stores — avoids ghost products
+                #   and limits to products actually stocked near this anchor.
+                if store_id in started_anchors:
+                    batches_list = global_batches
+                else:
+                    anchor_store_ids = anchor_covers.get(store_id, [store_id])
+                    anchor_prod_ids = _products_for_anchor(conn, anchor_store_ids, prod_ids)
+                    batches_list = list(_batches(anchor_prod_ids, BATCH_SIZE))
+                    anchor_batch_counts[store_id] = len(batches_list)
+
                 with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
                     for i, batch in enumerate(batch_bar):
                         key = f"{store_id}:{i}"
@@ -393,7 +470,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
 
                         done.add(key)
                         _save_checkpoint(checkpoint_path, fetched_at, done,
-                                         product_ids=prod_ids if products_order == "stale" else None)
+                                         product_ids=prod_ids, iso_week=iso_week,
+                                         anchor_batch_counts=anchor_batch_counts)
                         time.sleep(SLEEP_BETWEEN)
 
                 tqdm.write(f"  {name}: {store_prices} price records")
@@ -401,7 +479,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
 
-        _finish_checkpoint(checkpoint_path, fetched_at, done)
+        _finish_checkpoint(checkpoint_path, fetched_at, done, iso_week=iso_week,
+                           anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
