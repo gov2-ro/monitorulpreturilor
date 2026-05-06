@@ -51,7 +51,9 @@ sqlite3 data/prices.db "VACUUM;"
 ls -lh data/prices.db
 ```
 
-Expected result: **3.66 GB → ~500 MB** (87% reduction)
+Expected result: **5.9 GB → ~4.3 GB** (27% reduction)
+
+**NOTE (updated 2026-05-06):** Original estimate was 87% (3.66 GB → 500 MB) but the product catalog grew 4× (20K → 87K) since this doc was written. Local test on 2026-05-06 shows: 21.7M price rows with 8.9M prunable (duplicates), VACUUM reduces 5.9 GB → 4.3 GB. The 4.3 GB is now the floor — no further reduction without column normalization.
 
 ---
 
@@ -71,10 +73,12 @@ What this does:
 
 Output to verify:
 ```
-Before: 23,100,000 rows in prices, 0 rows in prices_current
-After backfill: 3,882,000 rows in prices_current
-(represents 3,882,000 unique product-store combinations)
+Before: ~21.7M rows in prices, check prices_current row count
+After backfill: should match unique product-store combinations in prices
+(Expected: 12.8M+ rows in prices_current due to catalog growth)
 ```
+
+**Note (2026-05-06):** If `prices_current` already has rows, the backfill may have been done in a prior run. Check the row count; if it's 1M+, skip this step.
 
 ### Step 2: Prune old price rows (OPTIONAL — high-impact but destroys history)
 
@@ -143,22 +147,22 @@ Expected after compaction:
 ### Scenario A: Keep Full History (Recommended for first run)
 
 Run Steps 1 + 3 only:
-1. ✅ Backfill prices_current
+1. ✅ Backfill prices_current (skip if already ~1M+ rows)
 2. ⏭️ Skip pruning
 3. ✅ Vacuum
 
-**Result:** ~2.5 GB (32% reduction), full price history preserved
+**Result:** ~5.5–5.8 GB (3–7% reduction), full price history preserved
 **Why:** Safer; you can always prune later if needed
 
-### Scenario B: Aggressive Cleanup (Highest compression)
+### Scenario B: Aggressive Cleanup (Recommended for production)
 
 Run all steps:
-1. ✅ Backfill prices_current
+1. ✅ Backfill prices_current (skip if already ~1M+ rows)
 2. ✅ Prune old rows
 3. ✅ Vacuum
 
-**Result:** ~500 MB (87% reduction), prices table becomes changelog-only
-**Why:** Maximum space savings; prices_current is the source of truth going forward
+**Result:** ~4.3 GB (27% reduction), non-latest duplicate rows removed
+**Why:** Proven on local test 2026-05-06; further reduction requires column normalization (Step 3 backlog)
 
 ---
 
@@ -182,24 +186,22 @@ ls -la data/prices.db.backup*
 
 ## After Compaction: Next Steps
 
-1. **Sync repo:** Push changes to main (backfill script + updated db.py)
-2. **Test locally:** Pull changes, run next fetch cycle
-3. **Monitor:** Watch prices.db size growth over 2-4 weeks
-4. **Expected:** ~150 MB/week growth (vs. 500 MB/week before)
-5. **Archive this doc:** Once confirmed stable, delete VPS_DATA_COMPACTION.md and note in CLAUDE.md that dedup is active
+1. **Monitor:** Watch prices.db size growth over 2-4 weeks (change-based dedup should keep growth to ~50–100 MB/week)
+2. **Expected size trajectory:** 4.3 GB + (50–100 MB/week × weeks elapsed). If growth exceeds 200 MB/week, investigate (new stores? new products? dedup not active?)
+3. **Archive this doc:** Once confirmed stable, delete VPS_DATA_COMPACTION.md and add a note to CLAUDE.md that (a) change-based dedup is active, and (b) the 4.3 GB baseline is post-compaction
 
 ---
 
 ## Estimated Timing
 
-| Step | Duration | Blocking? |
-|------|----------|-----------|
-| Backfill prices_current | 10-15 min | Yes (locks DB) |
-| Prune rows (optional) | 2-5 min | Yes |
-| Vacuum | 5-15 min | Yes (exclusive lock) |
-| **Total** | **20-35 min** | All blocking |
+| Step | Duration | Blocking? | Notes |
+|------|----------|-----------|-------|
+| Backfill prices_current | 10-15 min | Yes (locks DB) | Skip if already populated (>1M rows) |
+| Prune rows (optional) | 1-3 min | Yes | Local test: 8.9M rows in ~1 min |
+| Vacuum | 2-10 min | Yes (exclusive lock) | Local test: 5.9GB in ~2 min (SSD) |
+| **Total** | **3-28 min** | All blocking | Depends on whether backfill is needed |
 
-**Recommendation:** Run at off-peak hours (e.g., 02:00 UTC). Pause automated fetches during vacuum.
+**Recommendation:** Run at off-peak hours (e.g., 02:00 UTC). Pause automated fetches during compaction.
 
 ---
 
