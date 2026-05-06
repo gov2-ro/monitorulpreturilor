@@ -17,7 +17,7 @@ Process per product (with stores in ≥2 consumer networks today):
 Excludes B2B networks (SELGROS) via networks.is_b2b().
 
 Outputs:
-  docs/data/anomalies_today.json
+  site/data/anomalies_today.json
 """
 
 import argparse
@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 from networks import short, is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
-DEFAULT_OUT = ROOT / "docs" / "data" / "anomalies_today.json"
+DEFAULT_OUT = ROOT / "site" / "data" / "anomalies_today.json"
 
 OUTLIER_LOW = 0.30
 OUTLIER_HIGH = 3.0

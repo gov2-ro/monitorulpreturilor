@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Build docs/data/uats.geojson for the choropleth map.
+"""Build site/data/uats.geojson for the choropleth map.
 
 Decodes config/geo/ro-uats.topojson (3175 Romanian UATs), joins with:
   - DB: store count, distinct consumer-network count per UAT
-  - docs/data/baskets/camara.json: cheapest/priciest monthly cost per UAT
+  - site/data/baskets/camara.json: cheapest/priciest monthly cost per UAT
     (national values used as fallback when UAT has no basket data)
 
 Keeps only UATs that have at least one retail store in our DB.
 
-Output: docs/data/uats.geojson (~1 MB, uncompressed; served statically).
+Output: site/data/uats.geojson (~1 MB, uncompressed; served statically).
 Properties per feature:
   siruta, name, n_stores, n_networks,
   basket_min_month, basket_max_month, basket_n_networks, basket_cheapest_net
@@ -26,8 +26,8 @@ from networks import short, is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
 TOPO_PATH = ROOT / "config" / "geo" / "ro-uats.topojson"
-BASKETS_DIR = ROOT / "docs" / "data" / "baskets"
-DEFAULT_OUT = ROOT / "docs" / "data" / "uats.geojson"
+BASKETS_DIR = ROOT / "site" / "data" / "baskets"
+DEFAULT_OUT = ROOT / "site" / "data" / "uats.geojson"
 
 
 # ── TopoJSON decode ──────────────────────────────────────────────────────

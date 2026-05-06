@@ -17,8 +17,8 @@ network — protects the UI from ranking a network that's missing the basket.
 Excludes B2B networks (SELGROS) via networks.is_b2b().
 
 Outputs:
-  docs/data/baskets/index.json   — metadata + UAT/network directory
-  docs/data/baskets/{id}.json    — full data per basket (national + per-UAT)
+  site/data/baskets/index.json   — metadata + UAT/network directory
+  site/data/baskets/{id}.json    — full data per basket (national + per-UAT)
 """
 
 import argparse
@@ -34,7 +34,7 @@ from networks import short, is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
 BASKETS_CFG = ROOT / "config" / "baskets.json"
-DEFAULT_OUT_DIR = ROOT / "docs" / "data" / "baskets"
+DEFAULT_OUT_DIR = ROOT / "site" / "data" / "baskets"
 
 WEEKS_PER_MONTH = 52 / 12  # 4.3333…
 COMPARABLE_COVERAGE = 0.5  # need ≥50% items found to rank a network

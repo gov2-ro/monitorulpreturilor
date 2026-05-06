@@ -12,9 +12,11 @@ Preia și stochează date despre prețurile alimentelor și ale combustibililor 
 
 ## Pipeline overview
 
+**Fetch** (writes to DB):
 ```
 fetch_reference.py          # once / weekly — retail reference data
   └─ fetch_prices.py        # daily — retail prices (per-store, population-ordered)
+       └─ build_price_flags.py   # daily — price quality flags (outlier, spike, promo)
 
 fetch_gas_reference.py      # once / weekly — gas reference data
   └─ fetch_gas_prices.py    # daily — gas prices
@@ -23,20 +25,32 @@ discover_stores.py          # one-shot — store discovery from locality centroi
   └─ update_store_populations.py   # after discovery — enrich stores with population
 ```
 
-Analysis (standalone, read-only):
+**Build** (DB → site/data/, run after fetch, before site generation):
+```
+build_baskets.py            # basket costs per network + UAT → site/data/baskets/
+build_anomalies.py          # price-anomaly feed → site/data/anomalies_today.json
+build_categories.py         # per-category spreads → site/data/categories/
+build_cpi.py                # basket cost trend → site/data/cpi.json
+build_stores_index.py       # store geolocation index → site/data/stores_index.json  (needs baskets)
+build_uat_geojson.py        # UAT choropleth data → site/data/uats.geojson            (needs baskets)
+```
+
+**Site generation** (site/data/ → site/*.html):
+```
+generate_site.py            # static site (9 HTML pages + per-product CSVs)
+generate_pipeline_report.py # pipeline health page → site/pipeline-health.html
+generate_map.py             # standalone Leaflet store map → dashboard/stores_map.html
+export_analytics.py         # export DB views to site/data/*.csv
+```
+
+**Analysis** (standalone, read-only):
 ```
 analyse_prices.py           # price variability: intra-network + cross-network CSVs
 analyse_products.py         # brand/word frequency + category anomaly CSVs
+analyze_prices.py           # price uniformity: % of uniform-price groups per network
 ```
 
-Site generation (run after daily fetch):
-```
-generate_site.py            # static GitHub Pages site (9 HTML pages + CSVs)
-generate_map.py             # standalone Leaflet store map → dashboard/stores_map.html
-export_analytics.py         # export DB views to docs/data/*.csv
-```
-
-CI helpers:
+**CI helpers:**
 ```
 build_ci_subset.py          # build store + product ID subsets for GitHub Actions
 ```
@@ -64,8 +78,23 @@ python fetch_gas_reference.py
 ### Daily run
 
 ```bash
+# Fetch
 python fetch_prices.py       # retail — resumes from checkpoint if interrupted
 python fetch_gas_prices.py   # gas    — resumes from checkpoint if interrupted
+
+# Build (order matters: baskets first, then the rest)
+python build_price_flags.py  # price quality flags → DB
+python build_baskets.py      # basket costs → site/data/baskets/
+python build_anomalies.py    # price anomalies → site/data/anomalies_today.json
+python build_categories.py   # category spreads → site/data/categories/
+python build_cpi.py          # basket cost trend → site/data/cpi.json
+python build_stores_index.py # store index → site/data/stores_index.json
+python build_uat_geojson.py  # UAT map data → site/data/uats.geojson
+
+# Generate site
+python export_analytics.py         # CSV snapshots → site/data/
+python generate_site.py            # HTML pages → site/
+python generate_pipeline_report.py # pipeline health → site/pipeline-health.html
 ```
 
 ### Weekly refresh (reference data may change)
@@ -242,6 +271,13 @@ python analyse_prices.py --include-selgros     # include SELGROS in rankings
 python analyse_prices.py --debug
 ```
 
+#### `analyze_prices.py`
+Analyses price uniformity: for each `(product, network, date)` group, counts distinct prices across stores. Reports what percentage of groups are uniformly priced and which products have the highest within-network variance. Outputs `site/price_uniformity.csv`.
+
+```bash
+python analyze_prices.py
+```
+
 #### `analyse_products.py`
 Analyses product names and brands. Produces three CSVs in `data/`:
 
@@ -259,15 +295,87 @@ python analyse_products.py --anomaly-threshold 0.85
 
 ---
 
+### Build
+
+These scripts transform the raw DB data into JSON/CSV files consumed by the site. Run them after the daily fetch and before site generation. `build_baskets.py` must run first — other scripts read its output.
+
+#### `build_price_flags.py`
+Persists price quality flags to the `price_flags` table in the DB. Run after each daily fetch. Safe to re-run (uses `INSERT OR IGNORE`). Flags: `outlier_price` (median + MAD), `price_spike` (day-over-day jump), `promo_too_deep` (>90% discount).
+
+```bash
+python build_price_flags.py
+python build_price_flags.py --db path/to/prices.db
+```
+
+#### `build_baskets.py`
+Scores each curated basket (from `config/baskets.json`) at every retail network nationally and per UAT — picking the cheapest substitute SKU for each item. Outputs basket cost data used by the Coșul de Cămară page, and as input to `build_stores_index.py` and `build_uat_geojson.py`.
+
+```bash
+python build_baskets.py                      # → site/data/baskets/
+python build_baskets.py --out path/to/dir
+python build_baskets.py --db path/to/db
+```
+
+#### `build_anomalies.py`
+For the latest price snapshot, finds products whose priciest-network price is ≥1.5× their cheapest-network price. Drives the Anomalii page ("save X lei by buying at Y instead of Z"). Excludes B2B networks and applies the same outlier filter as `build_baskets.py`.
+
+```bash
+python build_anomalies.py                    # → site/data/anomalies_today.json
+python build_anomalies.py --out path/to/file
+```
+
+#### `build_categories.py`
+For the latest price snapshot, ranks products within each category by cross-network price ratio. Drives the Category Explorer page.
+
+```bash
+python build_categories.py                   # → site/data/categories/
+python build_categories.py --out path/to/dir
+```
+
+#### `build_cpi.py`
+Tracks the national cheapest-network basket cost for each curated basket across all available price dates. Drives the price trend chart. Becomes more meaningful as historical data accumulates.
+
+```bash
+python build_cpi.py                          # → site/data/cpi.json
+python build_cpi.py --out path/to/file
+```
+
+#### `build_stores_index.py`
+Emits a compact store list with coordinates, network, and UAT basket cost for each store — used by the Aproape de tine geolocation page. Requires `build_baskets.py` output.
+
+```bash
+python build_stores_index.py                 # → site/data/stores_index.json
+python build_stores_index.py --out path/to/file
+```
+
+#### `build_uat_geojson.py`
+Decodes the Romania UAT TopoJSON (`config/geo/ro-uats.topojson`) and joins it with DB store counts and basket costs per UAT. Drives the choropleth map. Keeps only UATs that have at least one retail store. Requires `build_baskets.py` output.
+
+```bash
+python build_uat_geojson.py                  # → site/data/uats.geojson
+python build_uat_geojson.py --out path/to/file
+```
+
+---
+
 ### Site generation
 
 #### `generate_site.py`
-Generates the full static GitHub Pages site from the database — 9 HTML pages (dashboard, price index, fuel leaderboard, pipeline health, store map, trends, compare, analytics, gas map) plus per-product CSVs in `docs/data/products/`.
+Generates the full static site from the database — 9 HTML pages (dashboard, price index, fuel leaderboard, pipeline health, store map, trends, compare, analytics, gas map) plus per-product CSVs in `site/data/products/`.
 
 ```bash
-python generate_site.py                      # → docs/
+python generate_site.py                      # → site/
 python generate_site.py --out path/to/out   # custom output directory
 python generate_site.py --db path/to/db     # custom DB path
+```
+
+#### `generate_pipeline_report.py`
+Generates a self-contained HTML pipeline diagnostic report with traffic-light indicators for store freshness, run completion, price outliers, price change velocity, and promo sanity.
+
+```bash
+python generate_pipeline_report.py                 # → site/pipeline-health.html
+python generate_pipeline_report.py --out path/to/file
+python generate_pipeline_report.py --db path/to/prices.db
 ```
 
 #### `generate_map.py`
@@ -275,12 +383,12 @@ Generates a self-contained Leaflet interactive map of retail stores with network
 
 ```bash
 python generate_map.py                             # → dashboard/stores_map.html
-python generate_map.py --out docs/stores_map.html
+python generate_map.py --out site/stores_map.html
 python generate_map.py --db path/to/prices.db
 ```
 
 #### `export_analytics.py`
-Exports 8 analytical SQL views to CSV files in `docs/data/` for use by the static site and external tools.
+Exports 8 analytical SQL views to CSV files in `site/data/` for use by the static site and external tools.
 
 | Output CSV | Contents |
 |-----------|----------|
@@ -294,7 +402,7 @@ Exports 8 analytical SQL views to CSV files in `docs/data/` for use by the stati
 | `run_history.csv` | Last 30 pipeline run records |
 
 ```bash
-python export_analytics.py                   # → docs/data/
+python export_analytics.py                   # → site/data/
 python export_analytics.py --out path/to/   # custom output directory
 python export_analytics.py path/to/db       # custom DB path
 ```
@@ -323,8 +431,29 @@ Outputs: `data/ci_stores.txt`, `data/ci_products.txt` (one ID per line).
 |------|------|
 | `db.py` | `init_db(path)` creates all tables; upsert/insert helpers for retail and gas |
 | `api.py` | `fetch_xml(url)` with retry/backoff; all XML parsers; `centroid_from_wkt(wkt)` |
+| `networks.py` | Short display names (`LIDL`, `Carrefour`, …) + `is_b2b()` flag for all retail and gas networks |
+| `units.py` | Normalizes the raw `prices.unit` column to canonical buckets (`kg`, `l`, `buc`) across the wildly inconsistent per-network formats |
 
 Not run directly.
+
+---
+
+### Utilities
+
+#### `explore_api.py`
+Dev tool that probes for undocumented API endpoints via WSDL/MEX metadata, root-level service discovery, and candidate pattern matching. Outputs findings to the terminal and `docs/reference/undocumented-endpoints.md`.
+
+```bash
+python explore_api.py
+```
+
+#### `backfill_prices_current.py`
+One-time migration: populates the `prices_current` table from the existing `prices` table by taking the most recent price per `(product_id, store_id)`. Safe to re-run (uses upsert). Run once after the table was introduced.
+
+```bash
+python backfill_prices_current.py
+python backfill_prices_current.py path/to/prices.db
+```
 
 ---
 

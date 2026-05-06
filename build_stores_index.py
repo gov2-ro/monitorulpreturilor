@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build docs/data/stores_index.json for the Aproape de tine geolocation page.
+"""Build site/data/stores_index.json for the Aproape de tine geolocation page.
 
 Emits a compact list of all stores with coordinates + basket cost at each
 store's UAT (national basket cost used when UAT-specific data is missing).
@@ -21,8 +21,8 @@ sys.path.insert(0, str(ROOT))
 from networks import short, is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
-BASKETS_DIR = ROOT / "docs" / "data" / "baskets"
-DEFAULT_OUT = ROOT / "docs" / "data" / "stores_index.json"
+BASKETS_DIR = ROOT / "site" / "data" / "baskets"
+DEFAULT_OUT = ROOT / "site" / "data" / "stores_index.json"
 
 
 def load_basket_uat_costs(baskets_dir):

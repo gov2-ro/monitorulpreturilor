@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/pipeline-health.html — pipeline diagnostic report.
+"""Generate site/pipeline-health.html — pipeline diagnostic report.
 
 Reads the DB and emits a self-contained HTML report with traffic-light
 indicators for store freshness, run completion, price outliers,
@@ -7,7 +7,7 @@ price change velocity, and promo sanity.
 
 Usage:
     python generate_pipeline_report.py
-    python generate_pipeline_report.py --db data/prices.db --out docs/pipeline-health.html
+    python generate_pipeline_report.py --db data/prices.db --out site/pipeline-health.html
 """
 
 import argparse
@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "data" / "prices.db"
-DEFAULT_OUT = ROOT / "docs" / "pipeline-health.html"
+DEFAULT_OUT = ROOT / "site" / "pipeline-health.html"
 
 STALE_DAYS = 2
 OUTLIER_Z = 3.0

@@ -1,11 +1,11 @@
 """
-Export key analytical views to CSV files in docs/data/.
+Export key analytical views to CSV files in site/data/.
 
 Run after fetch_prices.py (and optionally generate_site.py) to produce
 static CSV snapshots alongside the site.
 
 Usage:
-  python export_analytics.py [db_path] [--out docs/data]
+  python export_analytics.py [db_path] [--out site/data]
 """
 
 import argparse
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("db", nargs="?", default="data/prices.db")
-    parser.add_argument("--out", default="docs/data",
-                        help="output directory (default: docs/data)")
+    parser.add_argument("--out", default="site/data",
+                        help="output directory (default: site/data)")
     args = parser.parse_args()
     export_all(args.db, args.out)

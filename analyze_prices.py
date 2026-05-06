@@ -104,7 +104,7 @@ def analyze_price_uniformity(db_path=DB_PATH):
             seen.add(key)
 
     # Export to CSV
-    csv_path = Path("docs/price_uniformity.csv")
+    csv_path = Path("site/price_uniformity.csv")
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(csv_path, "w", newline="") as f:

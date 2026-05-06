@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Generate static GitHub Pages site from data/prices.db.
+Generate static site from data/prices.db.
 
 Pages generated:
-  docs/index.html        — Dashboard with KPIs, charts, navigation
-  docs/price-index.html  — Network Price Index ("who's cheapest")
-  docs/fuel.html         — Fuel Price Leaderboard
-  docs/pipeline.html     — Pipeline health & coverage
-  docs/stores_map.html   — Enhanced interactive store map
+  site/index.html        — Dashboard with KPIs, charts, navigation
+  site/price-index.html  — Network Price Index ("who's cheapest")
+  site/fuel.html         — Fuel Price Leaderboard
+  site/pipeline.html     — Pipeline health & coverage
+  site/stores_map.html   — Enhanced interactive store map
 
 Usage:
     python generate_site.py
-    python generate_site.py --db data/prices.db --out docs/
+    python generate_site.py --db data/prices.db --out site/
 """
 
 import argparse
@@ -20,7 +20,7 @@ import sqlite3
 from pathlib import Path
 
 DB_PATH = Path("data/prices.db")
-OUT_DIR = Path("docs")
+OUT_DIR = Path("site")
 
 # ── Network colors ──────────────────────────────────────────────────────
 
@@ -451,7 +451,7 @@ def load_compare_index(conn):
 
 
 def build_compare_data_files(conn, out_dir: Path):
-    """Write docs/data/index.json and docs/data/products/{id}.csv for each product."""
+    """Write site/data/index.json and site/data/products/{id}.csv for each product."""
     import csv, io
 
     data_dir = out_dir / "data" / "products"
@@ -2553,7 +2553,7 @@ document.getElementById('legend').addEventListener('change', updateFilters);
 def gen_cos() -> str:
     """Coșul de Cămară — interactive basket calculator.
 
-    Loads `docs/data/baskets/index.json` then a per-basket JSON on demand.
+    Loads `site/data/baskets/index.json` then a per-basket JSON on demand.
     No server-side data needs to be passed in: the page is purely a viewer
     over the JSON files emitted by `build_baskets.py`.
     """
@@ -2814,7 +2814,7 @@ def gen_cos() -> str:
 def gen_inflatie() -> str:
     """Civic CPI prototype — basket cost trend over available price dates.
 
-    Loads docs/data/cpi.json (built by build_cpi.py). Very honest about
+    Loads site/data/cpi.json (built by build_cpi.py). Very honest about
     shallow history; the chart skeleton fills in naturally over time.
     """
     extra_scripts = """
@@ -3223,7 +3223,7 @@ def gen_date_deschise(summary: dict, stats: dict) -> str:
         except OSError:
             return "—"
 
-    docs = "docs"
+    docs = "site"
     datasets = [
         {
             "title": "Anomalii de preț — azi",
@@ -3354,7 +3354,7 @@ def gen_date_deschise(summary: dict, stats: dict) -> str:
 def gen_harta() -> str:
     """Harta Costuri — choropleth map of Romania UATs.
 
-    Uses MapLibre GL JS + docs/data/uats.geojson (built by build_uat_geojson.py).
+    Uses MapLibre GL JS + site/data/uats.geojson (built by build_uat_geojson.py).
     Two layers: number of retail networks (food-desert detection) and cheapest
     monthly basket cost (Coșul de Cămară). Click a UAT polygon for details.
     """
@@ -3613,7 +3613,7 @@ def gen_harta() -> str:
 def gen_categorii() -> str:
     """Category Explorer — per-category product spread ranking.
 
-    Loads docs/data/categories/index.json then per-category JSON on demand.
+    Loads site/data/categories/index.json then per-category JSON on demand.
     Each product is ranked by cross-network price ratio so users can instantly
     see where savings are largest within a product type.
     """
@@ -3881,7 +3881,7 @@ def gen_categorii() -> str:
 def gen_anomalii() -> str:
     """Anomalii — daily feed of products whose price varies sharply across networks.
 
-    Loads `docs/data/anomalies_today.json` (built by build_anomalies.py).
+    Loads `site/data/anomalies_today.json` (built by build_anomalies.py).
     Pure client-side filtering and rendering; no server data passed in.
     """
     extra_head = """

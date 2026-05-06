@@ -8,7 +8,7 @@ a skeleton; it becomes meaningful over weeks/months as data accumulates.
 Also tracks per-product price changes vs the earliest available date.
 
 Outputs:
-  docs/data/cpi.json  — basket cost time series + product change table
+  site/data/cpi.json  — basket cost time series + product change table
 """
 
 import argparse
@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from networks import is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
-DEFAULT_OUT = ROOT / "docs" / "data" / "cpi.json"
+DEFAULT_OUT = ROOT / "site" / "data" / "cpi.json"
 BASKETS_CFG = ROOT / "config" / "baskets.json"
 
 OUTLIER_LOW, OUTLIER_HIGH = 0.30, 3.0

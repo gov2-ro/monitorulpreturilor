@@ -1,6 +1,7 @@
 .worktrees/
 data/*
 data*/*
+/site
 /tmp
 /data/*
 # CI subset files and reference data committed to repo (for GitHub Actions)
@@ -12,11 +13,11 @@ data*/*
 !data/reference/
 !data/reference/populatie romania siruta coords.csv
 data/reference/*.xlsx
-docs/data/*
-!docs/data/*.csv
-!docs/data/products/
-docs/data/products/*
-!docs/data/products/*.csv
+site/data/*
+!site/data/*.csv
+!site/data/products/
+site/data/products/*
+!site/data/products/*.csv
 *.code-workspace
 docs/reference/screenshots
 docs/reference/sampleResponses
@@ -151,7 +152,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+# /site  — removed: site/ is our static site output directory
 
 # mypy
 .mypy_cache/

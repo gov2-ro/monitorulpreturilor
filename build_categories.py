@@ -10,8 +10,8 @@ Outlier filter and B2B exclusion match build_anomalies.py so comparisons
 are consistent across pages.
 
 Outputs:
-  docs/data/categories/index.json      — category list + summary stats
-  docs/data/categories/{id}.json       — per-category product list
+  site/data/categories/index.json      — category list + summary stats
+  site/data/categories/{id}.json       — per-category product list
 """
 
 import argparse
@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 from networks import short, is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
-DEFAULT_OUT = ROOT / "docs" / "data" / "categories"
+DEFAULT_OUT = ROOT / "site" / "data" / "categories"
 
 OUTLIER_LOW = 0.30
 OUTLIER_HIGH = 3.0
