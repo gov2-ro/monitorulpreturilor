@@ -4,6 +4,13 @@
 
 ## Retail
 
+### 2026-05-06 — Ghost filter + per-anchor product filtering
+
+- **Ghost filter:** on every run except the first of each ISO week, products never seen in `prices_current` are skipped (~12,372 / 17% of catalogue). First run of the week still scans all products for new-product discovery. Reduces batch count proportionally for all anchors.
+- **Per-anchor product filtering:** each new (not-yet-started) anchor queries `prices_current WHERE store_id IN (nearby stores)` instead of using the full product list. Single-network rural anchors drop from ~375 batches to ~90; urban multi-network anchors see smaller savings. Expected overall speedup: 2–4×.
+- `_cluster_anchors` now also returns `anchor_covers` (anchor store_id → all store IDs within 5 km) to support the per-anchor query.
+- **Checkpoint compatibility:** `iso_week`, `product_ids` (ghost-filtered global list), and `anchor_batch_counts {store_id: count}` added to checkpoint. Started anchors (present in `done` set) always use the global list for stable resume; only fresh anchors get per-anchor filtering. Old checkpoints handled gracefully: missing `iso_week` triggers full product scan (safe default).
+
 ### 2026-05-05 — Pipeline health & price flags quality layer (Phase 1+2+3)
 
 - **Phase 1:** Added `generate_pipeline_report.py` — reads DB post-fetch and writes `docs/pipeline-health.html` with traffic-light indicators for store freshness, run completion, outlier rates, price change velocity, and promo depth sanity.
