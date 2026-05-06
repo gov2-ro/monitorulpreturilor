@@ -4,6 +4,16 @@
 
 ## Retail
 
+### 2026-05-06 — Store discovery & grid-probe strategy clarification
+
+- **Discovery:** `discover_stores.py` (smart grid-probe) ran April 15 but stalled at 1,367/1,400 completed probes (97% done). Based on 3,180 populated localities CSV, 4km dedup. Checkpoint shows "in_progress" status.
+- **Current coverage:** 3,092 stores across 601 UATs (from all discovery methods combined).
+- **Strategy clarification:** Three complementary discovery approaches identified:
+  1. **Resume smart grid-probe** (30 min runtime) — finish the stalled discover_stores.py, should yield ~4,000–4,500 total stores and ~100 additional UATs. Quick validation of population-based coverage.
+  2. **Brute-force rectangular grid** (4+ hours) — full ~30K-point sweep of Romania's bounding box at 5km intervals. Catches stores in unpopulated areas (highways, isolated villages). Run after smart probe to measure coverage delta.
+  3. **UAT compilation by name search** (1 min–1 hour depending on scope) — lowest priority; query by county (43 queries) or city (~3K queries) to build complete UAT reference. Valuable for completeness but may be unnecessary if grid-probe provides sufficient coverage for price fetching.
+- **Decision:** Start with resuming discover_stores.py, then reassess before committing to brute-force or UAT compilation.
+
 ### 2026-05-06 — Unit field normalization + VPS deployment plan
 
 - **Problem identified:** Unit field contains 513 inconsistent variants (Kg/kg/K, BUC/BUCATA, L/Litru, ml/ML, etc.), causing ~15% false-positive price variance. Example: sugar listed as 98.59 lei/L at one store but 2.45 lei/K at others → fake 2101% variance.
