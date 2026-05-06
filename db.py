@@ -1,6 +1,45 @@
 import sqlite3
 
 
+def normalize_unit(unit):
+    """
+    Normalize unit field to canonical form. Handles inconsistent API responses:
+    - 'Kg', 'kg', 'K', 'KILOGRAM' → 'kg'
+    - 'BUC', 'BUCATA', 'BUCATI', 'BU', 'Buc', 'Buc.', 'PC', 'PIECE', 'PCS' → 'pcs'
+    - 'L', 'Litru', 'Liter' → 'L'
+    - 'ml', 'ML' → 'ml'
+    - 'g', 'G' → 'g'
+    - NULL/empty → None
+    """
+    if not unit:
+        return None
+
+    u = unit.strip().upper()
+
+    # Weight (kilograms)
+    if u in ('KG', 'K', 'KILOGRAM'):
+        return 'kg'
+
+    # Count (pieces)
+    if u in ('BUC', 'BUCATA', 'BUCATI', 'BU', 'PC', 'PIECE', 'PCS', 'PIECES'):
+        return 'pcs'
+
+    # Volume (liters)
+    if u in ('L', 'LITRU', 'LITER'):
+        return 'L'
+
+    # Volume (milliliters)
+    if u in ('ML',):
+        return 'ml'
+
+    # Weight (grams)
+    if u in ('G',):
+        return 'g'
+
+    # Unknown: return uppercase for consistency
+    return u
+
+
 def init_db(path="data/prices.db"):
     conn = sqlite3.connect(path)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -297,9 +336,12 @@ def insert_price(conn, product_id, store_id, price, price_date, promo,
     Insert or update a price. Uses change-based deduplication:
     - If price+promo unchanged: only update last_checked_at in prices_current
     - If changed or new: insert to prices (changelog) + upsert prices_current
+    Normalizes unit field to canonical form (kg, pcs, L, ml, g).
     """
     if last_checked_at is None:
         last_checked_at = fetched_at
+
+    unit = normalize_unit(unit)
 
     # Check current price for this (product_id, store_id)
     cur = conn.execute(

@@ -4,6 +4,28 @@
 
 ## Retail
 
+### 2026-05-06 — Unit field normalization + VPS deployment plan
+
+- **Problem identified:** Unit field contains 513 inconsistent variants (Kg/kg/K, BUC/BUCATA, L/Litru, ml/ML, etc.), causing ~15% false-positive price variance. Example: sugar listed as 98.59 lei/L at one store but 2.45 lei/K at others → fake 2101% variance.
+- **Solution:** Added `normalize_unit()` function to `db.py`. Maps 513 variants → ~20 canonical forms (kg, pcs, L, ml, g). Integrated into `insert_price()` so all future fetches automatically normalize on insert.
+- **Backfill:** Created `backfill_unit_normalization.py` one-off script. Running locally on dev machine (started ~11:27 UTC, processing 12.8M rows in `prices_current`, ETA ~6 hours). Updates existing snapshot table only (not history).
+- **Deployment:** Created `docs/VPS_UNIT_NORMALIZATION.md` runbook (like compaction documentation). Process: (1) verify local backfill; (2) git commit + push code; (3) git pull on VPS; (4) run backfill script on VPS (6–12h); (5) verify canonical units in place.
+- **Going forward:** All new prices automatically normalized. No manual intervention needed after VPS backfill completes.
+- **Impact:** Eliminates false outliers; foundation for accurate price comparison and store optimization modeling.
+- **Added to backlog:** "Weekly variability re-analysis" recurring task to track variance patterns and inform store subset optimization.
+
+### 2026-05-06 — Price variability analysis
+
+- **Research question:** Does scraping need to cover 50 stores per UAT per network, or can we optimize? Are prices actually different between stores?
+- **Key findings:**
+  - **Intra-network variance (same store network, same city):** 76% of products have identical prices across stores; 16% have 5%+ variance
+  - **Inter-network variance:** 53% of products have 10%+ price spread across different networks (Kaufland vs Lidl vs Profi) — justifies cross-network comparison
+  - **Network-wide variance:** 58% of products are priced nationally identical; 30% have 10%+ regional variance (Bucharest ≠ rural areas)
+- **Outlier root cause:** 16% intra-network variance caused by mix of (1) legitimate store format tiering (Express/Market/Hypermarket with +7% premium), (2) fresh produce regional supply variation, and (3) **unit field contamination** (same product ID with mismatched units like "L" vs "K" → 2000%+ false spreads)
+- **Implication:** Current approach validated. Could optimize to 2–3 stores per network per UAT (saves 68% of stores, reducing requests 4–8×) without losing insight, but current spatial clustering already provides good efficiency.
+- **Action items:** Normalize unit field (Kg/kg/K → canonical); fresh produce regional pricing is real and worth tracking; store format premium is feature data not a bug.
+- **Output:** `docs/price_variability_analysis.md` with detailed statistics, outlier examples, and recommendations.
+
 ### 2026-05-06 — Ghost filter + per-anchor product filtering
 
 - **Ghost filter:** on every run except the first of each ISO week, products never seen in `prices_current` are skipped (~12,372 / 17% of catalogue). First run of the week still scans all products for new-product discovery. Reduces batch count proportionally for all anchors.
