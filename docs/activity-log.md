@@ -4,6 +4,14 @@
 
 ## General
 
+### 2026-05-12 — `status.py` CLI digest
+
+Single-shot CLI summary of pipeline state — three sections: last N runs (default 10), per-script summary over last 7d (`--days N`), and the latest data-quality audit verdict (read directly from `data/logs/audit-*.json`, never recomputed). No new deps, stdlib + sqlite only, read-only DB connection, always exits 0. ANSI colors auto-disable when piping or with `--no-color`.
+
+- Reuses `check_runs.parse_iso` but wraps it locally because Python 3.11's `fromisoformat` parses `"YYYY-MM-DD HH:MM:SS"` as naive (the path's `replace+fromisoformat` succeeds and skips the explicit `tzinfo=utc` branch). That's a latent bug in `check_runs.parse_iso` — only doesn't bite there because it only subtracts against `now`. Worth fixing at the source if `parse_iso` gets another caller.
+- Duration is suppressed (`—`) for `abandoned`/`error` rows because their `started_at` is anchored to a stale checkpoint timestamp (see `check_runs.py` header comment), making the computed delta meaningless.
+- `STALE` marker on per-script line uses the same 25h threshold as `check_runs.py` default.
+
 ### 2026-05-12 — Monitoring layer: check_runs, audit_pipeline, hc_run wrapper
 
 Added a small monitoring layer on top of the existing `runs` table and healthchecks.io integration. Three new files, plus crontab + log-path changes.
