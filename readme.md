@@ -78,6 +78,10 @@ python fetch_gas_reference.py
 ### Daily run
 
 > **Cron layout (VPS):** retail (`fetch_prices.py`) runs at 04:00 with a 23 h time limit; gas (`fetch_gas_prices.py`) runs independently at 03:00. They are **not** chained — a stalled retail run does not block the gas fetch.
+>
+> **Monitoring:** each cron line is wrapped with `scripts/hc_run.sh <uuid> <cmd>`, which pings healthchecks.io with `/start`, then either the base URL on success or `/fail` on non-zero exit. Each fetcher's line also runs `check_runs.py` afterwards — so a fetch that "completed" but wrote zero records still trips `/fail`. A daily `audit_pipeline.py` at 06:00 checks data quality (store freshness, abandoned runs, network coverage gaps) and fails the same way. See `scripts/crontab.template` for the canonical layout.
+>
+> **Logs:** all cron output now writes to `data/logs/` (created on demand, gitignored). Historical logs in `~/g2-dev/logs/` are left in place; new writes go to the project-local path.
 
 ```bash
 # Fetch
@@ -382,6 +386,30 @@ Generates a self-contained HTML pipeline diagnostic report with traffic-light in
 python generate_pipeline_report.py                 # → site/pipeline-health.html
 python generate_pipeline_report.py --out path/to/file
 python generate_pipeline_report.py --db path/to/prices.db
+```
+
+#### `check_runs.py`
+Fast post-fetch verification — used in the cron wrapper to convert a "fetch exited 0" into a real health signal. Queries the `runs` table for the most recent `status='completed'` row matching `--script`; fails if it's stale, has zero `records_written`, or is missing. Honours a per-script lock file (e.g. `data/prices_fetch.lock`) so long resumes don't trip a false fail.
+
+```bash
+python check_runs.py --script fetch_prices --max-age-hours 25
+python check_runs.py --script fetch_gas_prices --max-age-hours 25
+```
+
+#### `audit_pipeline.py`
+Daily data-quality audit. Reuses signal loaders from `generate_pipeline_report.py`. Writes both a text trail (`data/logs/audit-YYYY-MM-DD.txt`) and a JSON summary for later aggregation. Exits non-zero if any RED threshold is breached (store freshness >10% stale, any abandoned/error run in the last 7d, any retail network with no fresh prices in 7d, today's `price_flags` count >3× the 30-day median). Uses a read-only connection so it never blocks the live fetcher.
+
+```bash
+python audit_pipeline.py                          # → data/logs/audit-*.{txt,json}
+python audit_pipeline.py --include-outliers       # also run the slow per-product outlier check
+```
+
+#### `scripts/hc_run.sh`
+Bash wrapper that pings healthchecks.io `/start` before a command and either the base URL on success or `/fail` on non-zero exit. Set `HC_RUN_DRYRUN=1` to skip curl calls for local testing.
+
+```bash
+scripts/hc_run.sh <uuid> python fetch_prices.py
+HC_RUN_DRYRUN=1 scripts/hc_run.sh test-uuid bash -c 'echo ok'
 ```
 
 #### `generate_map.py`

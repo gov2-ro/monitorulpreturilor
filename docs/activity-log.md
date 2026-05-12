@@ -4,6 +4,17 @@
 
 ## General
 
+### 2026-05-12 — Monitoring layer: check_runs, audit_pipeline, hc_run wrapper
+
+Added a small monitoring layer on top of the existing `runs` table and healthchecks.io integration. Three new files, plus crontab + log-path changes.
+
+- **`scripts/hc_run.sh`**: wraps any command with healthchecks.io `/start` and conditional success/`/fail` pings. Previously the cron pinged the healthcheck unconditionally via `;`, so failed runs still showed green.
+- **`check_runs.py`**: fast post-fetch check. Reads the most recent `status='completed'` row from `runs` for a given `--script`; fails if stale (>25 h), missing, or wrote zero records. Honours the per-script lock file so a long resume (e.g. fetch_prices spanning multiple days) doesn't trip a false fail. The lock check verifies the PID is still alive.
+- **`audit_pipeline.py`**: daily 06:00 data-quality audit. Uses a read-only SQLite connection (so it never contends with the live fetcher's write lock) and reuses signal loaders from `generate_pipeline_report.py`. Writes both `audit-YYYY-MM-DD.txt` and `.json` to `data/logs/`. Red thresholds: store freshness >10%, any abandoned/error run in last 7d, any retail network with no fresh prices in 7d, today's `price_flags` count >3× the 30-day median.
+- **Logs moved to `data/logs/`** for everything wired through the new cron lines. Historical logs in `~/g2-dev/logs/` are left in place; `fetch-prices.log` is 121 MB and worth pruning manually.
+- **Crontab** now wraps retail and reference with `hc_run.sh` using the pre-existing UUIDs (`48b9dd2d-…`, `09407697-…`). Gas + audit lines are documented in `scripts/crontab.template` and need new UUIDs from the healthchecks.io UI before they can be enabled — the user installs those two lines manually after creating the UUIDs.
+- **Audit findings against current DB**: 100 % of stores show stale (>2 d) because the May 7 sweep is still resuming; 11 abandoned runs flagged (the ones cleaned up earlier today). Both are expected and confirm the audit is reading the right signals.
+
 ### 2026-05-12 — Pipeline audit + fixes (zombie runs, gas decoupled from retail)
 
 - **Root cause:** product catalog grew from 6,932 → 87,617 items (April 28 reference run), increasing batches/anchor from 35 → 437 (12×). A full sweep now takes ~7–9 cron days. The cron's 23 h `--max-runtime` means May 7 checkpoint has been resuming across multiple days.
