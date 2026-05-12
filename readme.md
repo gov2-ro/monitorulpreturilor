@@ -79,7 +79,7 @@ python fetch_gas_reference.py
 
 > **Cron layout (VPS):** retail (`fetch_prices.py`) runs at 04:00 with a 23 h time limit; gas (`fetch_gas_prices.py`) runs independently at 03:00. They are **not** chained — a stalled retail run does not block the gas fetch.
 >
-> **Monitoring:** each cron line is wrapped with `scripts/hc_run.sh <uuid> <cmd>`, which pings healthchecks.io with `/start`, then either the base URL on success or `/fail` on non-zero exit. Each fetcher's line also runs `check_runs.py` afterwards — so a fetch that "completed" but wrote zero records still trips `/fail`. A daily `audit_pipeline.py` at 06:00 checks data quality (store freshness, abandoned runs, network coverage gaps) and fails the same way. See `scripts/crontab.template` for the canonical layout.
+> **Monitoring:** each cron line is wrapped with `scripts/hc_run.sh <uuid> <cmd>`, which pings healthchecks.io with `/start`, then either the base URL on success or `/fail` on non-zero exit. Each fetcher's line also runs `check_runs.py` afterwards — so a fetch that "completed" but wrote zero records still trips `/fail`. A daily `audit_pipeline.py` at 06:00 checks data quality (store freshness, abandoned runs, network coverage gaps) and fails the same way. See `scripts/crontab.template` for the canonical layout, and [`docs/monitoring-pattern.md`](docs/monitoring-pattern.md) for the reusable approach.
 >
 > **Logs:** all cron output now writes to `data/logs/` (created on demand, gitignored). Historical logs in `~/g2-dev/logs/` are left in place; new writes go to the project-local path.
 
