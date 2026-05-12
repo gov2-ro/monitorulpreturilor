@@ -425,6 +425,18 @@ def start_run(conn, script, started_at):
     return cur.lastrowid
 
 
+def abandon_stale_runs(conn, script):
+    """Mark any 'running' rows for this script as 'abandoned' (left by a prior crash/kill)."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "UPDATE runs SET finished_at=?, status='abandoned' WHERE script=? AND status='running'",
+        (now, script),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
 def finish_run(conn, run_id, status, uats_processed, records_written, notes=None):
     """Update the run row with final status and counts."""
     from datetime import datetime, timezone

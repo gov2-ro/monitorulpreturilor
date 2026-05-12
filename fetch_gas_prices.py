@@ -17,7 +17,7 @@ import requests
 from tqdm import tqdm
 
 from api import GAS_BASE, fetch_xml, parse_gas_items
-from db import init_db, insert_gas_price, upsert_gas_station, start_run, finish_run
+from db import init_db, insert_gas_price, upsert_gas_station, start_run, finish_run, abandon_stale_runs
 
 SLEEP_BETWEEN = 0.3  # seconds between requests
 # API only accepts one product ID per request (CSV returns 500)
@@ -47,6 +47,10 @@ def _finish_checkpoint(path, fetched_at, done):
 
 def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
     conn = init_db(db_path)
+
+    n_abandoned = abandon_stale_runs(conn, "fetch_gas_prices")
+    if n_abandoned:
+        tqdm.write(f"Marked {n_abandoned} stale 'running' run(s) as 'abandoned'.")
 
     cp = None if fresh else _load_checkpoint(CHECKPOINT_PATH)
     if cp:

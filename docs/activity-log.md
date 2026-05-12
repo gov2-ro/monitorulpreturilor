@@ -2,6 +2,24 @@
 
 ---
 
+## General
+
+### 2026-05-12 — Pipeline audit + fixes (zombie runs, gas decoupled from retail)
+
+- **Root cause:** product catalog grew from 6,932 → 87,617 items (April 28 reference run), increasing batches/anchor from 35 → 437 (12×). A full sweep now takes ~7–9 cron days. The cron's 23 h `--max-runtime` means May 7 checkpoint has been resuming across multiple days.
+- **Zombie run cleanup:** added `abandon_stale_runs(conn, script)` to `db.py`; called at startup in both `fetch_prices.py` and `fetch_gas_prices.py`. Marks any leftover `status='running'` rows (from SIGKILL/unattended-upgrades) as `'abandoned'` before inserting a fresh row. Manually back-filled 11 existing zombies.
+- **Gas decoupled from retail in cron:** old line used `&&` so gas only ran if retail exited cleanly (~03:00 next morning). Gas now has its own daily `0 3 * * *` cron line; retail pings healthcheck independently with `;`.
+- **Today's cron kill:** unattended-upgrade-shutdown killed the 04:00 cron at 08:04; manual `--resume` restarted at 08:20. May 12 price_date data is being collected in the current run.
+
+### 2026-05-06 — Scenario B data compaction (prune + vacuum)
+
+- **Skipped backfill:** `prices_current` already had 13.5M rows from a prior run.
+- **Pruned** `prices` table: 23.6M → 13.5M rows (kept only `MAX(id)` per `product_id, store_id`). Now perfectly mirrors `prices_current`.
+- **Vacuumed** DB: 6.3 GB → 4.4 GB (30% reduction). `PRAGMA integrity_check` returned `ok`.
+- Change-based dedup is already active in `fetch_prices.py` so future growth should stay bounded (~50–100 MB/week per doc estimates).
+
+---
+
 ## Retail
 
 ### 2026-05-06 — Store discovery & grid-probe strategy clarification

@@ -36,7 +36,7 @@ import requests
 from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
-from db import init_db, insert_price, upsert_store, start_run, finish_run
+from db import init_db, insert_price, upsert_store, start_run, finish_run, abandon_stale_runs
 
 # BATCH_SIZE = 30
 BATCH_SIZE = 200
@@ -287,6 +287,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                limit_products, store_ids_file, product_ids_file, fresh,
                resume, max_runtime, no_cluster, products_order):
     conn = init_db(db_path)
+
+    n_abandoned = abandon_stale_runs(conn, "fetch_prices")
+    if n_abandoned:
+        tqdm.write(f"Marked {n_abandoned} stale 'running' run(s) as 'abandoned'.")
 
     cp = None if fresh else _load_checkpoint(checkpoint_path)
     if cp:

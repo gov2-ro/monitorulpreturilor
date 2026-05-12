@@ -77,6 +77,8 @@ python fetch_gas_reference.py
 
 ### Daily run
 
+> **Cron layout (VPS):** retail (`fetch_prices.py`) runs at 04:00 with a 23 h time limit; gas (`fetch_gas_prices.py`) runs independently at 03:00. They are **not** chained — a stalled retail run does not block the gas fetch.
+
 ```bash
 # Fetch
 python fetch_prices.py       # retail — resumes from checkpoint if interrupted
@@ -159,6 +161,10 @@ Checkpoint behaviour:
 - **Completed run, new day** → starts a fresh run automatically
 - **`--fresh`** → ignores any checkpoint and starts clean
 - **`--resume`** → continues a completed same-day run; skips already-processed store×batch keys, fetches only new stores
+
+> **Sweep duration:** with ~87 K products (437 batches/anchor at BATCH_SIZE=200) and 683 anchors, one full pass takes roughly 7–9 daily cron windows (23 h each). The checkpoint resumes across days using the same `fetched_at` timestamp, so all prices within a single logical sweep are consistent. `price_date` reflects the API-reported store date, not the fetch date.
+
+> **Run history:** every invocation inserts a row into the `runs` table. Rows left as `status='running'` by a prior crash or SIGKILL are automatically marked `'abandoned'` at the next startup.
 
 Product ordering (`--products-order`):
 - **`db`** (default) — products in DB insertion order
@@ -488,6 +494,16 @@ gas_prices    (id AUTOINCREMENT PK, product_id, station_id, price, price_date,
 ```
 
 Reference tables use `INSERT OR REPLACE`; price tables use `INSERT OR IGNORE`.
+
+### Run log
+
+```sql
+runs (id AUTOINCREMENT PK, script TEXT, started_at TEXT, finished_at TEXT,
+      status TEXT,          -- 'running' | 'completed' | 'interrupted' | 'abandoned' | 'error'
+      uats_processed INT, records_written INT, notes TEXT)
+```
+
+Each invocation of `fetch_prices.py` or `fetch_gas_prices.py` creates one row. Status `'abandoned'` means the process was killed (SIGKILL / unattended-upgrades) before it could write a final status — the checkpoint is still valid and will resume correctly on the next run.
 
 ### Quick queries
 

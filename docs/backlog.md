@@ -2,6 +2,17 @@
 
 ---
 
+## General
+
+### Pipeline health
+
+- [ ] **Full-sweep cycle now takes ~7–9 days** — product catalog grew 12× (87K products, 437 batches/anchor). One cron run (23 h) covers only ~70–100 of 683 anchors. Options: (a) increase `BATCH_SIZE` 200 → 500 and check URL length limit; (b) filter products to only those seen in the last 30 days; (c) investigate what triggered the 80K product spike on the April 28 reference run and whether all products are valid.
+- [ ] **`price_date` stored as non-ISO strings** — retail uses `DD.MM.YYYY HH:MM`, gas uses `DD/MM/YYYY HH:MM`. SQLite `date()`/`strftime()` can't parse these, breaking any date-range queries. Consider storing as ISO `YYYY-MM-DD HH:MM` on insert (parse in `api.py` parsers).
+- [ ] **Multiple `runs` rows per logical run** — each `--resume` invocation calls `start_run` and creates a new row with the same `fetched_at`. The orphan rows are now cleaned by `abandon_stale_runs`, but the runs table still accumulates many rows per checkpoint cycle. Consider skipping `start_run` when resuming an existing checkpoint.
+- [ ] **Unattended-upgrades kills cron jobs** — configure `/etc/apt/apt.conf.d/50unattended-upgrades` to avoid mid-run kills (e.g. set `Unattended-Upgrade::AutoFixInterruptedDpkg "false"` or move upgrades to a maintenance window that doesn't overlap the 04:00 cron).
+
+---
+
 ## Retail
 
 ### Bugs / Known Issues
