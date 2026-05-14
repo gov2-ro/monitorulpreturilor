@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-05-14 — `/pipeline-check` command + freshness drill-down
+
+Added `.claude/commands/pipeline-check.md`: read-only health check that runs `status.py`, inspects in-flight processes + lock, reads today's audit JSON, tails the four log files, diffs `crontab -l` against `scripts/crontab.template`, checks per-cron heartbeat, and emits a single GREEN/YELLOW/RED verdict block. Synthesises rather than dumping raw output.
+
+Triggered by drilling into the 2026-05-14 06:02 RED audit (860/3948 stores stale, 21.78%). Findings:
+
+- **Three distinct problems were lumped under one signal.** Orphan stores (827 with `network_id IS NULL`, 150 never priced) are a permanent ~4% floor. București MEGA IMAGE 44/319 (14%) and PROFI 12/110 (11%) are an actual urban-density coverage gap from the 5 km anchor radius + 50-store API cap. ~75 stores last seen 1–4 weeks ago are likely closed and should be marked inactive.
+- **The 860 was inflated by audit timing.** At 06:02, run #146 was still in-flight; by 22:49 the live count had dropped to ~261. Real "structurally stale (audit logic)" count is closer to 275, ≈7% — under the 10% RED threshold once orphans and lifecycle stragglers are excluded.
+- **Three backlog items filed** under General → Pipeline health: split the freshness signal by cause, investigate the București MEGA IMAGE/PROFI gap, and mark long-stale stores inactive. None of `audit_pipeline.py` or the schema changed in this pass — those are the backlog work.
+
 ### 2026-05-12 — Re-entrant retail cron (Option A in pipeline-cadence)
 
 Replaced the daily 04:00 retail cron with `*/30 * * * *`, `--max-runtime 1700`. Lock + checkpoint already supported this; no script changes needed. Kill recovery drops from 24 h to ~30 min.
