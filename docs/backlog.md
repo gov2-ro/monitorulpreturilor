@@ -10,6 +10,8 @@
 - [ ] **`price_date` stored as non-ISO strings** — retail uses `DD.MM.YYYY HH:MM`, gas uses `DD/MM/YYYY HH:MM`. SQLite `date()`/`strftime()` can't parse these, breaking any date-range queries. Consider storing as ISO `YYYY-MM-DD HH:MM` on insert (parse in `api.py` parsers).
 - [ ] **Multiple `runs` rows per logical run** — each `--resume` invocation calls `start_run` and creates a new row with the same `fetched_at`. The orphan rows are now cleaned by `abandon_stale_runs`, but the runs table still accumulates many rows per checkpoint cycle. Consider skipping `start_run` when resuming an existing checkpoint.
 - [ ] **Unattended-upgrades kills cron jobs** — configure `/etc/apt/apt.conf.d/50unattended-upgrades` to avoid mid-run kills (e.g. set `Unattended-Upgrade::AutoFixInterruptedDpkg "false"` or move upgrades to a maintenance window that doesn't overlap the 04:00 cron).
+- [ ] **Run `fetch_prices` under a supervisor (systemd / re-entrant cron)** — the measured work is ~15 h but firings die early to reboots/OOM/upgrades and then sit idle ~20 h waiting for the next 04:00 cron. A `Restart=on-failure` service or `*/30 * * * *` lock-aware cron would compress the 3–7 day cadence back to a true daily one. See [`docs/pipeline-cadence.md`](pipeline-cadence.md) for the diagnosis.
+- [ ] **Investigate OOM on `fetch_prices`** — `journalctl --user` shows `oom-kill` on `app.slice` around the retail cron window. 87 k product IDs in memory + per-call XML responses are the obvious suspects; a `tracemalloc` snapshot before/after the anchor loop should locate it.
 
 ---
 

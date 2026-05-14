@@ -1,20 +1,27 @@
 # Crontab template for monitorulpreturilor.
 #
 # Install: `crontab scripts/crontab.template` (or copy lines into `crontab -e`).
-# Requires healthchecks.io UUIDs for: retail, gas, reference, audit.
-# Replace UUID_GAS and UUID_AUDIT with real UUIDs after creating them in the
-# healthchecks.io UI; retail and reference reuse the pre-existing UUIDs.
+# Healthchecks.io UUIDs for retail, gas, reference, audit are baked in below.
 
 SHELL=/bin/bash
 
-# Retail prices — daily 04:00, 23h cap, then verify with check_runs
-0 4 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 48b9dd2d-f5a1-4947-a154-e3aaa0f079da bash -c 'source venv/bin/activate && python fetch_prices.py --max-runtime 82800 >> data/logs/fetch-prices.log 2>&1 && python check_runs.py --script fetch_prices --max-age-hours 25 >> data/logs/check-runs.log 2>&1'
+# Retail prices — re-entrant every 30 min, ~28 min/slice.
+# The script's lock + checkpoint make this a no-op when a slice is already in
+# flight or the day's session is complete. Recovery from any kill drops from
+# 24h to ~30 min. Health is checked separately at 07:05 to keep this line quiet
+# (would otherwise be 48 hc pings/day). See docs/pipeline-cadence.md.
+*/30 * * * * cd /home/pax/g2-dev/monitorulpreturilor && source venv/bin/activate && python fetch_prices.py --max-runtime 1700 >> data/logs/fetch-prices.log 2>&1
+
+# Retail health ping — daily 07:05. check_runs honors the per-script lock, so a
+# slice-in-flight isn't false-failed. 36h window gives room for a session that
+# spans more than a calendar day under the new re-entrant scheme.
+5 7 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 48b9dd2d-f5a1-4947-a154-e3aaa0f079da bash -c 'source venv/bin/activate && python check_runs.py --script fetch_prices --max-age-hours 36 >> data/logs/check-runs.log 2>&1'
 
 # Gas prices — daily 03:00, independent of retail
-0 3 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh UUID_GAS bash -c 'source venv/bin/activate && python fetch_gas_prices.py >> data/logs/fetch-gas-prices.log 2>&1 && python check_runs.py --script fetch_gas_prices --max-age-hours 25 >> data/logs/check-runs.log 2>&1'
+0 3 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh d5454af9-13f6-44a4-9771-200426385592 bash -c 'source venv/bin/activate && python fetch_gas_prices.py >> data/logs/fetch-gas-prices.log 2>&1 && python check_runs.py --script fetch_gas_prices --max-age-hours 25 >> data/logs/check-runs.log 2>&1'
 
 # Daily audit — 06:00, after both fetchers have had time to start
-0 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh UUID_AUDIT bash -c 'source venv/bin/activate && python audit_pipeline.py >> data/logs/audit.log 2>&1 && python generate_pipeline_report.py >> data/logs/audit.log 2>&1'
+0 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh a440ce9b-0547-406f-836a-0570e0737fc6 bash -c 'source venv/bin/activate && python audit_pipeline.py >> data/logs/audit.log 2>&1 && python generate_pipeline_report.py >> data/logs/audit.log 2>&1'
 
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'

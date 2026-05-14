@@ -57,11 +57,21 @@ def check_store_freshness(conn):
 
 
 def check_run_history(conn):
+    # `started_at` doubles as a session id: fetch_prices reuses the original
+    # fetched_at across cron firings, so all rows for one logical session share
+    # it. If any row in that session reached 'completed', the abandoned/error
+    # siblings are normal mid-session cleanup, not failures — ignore them.
     rows = conn.execute(f"""
         SELECT id, script, status, started_at, finished_at, notes
-        FROM runs
+        FROM runs r
         WHERE status IN ('abandoned', 'error')
           AND (finished_at IS NULL OR finished_at >= datetime('now', '-{ABANDONED_DAYS} days'))
+          AND NOT EXISTS (
+              SELECT 1 FROM runs r2
+              WHERE r2.script     = r.script
+                AND r2.started_at = r.started_at
+                AND r2.status     = 'completed'
+          )
         ORDER BY id DESC
     """).fetchall()
     red = len(rows) > 0
@@ -69,7 +79,7 @@ def check_run_history(conn):
     return {
         "name": "run_history",
         "red": red,
-        "summary": f"{len(rows)} abandoned/error run(s) in last {ABANDONED_DAYS}d",
+        "summary": f"{len(rows)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d",
         "bad_run_count": len(rows),
         "samples": samples,
         "window_days": ABANDONED_DAYS,

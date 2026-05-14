@@ -4,6 +4,26 @@
 
 ## General
 
+### 2026-05-12 — Re-entrant retail cron (Option A in pipeline-cadence)
+
+Replaced the daily 04:00 retail cron with `*/30 * * * *`, `--max-runtime 1700`. Lock + checkpoint already supported this; no script changes needed. Kill recovery drops from 24 h to ~30 min.
+
+- Health is checked separately at 07:05 via `check_runs --max-age-hours 36` wrapped in `hc_run.sh` (UUID `48b9dd2d-…` reused). Keeps the work cron quiet — otherwise we'd ping healthchecks.io 48×/day, most as no-ops, which would mask real failures.
+- `hc_run.sh` is intentionally **off** the work cron. The cron line just runs fetch_prices and appends to the log.
+- Slice budget is 1700 s = 28 m 20 s, leaving ~1 min margin inside the 30-min interval. If a slice goes over (max-runtime check only fires between anchors), the next firing's lock check sees a live PID and no-ops — worst-case lost window is one cron tick.
+- `check_runs --max-age-hours 36` (up from 25): a fresh session that just started yesterday at 23:00 could legitimately finish 25+ hours later under variable API latency; 36 h gives margin without going lax.
+- Template updated in `scripts/crontab.template`; deploy with `crontab scripts/crontab.template`. Gas / audit / reference lines unchanged.
+
+### 2026-05-12 — Retail cadence investigation + audit `run_history` fix
+
+Followed up on `status.py` showing "5d 17h" durations and a perma-RED audit. Wrote findings to [`docs/pipeline-cadence.md`](pipeline-cadence.md).
+
+- **`audit_pipeline.py:check_run_history`** now ignores `abandoned`/`error` rows that share `(script, started_at)` with a later `completed` row. The audit was reporting the same 11-row noise that `status.py` shows; with the fix, audit flips to `ok`. Real failures (no `completed` for the session) still surface.
+- **Measured the actual work:** 29 760 batches × 1.70 s/call (live test) ≈ 15.3 h for a full sweep. That fits inside the 23 h `--max-runtime`. The 3–7 day calendar cost is **external kills + 20 h waits for the next 04:00 cron**, not slow code.
+- **Confirmed kill mechanisms:** `last reboot` shows host rebooted 2026-05-12 08:04 (mid-session); `journalctl --user` has `oom-kill` on `app.slice` at 11:30 the same day. Previously the backlog only called out unattended-upgrades — reboots and OOM are additional vectors.
+- **`runs.started_at` is really `fetched_at`** — reused across firings via the checkpoint (`fetch_prices.py:316` → `:404`). That's why all 7 May-7 rows share `2026-05-07T04:00:02`. `status.py` duration math is misleading because of this; flagged in the doc, schema fix already on backlog.
+- Did **not** change `status.py`, the schema, or add a supervisor — those are separate. The doc ranks the fixes.
+
 ### 2026-05-12 — `status.py` CLI digest
 
 Single-shot CLI summary of pipeline state — three sections: last N runs (default 10), per-script summary over last 7d (`--days N`), and the latest data-quality audit verdict (read directly from `data/logs/audit-*.json`, never recomputed). No new deps, stdlib + sqlite only, read-only DB connection, always exits 0. ANSI colors auto-disable when piping or with `--no-color`.
