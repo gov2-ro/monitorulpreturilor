@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-05-14 — `/pipeline-check` trend + drill-down; București cluster-overflow root cause
+
+Enhanced `.claude/commands/pipeline-check.md`:
+
+- **Trend** — loads today / yesterday / 7d-ago `audit-YYYY-MM-DD.json` and prints day-over-day deltas per check. Today: `store_freshness 71.07% → 21.78%` (active recovery).
+- **Drill-down on RED** — runs only when overall=RED. For `store_freshness`, single SQL returns top-5 networks by stale-count using date-only diff (matches audit predicate but evaluates *now*; labels output "live vs audit-snapshot at HH:MM" so the gap reads as recovery, not contradiction).
+- **Next-slice ETA** for the `*/30` retail cron, plus a narrow trend-aware RED→YELLOW downgrade when `store_freshness` is the only red check and stale_pct improves by >20 pp day-over-day.
+
+Then drilled into the MEGA IMAGE / PROFI București gap from yesterday's backlog stub. **Root cause confirmed**: each București 5 km cluster covers 230–324 retail stores (measured) vs the API's 50-store-per-response cap. Stale cohorts share exact-microsecond `last_checked_at` timestamps, proving each cohort was covered by one anchor call and never again — anchor rotation happens to leave certain edge stores outside the 50-nearest set indefinitely. Backlog entry rewritten with three ranked fixes (adaptive cluster split / cap-hit logging / stale-rescue pass); no code changes this pass — design tradeoff (slice runtime vs coverage) needs review first.
+
 ### 2026-05-14 — `/pipeline-check` command + freshness drill-down
 
 Added `.claude/commands/pipeline-check.md`: read-only health check that runs `status.py`, inspects in-flight processes + lock, reads today's audit JSON, tails the four log files, diffs `crontab -l` against `scripts/crontab.template`, checks per-cron heartbeat, and emits a single GREEN/YELLOW/RED verdict block. Synthesises rather than dumping raw output.
