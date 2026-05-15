@@ -4,6 +4,14 @@
 
 ## General
 
+### Pending verifications
+
+Time-bounded checks after a fix or change: confirm the expected effect by the date, then tick and note in `activity-log.md`. If the check fails, convert into a real work item below.
+
+- [ ] **By 2026-05-16: București MEGA IMAGE stale count drops below 5** — was 44/319 on 2026-05-14 audit. Source: `/pipeline-check` drill-down (`store_freshness` top-stale-networks). Expected after the 2026-05-15 adaptive cluster split fix.
+- [ ] **By 2026-05-16: CAP-HIT log line count near zero in `data/logs/fetch-prices.log`** — measure: `grep -c CAP-HIT data/logs/fetch-prices.log` after one full cron cycle. Persistent hits would mean either density survives splitting to 1250 m (→ tighten `MIN_CLUSTER_RADIUS_M`) or our local `stores` table is missing entries the API knows about (→ resume `discover_stores.py`).
+- [ ] **By 2026-05-16: overall audit drops back to GREEN** — `store_freshness` <10% stale, sustained over the daily audit. Trend should read `21.78% → <10%` in `/pipeline-check`.
+
 ### Pipeline health
 
 - [ ] **Full-sweep cycle now takes ~7–9 days** — product catalog grew 12× (87K products, 437 batches/anchor). One cron run (23 h) covers only ~70–100 of 683 anchors. Options: (a) increase `BATCH_SIZE` 200 → 500 and check URL length limit; (b) filter products to only those seen in the last 30 days; (c) investigate what triggered the 80K product spike on the April 28 reference run and whether all products are valid.
