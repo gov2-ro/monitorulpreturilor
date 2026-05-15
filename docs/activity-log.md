@@ -4,6 +4,20 @@
 
 ## General
 
+### 2026-05-15 — Adaptive cluster split + cap-hit logging in `fetch_prices.py`
+
+Closed the cluster-overflow / 50-store cap coverage gap diagnosed yesterday.
+
+**Change 1 — Adaptive cluster split.** Extracted the body of `_cluster_anchors` into a `_greedy_set_cover` helper. The new `_cluster_anchors` wrapper runs set-cover at `BUFFER_M = 5000`, then recursively re-clusters any cluster with >`MAX_STORES_PER_CLUSTER` (50) members at half the radius, bottoming out at `MIN_CLUSTER_RADIUS_M = 1250`. Returns a third value `anchor_radius: Dict[int, int]` so each anchor's effective buffer is plumbed to the URL builder. Real-DB measurement: 681 → 1002 anchors total (+47%); 294 sub-anchors from adaptive split; only **3 anchors remain oversize in all of Romania** (at the 1250m floor). p95 cluster size lands at 35; max 54.
+
+**Change 2 — Cap-hit logging.** Per-anchor counter increments when `len(result_stores) >= 50 and len(anchor_covers[sid]) > 50`. One aggregated `CAP-HIT anchor=… cluster=… radius=… batches_capped=…` line emitted at end of each per-anchor sweep (not per batch — would be too noisy). Lands in `data/logs/fetch-prices.log` via existing cron redirect.
+
+**Checkpoint compat — lenient.** No version gate. Old `done` entries whose `sid` survives as an anchor still help; new sub-anchor sids fetch fresh on first encounter. One-time partial re-fetch on upgrade absorbed by the re-entrant `*/30` cron.
+
+**Verification.** Synthetic 60-store dense cluster + rural-20 + empty input + real-DB-4099 cases all pass clustering invariants (every input store covered, no oversize cluster above `MIN_CLUSTER_RADIUS_M`). API probe confirmed cap fires by buffer density, not by `OrderBy` (50 returned at 5km / 2.5km; 40 at 1.25km from central București). The 06:30 UTC cron slice that was already in-flight when the change landed continues on the old code path (Python imported pre-edit); next cron firing at 07:00 picks up the new code. Tomorrow's `/pipeline-check` should show `store_freshness` drop and no longer surface București as the dominant stale cluster.
+
+**Follow-ups left in backlog.** `OrderBy=price → dist` (matters only if cap-hits persist at the 1250m floor), tightening `MIN_CLUSTER_RADIUS_M` if 3-anchor floor proves too generous, and resuming `discover_stores.py` (cap-hits below 50 known stores would imply the API knows stores our table doesn't).
+
 ### 2026-05-14 — `/pipeline-check` trend + drill-down; București cluster-overflow root cause
 
 Enhanced `.claude/commands/pipeline-check.md`:

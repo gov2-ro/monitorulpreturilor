@@ -43,6 +43,12 @@ BATCH_SIZE = 200
 # SLEEP_BETWEEN = 0.5
 SLEEP_BETWEEN = 0.15
 BUFFER_M = 5000
+# Adaptive cluster split: any cluster with more than MAX_STORES_PER_CLUSTER
+# members is re-clustered at half the radius (down to MIN_CLUSTER_RADIUS_M).
+# The API caps each response at 50 stores, so oversize clusters silently
+# truncate. Without splitting, dense-urban anchors miss 80%+ of their cluster.
+MIN_CLUSTER_RADIUS_M = 1250
+MAX_STORES_PER_CLUSTER = 50
 
 # Romania bounding box for geographic ordering
 _RO_LAT_MIN, _RO_LAT_MAX = 43.6, 48.3
@@ -70,17 +76,18 @@ def _haversine_m(lat1, lon1, lat2, lon2):
     return R * 2 * math.asin(math.sqrt(a))
 
 
-def _cluster_anchors(stores, radius_m=5000):
-    """Greedy set-cover: pick anchors so every store is within radius_m of some anchor.
+def _greedy_set_cover(stores, radius_m):
+    """Single-pass greedy set cover at a fixed radius.
 
-    Returns the subset of stores chosen as anchors (same tuple format).
+    Returns (anchors, anchor_covers) where anchor_covers maps
+    anchor store_id -> list of covered store_ids (including the anchor itself).
     """
     n = len(stores)
-    # Pre-compute neighbor lists (indices within radius)
     neighbors = [[] for _ in range(n)]
     for i in range(n):
         for j in range(i + 1, n):
-            # Quick lat/lon pre-filter (~0.05° ≈ 5.5 km)
+            # Quick lat/lon pre-filter (~0.05° ≈ 5.5 km — sized for the
+            # 5 km starting radius; harmless at smaller radii, just wider).
             if (abs(stores[i][2] - stores[j][2]) > 0.05
                     or abs(stores[i][3] - stores[j][3]) > 0.07):
                 continue
@@ -92,9 +99,8 @@ def _cluster_anchors(stores, radius_m=5000):
 
     uncovered = set(range(n))
     anchors = []
-    anchor_covers = {}  # anchor store_id → all store_ids within radius (for per-anchor product filter)
+    anchor_covers = {}
     while uncovered:
-        # Pick store covering the most uncovered neighbors
         best = max(uncovered,
                    key=lambda i: sum(1 for j in neighbors[i] if j in uncovered))
         anchor_sid = stores[best][0]
@@ -104,6 +110,43 @@ def _cluster_anchors(stores, radius_m=5000):
         for j in neighbors[best]:
             uncovered.discard(j)
     return anchors, anchor_covers
+
+
+def _cluster_anchors(stores, radius_m=BUFFER_M,
+                     min_radius_m=MIN_CLUSTER_RADIUS_M,
+                     max_per_cluster=MAX_STORES_PER_CLUSTER):
+    """Greedy set-cover with adaptive radius split.
+
+    Any cluster with >max_per_cluster members is recursively re-clustered
+    at half the radius, bottoming out at min_radius_m. Rural anchors stay
+    at radius_m; only dense-urban anchors split.
+
+    Returns (anchors, anchor_covers, anchor_radius) where anchor_radius
+    maps anchor store_id -> effective cluster radius in metres.
+    """
+    anchors, covers = _greedy_set_cover(stores, radius_m)
+    refined_anchors = []
+    refined_covers = {}
+    refined_radius = {}
+    can_split = radius_m // 2 >= min_radius_m
+    for a in anchors:
+        sid = a[0]
+        covered_ids = covers[sid]
+        if len(covered_ids) <= max_per_cluster or not can_split:
+            refined_anchors.append(a)
+            refined_covers[sid] = covered_ids
+            refined_radius[sid] = radius_m
+            continue
+        cover_set = set(covered_ids)
+        subset = [s for s in stores if s[0] in cover_set]
+        sub_anchors, sub_covers, sub_radius = _cluster_anchors(
+            subset, radius_m=radius_m // 2,
+            min_radius_m=min_radius_m, max_per_cluster=max_per_cluster,
+        )
+        refined_anchors.extend(sub_anchors)
+        refined_covers.update(sub_covers)
+        refined_radius.update(sub_radius)
+    return refined_anchors, refined_covers, refined_radius
 
 
 def _geo_sort_key(lat, lon):
@@ -344,16 +387,23 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         if limit_stores:
             stores = stores[:limit_stores]
 
-    # Spatial clustering: reduce anchors so every store is within 5 km of one
-    anchor_covers = {}  # anchor store_id → all store_ids within 5 km (for per-anchor product filter)
+    # Spatial clustering: every store within radius_m of some anchor.
+    # Adaptive split — oversize clusters re-cluster at half radius until
+    # ≤ MAX_STORES_PER_CLUSTER members (or MIN_CLUSTER_RADIUS_M floor).
+    anchor_covers = {}   # anchor store_id → list of covered store_ids
+    anchor_radius = {}   # anchor store_id → effective radius (m) for URL builder
     if not no_cluster and not store_ids_file:
         n_before = len(stores)
-        tqdm.write(f"Clustering {n_before} stores (radius={BUFFER_M}m)...")
-        stores, anchor_covers = _cluster_anchors(stores, radius_m=BUFFER_M)
+        tqdm.write(f"Clustering {n_before} stores (radius={BUFFER_M}m, "
+                   f"max/cluster={MAX_STORES_PER_CLUSTER}, "
+                   f"min_radius={MIN_CLUSTER_RADIUS_M}m)...")
+        stores, anchor_covers, anchor_radius = _cluster_anchors(stores, radius_m=BUFFER_M)
         stores = _order_stores(stores, order)
+        split_anchors = sum(1 for r in anchor_radius.values() if r < BUFFER_M)
         tqdm.write(
             f"Clustered {n_before} stores → {len(stores)} anchors "
-            f"({100 * (1 - len(stores) / n_before):.0f}% reduction)"
+            f"({100 * (1 - len(stores) / n_before):.0f}% reduction; "
+            f"{split_anchors} sub-anchors from adaptive split)"
         )
 
     if product_ids_file:
@@ -419,6 +469,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 store_bar.set_description(name[:30])
 
                 store_prices = 0
+                cap_hit_batches = 0
                 # Per-anchor product filtering:
                 # - Started anchors (have resume keys): use global list for stable batch indices.
                 # - New anchors: query prices_current for nearby stores — avoids ghost products
@@ -439,9 +490,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                             continue
 
                         csv_ids = ",".join(str(p) for p in batch)
+                        buf = anchor_radius.get(store_id, BUFFER_M)
                         url = (
                             f"{BASE}/GetStoresForProductsByLatLon"
-                            f"?lat={lat}&lon={lon}&buffer={BUFFER_M}"
+                            f"?lat={lat}&lon={lon}&buffer={buf}"
                             f"&csvprodids={csv_ids}&OrderBy=price"
                         )
                         try:
@@ -453,6 +505,14 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                             time.sleep(SLEEP_BETWEEN)
                             continue
                         result_stores, prices = parse_stores_and_prices(root, fetched_at)
+                        # API caps at 50 stores per response. If we see 50 returned
+                        # while our local cluster has >50 members, the response
+                        # truncated — flag it (after adaptive split, this should
+                        # be rare; persistent hits mean either density at the
+                        # MIN_CLUSTER_RADIUS_M floor or stores the API knows about
+                        # that aren't yet in our local `stores` table).
+                        if len(result_stores) >= 50 and len(anchor_covers.get(store_id, [])) > 50:
+                            cap_hit_batches += 1
 
                         for s in result_stores:
                             upsert_store(
@@ -479,6 +539,12 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                         time.sleep(SLEEP_BETWEEN)
 
                 tqdm.write(f"  {name}: {store_prices} price records")
+                if cap_hit_batches:
+                    tqdm.write(
+                        f"  CAP-HIT anchor={store_id} cluster={len(anchor_covers.get(store_id, []))} "
+                        f"radius={anchor_radius.get(store_id, BUFFER_M)}m "
+                        f"batches_capped={cap_hit_batches}"
+                    )
                 total_prices += store_prices
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
