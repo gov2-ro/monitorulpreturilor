@@ -64,6 +64,15 @@ Run the steps below using parallel Bash calls where independent, then output a s
    - retail (`fetch-prices.log`): activity <30 min OR last `completed` <36 h
    - gas (`fetch-gas-prices.log`), audit (`audit.log`), check-runs (`check-runs.log`): <25 h
 
+8. **Log the report** — after composing the final report, append it verbatim to `data/logs/pipeline-check.log` (create dir if missing):
+   ```bash
+   mkdir -p data/logs
+   tee -a data/logs/pipeline-check.log <<'REPORT'
+   <full report text here>
+   REPORT
+   ```
+   Use the actual report text in the heredoc. This is a write to a log file only — consistent with the read-only spirit of the check.
+
 ## Output format
 
 ```
