@@ -4,6 +4,20 @@
 
 ## General
 
+### 2026-05-20 — Stale checkpoint root cause diagnosis + pipeline-check backfill progress + logging improvements
+
+Ran `/pipeline-check` and observed YELLOW (store_freshness 78.72% → 48.95%, recovering). Diagnosed why recovery is so slow despite 226 daily cron slices.
+
+**Root cause:** checkpoint `fetched_at = 2026-05-18`, `status = in_progress`. The date-guard in `_main_body` only fires for `status == "completed"` runs — an `in_progress` checkpoint resumes unconditionally regardless of how old it is. All 226 cron slices were resuming the May-18 session and stamping every inserted price with `fetched_at = 2026-05-18`. Because `prices_current.last_checked_at` reflects that timestamp, even stores fetched yesterday show as >2d stale in the audit. Fix: `--fresh` to start a new session timestamped today; the May-18 checkpoint's 33 751 done keys are useless since the prices they inserted are all stale-dated.
+
+**`/pipeline-check` enhanced** (`.claude/commands/pipeline-check.md`): step 2 now always runs a "Backfill progress" block when a lock is held. Reads `data/prices_checkpoint.json` for done-key count, `status`, and `fetched_at`; flags when `fetched_at` predates today (stale-date warning — signals a `--fresh` run is needed). Tails the last `SUMMARY` line from `data/logs/fetch-prices-backfill.log` (falling back to `fetch-prices.log`). Output format added to the report template.
+
+**`fetch_prices.py` logging improved:** start banner now prefixed `[HH:MM:SS]` UTC and also shows `~N total batches` estimate alongside anchor/product counts. Per-store completion line now timestamped and shows `(K/Total)` anchor counter — makes log files readable instead of bare tqdm escape sequences.
+
+### 2026-05-19 — Pipeline-check report logging
+
+Added step 8 to `.claude/commands/pipeline-check.md`: after composing the final report, appends it verbatim to `data/logs/pipeline-check.log` (creates directory if missing). Enables `tail -f` monitoring of check runs and keeps a history of verdicts without any schema or DB changes.
+
 ### 2026-05-15 — Adaptive cluster split + cap-hit logging in `fetch_prices.py`
 
 Closed the cluster-overflow / 50-store cap coverage gap diagnosed yesterday.

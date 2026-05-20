@@ -446,8 +446,9 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             tqdm.write(f"Skipping {n_skipped} fully-done anchors from checkpoint.")
 
     tqdm.write(
-        f"Fetching prices: {len(stores)} anchors × ~{len(prod_ids)} products "
-        f"(≤{n_batches} batches/anchor; new anchors per-anchor filtered)  "
+        f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Fetching prices: "
+        f"{len(stores)} anchors × ~{len(prod_ids)} products "
+        f"(≤{n_batches} batches/anchor; ~{len(stores) * n_batches} total batches)  "
         f"order={order}  fetched_at={fetched_at}"
     )
 
@@ -538,7 +539,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                          anchor_batch_counts=anchor_batch_counts)
                         time.sleep(SLEEP_BETWEEN)
 
-                tqdm.write(f"  {name}: {store_prices} price records")
+                tqdm.write(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]  {name}: {store_prices} prices  ({stores_done + 1}/{len(stores)})")
                 if cap_hit_batches:
                     tqdm.write(
                         f"  CAP-HIT anchor={store_id} cluster={len(anchor_covers.get(store_id, []))} "

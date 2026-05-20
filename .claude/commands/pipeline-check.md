@@ -15,6 +15,35 @@ Run the steps below using parallel Bash calls where independent, then output a s
    python3 -c "import datetime as dt; n=dt.datetime.utcnow(); m=(30-n.minute%30)%30 or 30; print(f'next retail slice in ~{m}m')"
    ```
 
+   **Backfill progress** — always run when a lock is held (regardless of verdict):
+   ```bash
+   python3 - <<'PY'
+   import json, os, subprocess, datetime as dt
+   cp_path = "data/prices_checkpoint.json"
+   try:
+       cp = json.load(open(cp_path))
+       done = len(cp.get("done", []))
+       fetched_at = cp.get("fetched_at", "?")
+       status = cp.get("status", "?")
+       # Estimate total work units: anchors × batches is not stored; use done as lower bound
+       # Check if a manual backfill log exists and get last SUMMARY line from it
+       last_summary = ""
+       for log in ["data/logs/fetch-prices-backfill.log", "data/logs/fetch-prices.log"]:
+           if os.path.exists(log):
+               result = subprocess.run(["grep", "-a", "SUMMARY", log], capture_output=True, text=True)
+               lines = [l for l in result.stdout.strip().splitlines() if "SUMMARY" in l]
+               if lines:
+                   last_summary = f"  last SUMMARY ({os.path.basename(log)}): {lines[-1].split('SUMMARY')[1].strip()}"
+                   break
+       print(f"  Checkpoint: {done} done keys  status={status}  fetched_at={fetched_at}")
+       if last_summary:
+           print(last_summary)
+   except FileNotFoundError:
+       print("  No checkpoint file found.")
+   PY
+   ```
+   If `fetched_at` date is older than today, flag it: the run is stamping prices with a stale date — a `--fresh` run is needed.
+
 3. **Audit + trend (today vs yesterday vs 7d-ago)** — single python block that loads up to three JSON files and prints today's checks with a day-over-day delta:
    ```bash
    python3 - <<'PY'
@@ -80,6 +109,9 @@ PIPELINE CHECK — <UTC time>
 Verdict: GREEN | YELLOW | RED
 
   In-flight: <PID xxx since HH:MM | none, next retail slice in Xm>
+  Backfill:  <N done keys, status=in_progress, fetched_at=YYYY-MM-DD [STALE DATE — needs --fresh]>
+             last SUMMARY: stores=N prices=N elapsed=Ns
+             (omit entire Backfill line when no lock is held)
   Audit (today): <ok | RED: <which checks>>
   Trend: <store_freshness A% -> B% -> C% (improving/regressing/flat); other-check status>
   Cron drift: <none | <list>>

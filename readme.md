@@ -77,7 +77,7 @@ python fetch_gas_reference.py
 
 ### Daily run
 
-> **Cron layout (VPS):** retail (`fetch_prices.py`) runs at 04:00 with a 23 h time limit; gas (`fetch_gas_prices.py`) runs independently at 03:00. They are **not** chained — a stalled retail run does not block the gas fetch.
+> **Cron layout (VPS):** retail (`fetch_prices.py`) runs every 30 minutes (`*/30 * * * *`) with `--max-runtime 1700` (28 min 20 s), so each slice stays within its window and the lock/checkpoint carry state across firings. Gas (`fetch_gas_prices.py`) runs independently at 03:00. They are **not** chained — a stalled retail run does not block the gas fetch.
 >
 > **Monitoring:** each cron line is wrapped with `scripts/hc_run.sh <uuid> <cmd>`, which pings healthchecks.io with `/start`, then either the base URL on success or `/fail` on non-zero exit. Each fetcher's line also runs `check_runs.py` afterwards — so a fetch that "completed" but wrote zero records still trips `/fail`. A daily `audit_pipeline.py` at 06:00 checks data quality (store freshness, abandoned runs, network coverage gaps) and fails the same way. See `scripts/crontab.template` for the canonical layout, and [`docs/monitoring-pattern.md`](docs/monitoring-pattern.md) for the reusable approach.
 >
@@ -386,6 +386,16 @@ Generates a self-contained HTML pipeline diagnostic report with traffic-light in
 python generate_pipeline_report.py                 # → site/pipeline-health.html
 python generate_pipeline_report.py --out path/to/file
 python generate_pipeline_report.py --db path/to/prices.db
+```
+
+#### `status.py`
+One-shot CLI digest of pipeline state — three sections: last N runs (default 10), per-script ok/fail summary over the last 7 days, and the latest data-quality audit verdict (read from `data/logs/audit-*.json`, never recomputed). Read-only, stdlib only, always exits 0. ANSI colours auto-disable when piping or with `--no-color`.
+
+```bash
+python status.py                   # last 10 runs + 7d summary + latest audit
+python status.py --runs 20         # show last 20 runs
+python status.py --days 14         # 14-day per-script summary
+python status.py --no-color        # plain text
 ```
 
 #### `check_runs.py`
