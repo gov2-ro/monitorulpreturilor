@@ -4,6 +4,26 @@
 
 ## General
 
+### 2026-05-22 — PROFI regional (intra-UAT) uniformity analysis
+
+Follow-up to the national-pricing analysis. Ran intra-UAT price variance query for PROFI: for each (product, UAT) pair with ≥2 PROFI stores, is the price uniform across all stores in that UAT?
+
+**Results (7-day price window):**
+- Overall intra-UAT uniformity: **59.9%** (vs 18.7% national)
+- Per-UAT uniformity distribution:
+
+| Uniformity bucket | UAT count | Avg % uniform | Avg stores/UAT |
+|-------------------|-----------|---------------|----------------|
+| 90–100% | 19 | 96.0% | 2.5 |
+| 75–89% | 4 | 82.6% | 2.8 |
+| 50–74% | 38 | 63.6% | 4.4 |
+| 25–49% | 21 | 37.5% | 18.2 |
+| 0–24% | 5 | 19.9% | 2.0 |
+
+**Key finding: regional canary does NOT work for PROFI.** The high-uniformity UATs (90–100%) have on average only 2.5 stores — "uniform" just means two stores happen to agree, not a reliable pattern. The large cities that hold the bulk of PROFI stores (București 86 stores → 44.8%, Timișoara 55 → 32.8%, Iași 26 → 37.7%, Bacău 25 → 32.0%) are the *least* uniform. The 25–49% bucket with avg 18.2 stores/UAT captures all major cities. PROFI prices are genuinely store-level, not regional.
+
+**Conclusion:** canary strategy (national or regional) is not viable for PROFI. The correct optimization path for PROFI is the **tiered fetch frequency** approach (daily/weekly tiers based on per-store volatility). Backlog item updated accordingly.
+
 ### 2026-05-22 — National-pricing uniformity analysis
 
 Ran a per-network intra-store price variance query to validate the "national pricing canary" hypothesis (fetch 5–10 representative stores per chain; propagate prices to remaining stores).
