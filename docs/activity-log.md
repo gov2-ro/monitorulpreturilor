@@ -4,6 +4,29 @@
 
 ## General
 
+### 2026-05-22 — National-pricing uniformity analysis
+
+Ran a per-network intra-store price variance query to validate the "national pricing canary" hypothesis (fetch 5–10 representative stores per chain; propagate prices to remaining stores).
+
+**Results (products with ≥3 stores, % with zero price variance across all stores in chain):**
+
+| Network | Stores | % Uniform |
+|---------|--------|-----------|
+| KAUFLAND | 172 | 91.6% |
+| LIDL | 357 | 86.8% |
+| PENNY | 409 | 82.6% |
+| SUPECO | 24 | 67.9% |
+| MEGA IMAGE | 922 | 54.9% |
+| AUCHAN | 40 | 33.1% |
+| CARREFOUR | 357 | 28.2% |
+| PROFI | 1222 | 18.7% |
+
+**Key finding:** The canary strategy is viable for LIDL/PENNY/KAUFLAND (87–92% uniform) and saves ~908 active store fetches combined (~27% total reduction). However, PROFI — the largest network by store count (1222 stores, 30% of all active stores) and the primary driver of stale metrics — has the *lowest* uniformity at 18.7%. Prices vary substantially across PROFI stores; a national canary would miss 81% of price variance.
+
+**Next investigation:** check whether PROFI pricing is uniform within a UAT/region (regional canaries) or truly store-level. If per-UAT uniformity is high, one canary per county (~40 canaries) cuts PROFI fetches by 97%.
+
+**Backlog updated:** added "National-pricing canary fetch strategy", "Tiered fetch frequency by store price volatility", "Audit and prune Unknown network stores", "Fix cron-interruption churn", "Parallel anchor fetching" items.
+
 ### 2026-05-20 — Stale checkpoint root cause diagnosis + pipeline-check backfill progress + logging improvements
 
 Ran `/pipeline-check` and observed YELLOW (store_freshness 78.72% → 48.95%, recovering). Diagnosed why recovery is so slow despite 226 daily cron slices.
