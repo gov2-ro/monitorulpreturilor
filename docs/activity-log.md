@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-05-23 — Store-level tiering + unknown network backfill
+
+**Store-level tiering (`db.py`, `fetch_prices.py`)**
+
+Added `fetch_tier TEXT DEFAULT 'daily'` to `stores`. `update_store_tiers(conn, days=7)` promotes stores with no price change in 7 days to `'weekly'` and re-demotes on any detected change — called at `fetch_prices.py` startup. In the anchor loop, any anchor whose entire covered cluster is on the weekly tier skips the API call entirely (`propagate_last_checked` + checkpoint advance), same pattern as canary. Full-scan ISO-week disables the skip so no store is missed for >7d. Checkpoint persists `weekly_store_ids` for consistent resume. SUMMARY line adds `tier_skipped=N weekly_store_tier=N`. Cold-start: benefits accrue after 7 days of `last_changed_at` data accumulating (column added 2026-05-23).
+
+**Unknown network store backfill (`db.py`, `fetch_prices.py`)**
+
+Audited 681 `network_id IS NULL` stores. The active fetch run had already filled most via `upsert_store`. Added `backfill_store_network_ids(conn)` with 12 name-pattern rules covering Mega Image (SG/MI prefix), Carrefour (Express prefix), Selgros (Seglros typo variant), and all other named networks. Ran on live DB: 85 more stores tagged. Called at `fetch_prices.py` startup so newly discovered stores are tagged immediately. 243 stores remain genuinely unidentifiable (city+street-only names, MARKET/SUPER prefix without confirmed network match).
+
 ### 2026-05-23 — price_date ISO normalization
 
 Fixed `price_date` format in `api.py` so all new inserts land in ISO `YYYY-MM-DD HH:MM` instead of the API's `DD.MM.YYYY HH:MM` (retail) and `DD/MM/YYYY HH:MM` (gas). Added `_parse_date(s)` helper; applied at both parse sites (`parse_stores_and_prices`, `parse_gas_items`/`update_date`). Passes through strings already in ISO form — safe on resume after a partial migration.

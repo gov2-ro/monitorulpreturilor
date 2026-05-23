@@ -170,6 +170,7 @@ def init_db(path="data/prices.db"):
         "ALTER TABLE stores ADD COLUMN surrounding_population REAL",
         "ALTER TABLE prices_current ADD COLUMN last_changed_at TEXT",
         "ALTER TABLE stores ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE stores ADD COLUMN fetch_tier TEXT DEFAULT 'daily'",
         "CREATE INDEX IF NOT EXISTS idx_prices_current_store ON prices_current(store_id)",
     ]:
         try:
@@ -461,6 +462,82 @@ def finish_run(conn, run_id, status, uats_processed, records_written, notes=None
          status, uats_processed, records_written, notes, run_id),
     )
     conn.commit()
+
+
+def update_store_tiers(conn, days=7):
+    """Sync stores.fetch_tier from prices_current.last_changed_at.
+
+    Promotes stores with no price change in the last `days` days to 'weekly';
+    re-demotes stores with a recent change back to 'daily'.
+    Called at fetch_prices startup so the tier set is fresh each run.
+
+    Returns (weekly_count, total_active).
+    Cold-start: returns (0, N) until last_changed_at data is at least `days` old.
+    """
+    conn.execute(f"""
+        UPDATE stores SET fetch_tier = 'weekly'
+        WHERE (is_active IS NULL OR is_active = 1)
+          AND id IN (
+              SELECT store_id FROM prices_current
+              GROUP BY store_id
+              HAVING MAX(last_changed_at) IS NOT NULL
+                 AND MAX(last_changed_at) < date('now', '-{days} days')
+          )
+    """)
+    conn.execute(f"""
+        UPDATE stores SET fetch_tier = 'daily'
+        WHERE (is_active IS NULL OR is_active = 1)
+          AND id IN (
+              SELECT store_id FROM prices_current
+              GROUP BY store_id
+              HAVING MAX(last_changed_at) >= date('now', '-{days} days')
+          )
+    """)
+    conn.commit()
+    weekly = conn.execute(
+        "SELECT COUNT(*) FROM stores WHERE fetch_tier = 'weekly' "
+        "AND (is_active IS NULL OR is_active = 1)"
+    ).fetchone()[0]
+    total = conn.execute(
+        "SELECT COUNT(*) FROM stores WHERE (is_active IS NULL OR is_active = 1)"
+    ).fetchone()[0]
+    return weekly, total
+
+
+def backfill_store_network_ids(conn):
+    """Infer network_id for stores where it is NULL but the name is recognisable.
+
+    Applies case-insensitive name-prefix / substring rules against the known
+    retail_networks table.  Only fills rows where network_id IS NULL; idempotent.
+
+    Returns dict {network_id: rows_updated}.
+    """
+    rules = [
+        ("UPPER(name) LIKE '%KAUFLAND%'",   "KAUFLAND"),
+        ("UPPER(name) LIKE '%PROFI%'",       "PROFI"),
+        ("UPPER(name) LIKE '%SELGROS%'",     "SELGROS"),
+        ("UPPER(name) LIKE '%SEGLROS%'",     "SELGROS"),   # typo variant
+        ("UPPER(name) LIKE '%CORA%'",        "5948914999995"),
+        ("UPPER(name) LIKE '%AUCHAN%'",      "AUCHAN"),
+        ("UPPER(name) LIKE '%SUPECO%'",      "SUPECO"),
+        ("UPPER(name) LIKE '%CARREFOUR%'",   "5940475006709"),
+        ("UPPER(name) LIKE '%MEGA IMAGE%'",  "5940475870003"),
+        # "MI " and "SG " prefixes are Mega Image store abbreviations
+        ("UPPER(name) LIKE 'MI %'",          "5940475870003"),
+        ("UPPER(name) LIKE 'SG %'",          "5940475870003"),
+        # "Express " prefix is Carrefour Express format
+        ("UPPER(name) LIKE 'EXPRESS %'",     "5940475006709"),
+    ]
+    results = {}
+    for condition, network_id in rules:
+        cur = conn.execute(
+            f"UPDATE stores SET network_id = ? WHERE network_id IS NULL AND {condition}",
+            (network_id,),
+        )
+        if cur.rowcount:
+            results[network_id] = results.get(network_id, 0) + cur.rowcount
+    conn.commit()
+    return results
 
 
 def deactivate_stale_stores(conn, days=21):

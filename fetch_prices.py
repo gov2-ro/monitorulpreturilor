@@ -37,7 +37,8 @@ from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
 from db import (init_db, insert_price, upsert_store, start_run, finish_run,
-                abandon_stale_runs, deactivate_stale_stores, propagate_last_checked)
+                abandon_stale_runs, deactivate_stale_stores, propagate_last_checked,
+                update_store_tiers, backfill_store_network_ids)
 
 # BATCH_SIZE = 30
 BATCH_SIZE = 200
@@ -199,7 +200,7 @@ def _load_checkpoint(path):
 
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
                      anchor_batch_counts=None, canary_seen=None, canary_changed=None,
-                     weekly_tier_ids=None):
+                     weekly_tier_ids=None, weekly_store_ids=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
     if product_ids is not None:
         data["product_ids"] = product_ids
@@ -213,13 +214,15 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
         data["canary_changed"] = sorted(canary_changed)
     if weekly_tier_ids is not None:
         data["weekly_tier_ids"] = sorted(weekly_tier_ids)
+    if weekly_store_ids is not None:
+        data["weekly_store_ids"] = sorted(weekly_store_ids)
     with open(path, "w") as f:
         json.dump(data, f)
 
 
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
                        product_ids=None, canary_seen=None, canary_changed=None,
-                       weekly_tier_ids=None):
+                       weekly_tier_ids=None, weekly_store_ids=None):
     data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
     if iso_week is not None:
         data["iso_week"] = iso_week
@@ -233,6 +236,8 @@ def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_count
         data["canary_changed"] = sorted(canary_changed)
     if weekly_tier_ids is not None:
         data["weekly_tier_ids"] = sorted(weekly_tier_ids)
+    if weekly_store_ids is not None:
+        data["weekly_store_ids"] = sorted(weekly_store_ids)
     with open(path, "w") as f:
         json.dump(data, f)
 
@@ -391,6 +396,17 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if n_deactivated:
         tqdm.write(f"Dead-store pruning: marked {n_deactivated} store(s) as inactive (no activity >21d).")
 
+    net_backfill = backfill_store_network_ids(conn)
+    if net_backfill:
+        total_backfilled = sum(net_backfill.values())
+        tqdm.write(f"Network backfill: tagged {total_backfilled} store(s) by name — "
+                   + ", ".join(f"{n}:{c}" for n, c in net_backfill.items()))
+
+    weekly_count, total_active = update_store_tiers(conn)
+    if total_active:
+        tqdm.write(f"Store tiers: {weekly_count}/{total_active} on weekly tier "
+                   f"({100 * weekly_count // total_active}%).")
+
     cp = None if fresh else _load_checkpoint(checkpoint_path)
     if cp:
         today = datetime.now(timezone.utc).date()
@@ -509,6 +525,27 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         tqdm.write("Product tier: full-scan week — using complete product set.")
 
     # ------------------------------------------------------------------
+    # Store-level tiering: skip anchors whose entire cluster is on weekly tier
+    # ------------------------------------------------------------------
+    weekly_store_tier: set = set()
+    if not full_scan:
+        if cp and cp.get("weekly_store_ids"):
+            weekly_store_tier = set(cp["weekly_store_ids"])
+            tqdm.write(f"Store tier: restored {len(weekly_store_tier)} weekly-tier stores from checkpoint.")
+        else:
+            weekly_store_tier = {
+                row[0] for row in conn.execute(
+                    "SELECT id FROM stores WHERE fetch_tier = 'weekly' "
+                    "AND (is_active IS NULL OR is_active = 1)"
+                )
+            }
+            if weekly_store_tier:
+                tqdm.write(f"Store tier: {len(weekly_store_tier)} stores on weekly tier — "
+                           "pure-weekly anchors will be skipped.")
+    else:
+        tqdm.write("Store tier: full-scan week — weekly tier disabled.")
+
+    # ------------------------------------------------------------------
     # Canary state: pre-compute store→network map; restore from checkpoint
     # ------------------------------------------------------------------
     store_network_map: dict = {
@@ -563,6 +600,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     total_prices = 0
     stores_done = 0
     canary_skipped = 0   # anchors skipped via canary logic
+    tier_skipped = 0     # anchors skipped via store-level tiering
     t_start = time.monotonic()
 
     try:
@@ -574,7 +612,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                f"Checkpoint saved — resume with next run.")
                     finish_run(conn, run_id, "interrupted", stores_done, total_prices)
                     print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} "
-                          f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+                          f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
+                          f"weekly_tier={len(weekly_tier)} weekly_store_tier={len(weekly_store_tier)} "
                           f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
                     return  # finally block closes conn
                 store_bar.set_description(name[:30])
@@ -611,7 +650,27 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                      anchor_batch_counts=anchor_batch_counts,
                                      canary_seen=canary_seen,
                                      canary_changed=canary_changed,
-                                     weekly_tier_ids=weekly_tier)
+                                     weekly_tier_ids=weekly_tier,
+                                     weekly_store_ids=weekly_store_tier)
+                    continue
+
+                # Store-level tier skip: all covered stores on weekly tier → no API call
+                if weekly_store_tier and all(s in weekly_store_tier for s in anchor_store_ids):
+                    propagate_last_checked(conn, anchor_store_ids, fetched_at)
+                    n_skip = anchor_batch_counts.get(store_id, n_batches)
+                    for i in range(n_skip or n_batches):
+                        done.add(f"{store_id}:{i}")
+                    tier_skipped += 1
+                    stores_done += 1
+                    store_bar.set_postfix(total_prices=total_prices,
+                                         tier_skip=tier_skipped)
+                    _save_checkpoint(checkpoint_path, fetched_at, done,
+                                     product_ids=prod_ids, iso_week=iso_week,
+                                     anchor_batch_counts=anchor_batch_counts,
+                                     canary_seen=canary_seen,
+                                     canary_changed=canary_changed,
+                                     weekly_tier_ids=weekly_tier,
+                                     weekly_store_ids=weekly_store_tier)
                     continue
 
                 store_prices = 0
@@ -693,7 +752,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                          anchor_batch_counts=anchor_batch_counts,
                                          canary_seen=canary_seen,
                                          canary_changed=canary_changed,
-                                         weekly_tier_ids=weekly_tier)
+                                         weekly_tier_ids=weekly_tier,
+                                         weekly_store_ids=weekly_store_tier)
                         time.sleep(SLEEP_BETWEEN)
 
                 tqdm.write(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]  "
@@ -718,12 +778,13 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         _finish_checkpoint(checkpoint_path, fetched_at, done, iso_week=iso_week,
                            anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids,
                            canary_seen=canary_seen, canary_changed=canary_changed,
-                           weekly_tier_ids=weekly_tier)
+                           weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
         print(f"SUMMARY status=completed stores={stores_done} prices={total_prices} "
-              f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+              f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
+              f"weekly_tier={len(weekly_tier)} weekly_store_tier={len(weekly_store_tier)} "
               f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
 
     except KeyboardInterrupt:
@@ -731,15 +792,16 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         finish_run(conn, run_id, "interrupted", stores_done, total_prices)
         tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
         print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} "
-              f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+              f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
+              f"weekly_tier={len(weekly_tier)} weekly_store_tier={len(weekly_store_tier)} "
               f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
         raise
     except Exception as exc:
         elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
         print(f"SUMMARY status=error stores={stores_done} prices={total_prices} "
-              f"canary_skipped={canary_skipped} elapsed={elapsed}s "
-              f"error={exc!r} fetched_at={fetched_at}", flush=True)
+              f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
+              f"elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)
         raise
     finally:
         conn.close()
