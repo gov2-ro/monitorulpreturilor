@@ -38,6 +38,7 @@ def load_store_freshness(conn, stale_days=STALE_DAYS, as_of_date=None):
         FROM prices_current pc
         JOIN stores s ON pc.store_id = s.id
         LEFT JOIN retail_networks n ON s.network_id = n.id
+        WHERE (s.is_active IS NULL OR s.is_active = 1)
         GROUP BY s.id
     """).fetchall()
     out = []

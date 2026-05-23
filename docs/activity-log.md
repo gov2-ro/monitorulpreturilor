@@ -4,6 +4,34 @@
 
 ## General
 
+### 2026-05-23 — Fetch pipeline optimisations: dead-store pruning + canary + product tiering
+
+Implemented three complementary optimisations to reduce the ~40–57 h full-sweep cycle:
+
+**1. Dead-store pruning (`db.py`, `fetch_prices.py`, `generate_pipeline_report.py`)**
+- Added `is_active INTEGER DEFAULT 1` column to `stores`; index `idx_prices_current_store` on `prices_current(store_id)`.
+- `deactivate_stale_stores(conn, days=21)`: marks stores with no `prices_current` activity in 21d as `is_active=0`; called at `fetch_prices.py` startup.
+- `upsert_store` sets `is_active=1` on any API sighting (re-activates if store reappears).
+- `load_store_freshness` now excludes `is_active=0` stores from the freshness denominator — dead stores no longer drag the audit metric.
+
+**2. Canary skip for KAUFLAND / LIDL / PENNY (`fetch_prices.py`)**
+- `CANARY_THRESHOLDS = {KAUFLAND:36, LIDL:72, PENNY:82}` (≈20% of each chain's store count).
+- Tracks `canary_seen` (store IDs seen per network) and `canary_changed` (networks with a detected price change) during the run.
+- Once threshold reached with no change: pure-uniform anchors call `propagate_last_checked` + skip API call entirely; mixed anchors filter product batch to non-uniform stores only (reducing batch count).
+- State persisted in checkpoint (`canary_seen`, `canary_changed`) for correct resume behaviour.
+- Full-scan week (ISO-week-start, same as ghost filter) disables canary entirely so no price is missed for >7d.
+- `insert_price()` now returns `True` (changed) / `False` (unchanged) — used to populate canary change tracking.
+
+**3. Product-level tiering (`db.py`, `fetch_prices.py`)**
+- Added `last_changed_at TEXT` to `prices_current`; set only on actual price/promo change (not every check). `last_checked_at` still updated every fetch.
+- `_build_weekly_product_tier(conn)`: returns product IDs where `last_changed_at < 30 days ago`; these are excluded from daily anchor batches.
+- Tier computed once per ISO-week, cached in checkpoint as `weekly_tier_ids`.
+- Cold-start: benefits accrue after ~30d of `last_changed_at` data (column added today).
+
+**Shared SUMMARY line** now includes `canary_skipped=N weekly_tier=N` fields.
+
+**Backfill note:** `prices_current.last_changed_at` backfill (`= last_checked_at` for existing rows) failed on first `init_db` call due to the live fetch holding the write lock. Backfill will succeed on next clean startup. In the interim, `last_changed_at IS NULL` for existing rows — no functional impact (product tier returns empty set, canary tracks changes going forward).
+
 ### 2026-05-22 — PROFI regional (intra-UAT) uniformity analysis
 
 Follow-up to the national-pricing analysis. Ran intra-UAT price variance query for PROFI: for each (product, UAT) pair with ≥2 PROFI stores, is the price uniform across all stores in that UAT?

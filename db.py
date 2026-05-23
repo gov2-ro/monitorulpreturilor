@@ -163,16 +163,24 @@ def init_db(path="data/prices.db"):
         ON price_flags(product_id, store_id, price_date);
     """)
     conn.commit()
-    # Migrate existing DBs that predate last_checked_at columns
+    # Migrate existing DBs that predate columns / indexes added after initial schema
     for ddl in [
         "ALTER TABLE prices ADD COLUMN last_checked_at TEXT",
         "ALTER TABLE gas_prices ADD COLUMN last_checked_at TEXT",
         "ALTER TABLE stores ADD COLUMN surrounding_population REAL",
+        "ALTER TABLE prices_current ADD COLUMN last_changed_at TEXT",
+        "ALTER TABLE stores ADD COLUMN is_active INTEGER DEFAULT 1",
+        "CREATE INDEX IF NOT EXISTS idx_prices_current_store ON prices_current(store_id)",
     ]:
         try:
             conn.execute(ddl)
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass  # column / index already exists
+    # Backfill: last_changed_at = last_checked_at for rows predating this column
+    conn.execute(
+        "UPDATE prices_current SET last_changed_at = last_checked_at WHERE last_changed_at IS NULL"
+    )
+    conn.execute("UPDATE stores SET is_active = 1 WHERE is_active IS NULL")
     conn.commit()
     # Create analytical views (idempotent)
     conn.executescript("""
@@ -319,12 +327,13 @@ def upsert_product(conn, id, name, categ_id):
 
 def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
     conn.execute(
-        """INSERT INTO stores (id, name, addr, lat, lon, uat_id, network_id, zipcode)
-           VALUES (?,?,?,?,?,?,?,?)
+        """INSERT INTO stores (id, name, addr, lat, lon, uat_id, network_id, zipcode, is_active)
+           VALUES (?,?,?,?,?,?,?,?,1)
            ON CONFLICT(id) DO UPDATE SET
              name=excluded.name, addr=excluded.addr, lat=excluded.lat,
              lon=excluded.lon, uat_id=excluded.uat_id,
-             network_id=excluded.network_id, zipcode=excluded.zipcode""",
+             network_id=excluded.network_id, zipcode=excluded.zipcode,
+             is_active=1""",
         (id, name, addr, lat, lon, uat_id, network_id, zipcode),
     )
 
@@ -332,10 +341,10 @@ def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
 def insert_price(conn, product_id, store_id, price, price_date, promo,
                  brand, unit, retail_categ_id, retail_categ_name, fetched_at,
                  last_checked_at=None):
-    """
-    Insert or update a price. Uses change-based deduplication:
-    - If price+promo unchanged: only update last_checked_at in prices_current
-    - If changed or new: insert to prices (changelog) + upsert prices_current
+    """Insert or update a price. Uses change-based deduplication.
+
+    Returns True if the price/promo changed (or is new), False if unchanged.
+    Sets last_changed_at only on actual change; last_checked_at always updated.
     Normalizes unit field to canonical form (kg, pcs, L, ml, g).
     """
     if last_checked_at is None:
@@ -343,7 +352,6 @@ def insert_price(conn, product_id, store_id, price, price_date, promo,
 
     unit = normalize_unit(unit)
 
-    # Check current price for this (product_id, store_id)
     cur = conn.execute(
         "SELECT price, promo FROM prices_current WHERE product_id=? AND store_id=?",
         (product_id, store_id)
@@ -351,11 +359,12 @@ def insert_price(conn, product_id, store_id, price, price_date, promo,
     existing = cur.fetchone()
 
     if existing and existing[0] == price and existing[1] == promo:
-        # Price unchanged — only update last_checked_at
+        # Price unchanged — only bump last_checked_at; last_changed_at stays
         conn.execute(
             "UPDATE prices_current SET last_checked_at=? WHERE product_id=? AND store_id=?",
             (last_checked_at, product_id, store_id)
         )
+        return False
     else:
         # New or changed price — write to history and update snapshot
         conn.execute(
@@ -368,21 +377,25 @@ def insert_price(conn, product_id, store_id, price, price_date, promo,
             (product_id, store_id, price, price_date, promo, brand, unit,
              retail_categ_id, retail_categ_name, fetched_at, last_checked_at),
         )
-        # Upsert current snapshot
+        # Upsert current snapshot; last_changed_at = now (price actually changed)
         conn.execute(
             """INSERT INTO prices_current
                (product_id, store_id, price, price_date, promo, brand, unit,
-                retail_categ_id, retail_categ_name, first_seen_at, last_checked_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                retail_categ_id, retail_categ_name, first_seen_at,
+                last_checked_at, last_changed_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(product_id, store_id) DO UPDATE SET
                  price=excluded.price, price_date=excluded.price_date,
                  promo=excluded.promo, brand=excluded.brand, unit=excluded.unit,
                  retail_categ_id=excluded.retail_categ_id,
                  retail_categ_name=excluded.retail_categ_name,
-                 last_checked_at=excluded.last_checked_at""",
+                 last_checked_at=excluded.last_checked_at,
+                 last_changed_at=excluded.last_changed_at""",
             (product_id, store_id, price, price_date, promo, brand, unit,
-             retail_categ_id, retail_categ_name, fetched_at, last_checked_at),
+             retail_categ_id, retail_categ_name, fetched_at, last_checked_at,
+             last_checked_at),
         )
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +459,41 @@ def finish_run(conn, run_id, status, uats_processed, records_written, notes=None
            WHERE id=?""",
         (datetime.now(timezone.utc).isoformat(),
          status, uats_processed, records_written, notes, run_id),
+    )
+    conn.commit()
+
+
+def deactivate_stale_stores(conn, days=21):
+    """Mark stores with no prices_current activity in the last N days as is_active=0.
+
+    Returns the count of newly deactivated stores.
+    Called at fetch_prices startup so dead stores are excluded from clustering.
+    """
+    cur = conn.execute(
+        f"""UPDATE stores SET is_active = 0
+            WHERE (is_active IS NULL OR is_active = 1)
+              AND id IN (
+                  SELECT store_id FROM prices_current
+                  GROUP BY store_id
+                  HAVING MAX(last_checked_at) < datetime('now', '-{days} days')
+              )"""
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def propagate_last_checked(conn, store_ids, fetched_at):
+    """Bulk-update last_checked_at for all prices_current rows of the given stores.
+
+    Used by the canary logic to mark pure-uniform-network anchors as current
+    without making an API call — keeps the freshness audit score accurate.
+    """
+    if not store_ids:
+        return
+    ph = ",".join("?" * len(store_ids))
+    conn.execute(
+        f"UPDATE prices_current SET last_checked_at=? WHERE store_id IN ({ph})",
+        [fetched_at] + list(store_ids),
     )
     conn.commit()
 

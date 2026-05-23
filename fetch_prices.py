@@ -36,7 +36,8 @@ import requests
 from tqdm import tqdm
 
 from api import BASE, fetch_xml, parse_stores_and_prices
-from db import init_db, insert_price, upsert_store, start_run, finish_run, abandon_stale_runs
+from db import (init_db, insert_price, upsert_store, start_run, finish_run,
+                abandon_stale_runs, deactivate_stale_stores, propagate_last_checked)
 
 # BATCH_SIZE = 30
 BATCH_SIZE = 200
@@ -49,6 +50,15 @@ BUFFER_M = 5000
 # truncate. Without splitting, dense-urban anchors miss 80%+ of their cluster.
 MIN_CLUSTER_RADIUS_M = 1250
 MAX_STORES_PER_CLUSTER = 50
+
+# Canary networks: skip pure-uniform anchors once we've confirmed ≥ threshold stores
+# unchanged this run. Threshold ≈ 20% of each chain's store count.
+# network_id values match stores.network_id in the DB.
+CANARY_THRESHOLDS = {
+    "KAUFLAND":       36,   # 181 stores × 20%
+    "4055329000008":  72,   # 361 stores (LIDL DISCOUNT SRL) × 20%
+    "PENNY":          82,   # 410 stores × 20%
+}
 
 # Romania bounding box for geographic ordering
 _RO_LAT_MIN, _RO_LAT_MAX = 43.6, 48.3
@@ -188,7 +198,8 @@ def _load_checkpoint(path):
 
 
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
-                     anchor_batch_counts=None):
+                     anchor_batch_counts=None, canary_seen=None, canary_changed=None,
+                     weekly_tier_ids=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
     if product_ids is not None:
         data["product_ids"] = product_ids
@@ -196,12 +207,19 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
         data["iso_week"] = iso_week
     if anchor_batch_counts is not None:
         data["anchor_batch_counts"] = anchor_batch_counts
+    if canary_seen is not None:
+        data["canary_seen"] = {k: sorted(v) for k, v in canary_seen.items()}
+    if canary_changed is not None:
+        data["canary_changed"] = sorted(canary_changed)
+    if weekly_tier_ids is not None:
+        data["weekly_tier_ids"] = sorted(weekly_tier_ids)
     with open(path, "w") as f:
         json.dump(data, f)
 
 
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
-                       product_ids=None):
+                       product_ids=None, canary_seen=None, canary_changed=None,
+                       weekly_tier_ids=None):
     data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
     if iso_week is not None:
         data["iso_week"] = iso_week
@@ -209,6 +227,12 @@ def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_count
         data["anchor_batch_counts"] = anchor_batch_counts
     if product_ids is not None:
         data["product_ids"] = product_ids
+    if canary_seen is not None:
+        data["canary_seen"] = {k: sorted(v) for k, v in canary_seen.items()}
+    if canary_changed is not None:
+        data["canary_changed"] = sorted(canary_changed)
+    if weekly_tier_ids is not None:
+        data["weekly_tier_ids"] = sorted(weekly_tier_ids)
     with open(path, "w") as f:
         json.dump(data, f)
 
@@ -283,6 +307,34 @@ def _products_for_anchor(conn, store_ids, fallback):
 
 
 # ---------------------------------------------------------------------------
+# Canary helpers
+# ---------------------------------------------------------------------------
+
+def _is_uniform(net_id, canary_seen, canary_changed, thresholds):
+    """True when we've seen ≥ threshold stores for this network with zero price changes."""
+    return (net_id in thresholds
+            and len(canary_seen.get(net_id, set())) >= thresholds[net_id]
+            and net_id not in canary_changed)
+
+
+# ---------------------------------------------------------------------------
+# Product-level tiering
+# ---------------------------------------------------------------------------
+
+def _build_weekly_product_tier(conn):
+    """Return set of product_ids whose price hasn't changed in the last 30 days.
+
+    Cold-start: returns empty set until last_changed_at data accumulates (~30d).
+    These products are excluded from daily batches and only fetched on ISO-week-start.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT product_id FROM prices_current "
+        "WHERE last_changed_at < date('now', '-30 days')"
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -335,6 +387,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if n_abandoned:
         tqdm.write(f"Marked {n_abandoned} stale 'running' run(s) as 'abandoned'.")
 
+    n_deactivated = deactivate_stale_stores(conn)
+    if n_deactivated:
+        tqdm.write(f"Dead-store pruning: marked {n_deactivated} store(s) as inactive (no activity >21d).")
+
     cp = None if fresh else _load_checkpoint(checkpoint_path)
     if cp:
         today = datetime.now(timezone.utc).date()
@@ -365,7 +421,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
 
     stores_raw = conn.execute(
         "SELECT id, name, lat, lon, surrounding_population FROM stores "
-        "WHERE lat IS NOT NULL AND lon IS NOT NULL"
+        "WHERE lat IS NOT NULL AND lon IS NOT NULL "
+        "AND (is_active IS NULL OR is_active = 1)"
     ).fetchall()
     prod_ids = [r[0] for r in conn.execute("SELECT id FROM products")]
 
@@ -425,6 +482,56 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         if limit_products:
             prod_ids = prod_ids[:limit_products]
 
+    # full_scan=True on first run of a new ISO week (same trigger as ghost filter).
+    # Disables canary skipping and product tiering so nothing is missed for >7d.
+    today_week = datetime.now(timezone.utc).isocalendar()[1]
+    cp_week = cp.get("iso_week") if cp else None
+    full_scan = (cp_week is None or cp_week != today_week)
+
+    # ------------------------------------------------------------------
+    # Product-level tiering (skip daily; disabled on full-scan week)
+    # ------------------------------------------------------------------
+    weekly_tier: set = set()
+    if not full_scan:
+        if cp and cp.get("weekly_tier_ids"):
+            weekly_tier = set(cp["weekly_tier_ids"])
+            tqdm.write(f"Product tier: restored {len(weekly_tier)} weekly-tier IDs from checkpoint.")
+        else:
+            weekly_tier = _build_weekly_product_tier(conn)
+            if weekly_tier:
+                tqdm.write(f"Product tier: computed {len(weekly_tier)} products unchanged >30d.")
+        if weekly_tier:
+            before = len(prod_ids)
+            prod_ids = [p for p in prod_ids if p not in weekly_tier]
+            tqdm.write(f"Product tier: removed {before - len(prod_ids)} weekly-tier products, "
+                       f"{len(prod_ids)} remain for daily run.")
+    else:
+        tqdm.write("Product tier: full-scan week — using complete product set.")
+
+    # ------------------------------------------------------------------
+    # Canary state: pre-compute store→network map; restore from checkpoint
+    # ------------------------------------------------------------------
+    store_network_map: dict = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT id, network_id FROM stores")
+    }
+    canary_nets = set(CANARY_THRESHOLDS)
+    active_thresholds = {} if full_scan else CANARY_THRESHOLDS
+    # Restore canary state from checkpoint on resume; fresh on full-scan or new run
+    if cp and cp.get("canary_seen") and not full_scan:
+        canary_seen: dict = {k: set(v) for k, v in cp["canary_seen"].items()}
+        canary_changed: set = set(cp.get("canary_changed", []))
+        tqdm.write(
+            "Canary: restored state — seen: "
+            + ", ".join(f"{k}={len(v)}" for k, v in canary_seen.items())
+            + (f"  changed: {canary_changed}" if canary_changed else "")
+        )
+    else:
+        canary_seen = {n: set() for n in canary_nets}
+        canary_changed = set()
+    if full_scan:
+        tqdm.write("Canary: full-scan week — skipping disabled.")
+
     # Restore per-anchor batch counts from checkpoint (needed for correct pre-filter on resume)
     anchor_batch_counts = {}
     if cp and cp.get("anchor_batch_counts"):
@@ -455,6 +562,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     run_id = start_run(conn, "fetch_prices", fetched_at)
     total_prices = 0
     stores_done = 0
+    canary_skipped = 0   # anchors skipped via canary logic
     t_start = time.monotonic()
 
     try:
@@ -465,21 +573,59 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
                                f"Checkpoint saved — resume with next run.")
                     finish_run(conn, run_id, "interrupted", stores_done, total_prices)
-                    print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
+                    print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} "
+                          f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+                          f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
                     return  # finally block closes conn
                 store_bar.set_description(name[:30])
 
+                anchor_store_ids = anchor_covers.get(store_id, [store_id])
+
+                # ----------------------------------------------------------
+                # Canary skip / product filter
+                # ----------------------------------------------------------
+                uniform_sids = set()
+                non_unif_sids = set(anchor_store_ids)
+                if active_thresholds:
+                    uniform_sids = {
+                        s for s in anchor_store_ids
+                        if _is_uniform(store_network_map.get(s), canary_seen,
+                                       canary_changed, active_thresholds)
+                    }
+                    non_unif_sids = set(anchor_store_ids) - uniform_sids
+
+                if not non_unif_sids:
+                    # Pure-uniform anchor: propagate freshness, skip API call
+                    propagate_last_checked(conn, list(uniform_sids), fetched_at)
+                    n_skipped_batches = anchor_batch_counts.get(
+                        store_id, anchor_batch_counts.get(store_id, n_batches)
+                    )
+                    for i in range(n_skipped_batches or n_batches):
+                        done.add(f"{store_id}:{i}")
+                    canary_skipped += 1
+                    stores_done += 1
+                    store_bar.set_postfix(total_prices=total_prices,
+                                         canary_skip=canary_skipped)
+                    _save_checkpoint(checkpoint_path, fetched_at, done,
+                                     product_ids=prod_ids, iso_week=iso_week,
+                                     anchor_batch_counts=anchor_batch_counts,
+                                     canary_seen=canary_seen,
+                                     canary_changed=canary_changed,
+                                     weekly_tier_ids=weekly_tier)
+                    continue
+
                 store_prices = 0
                 cap_hit_batches = 0
+
                 # Per-anchor product filtering:
-                # - Started anchors (have resume keys): use global list for stable batch indices.
-                # - New anchors: query prices_current for nearby stores — avoids ghost products
-                #   and limits to products actually stocked near this anchor.
+                # - Started anchors (resume): use global list for stable batch indices.
+                # - New anchors with uniform stores: query only non-uniform store products.
+                # - New anchors, all non-uniform: standard per-anchor filter.
                 if store_id in started_anchors:
                     batches_list = global_batches
                 else:
-                    anchor_store_ids = anchor_covers.get(store_id, [store_id])
-                    anchor_prod_ids = _products_for_anchor(conn, anchor_store_ids, prod_ids)
+                    fetch_store_ids = list(non_unif_sids) if uniform_sids else anchor_store_ids
+                    anchor_prod_ids = _products_for_anchor(conn, fetch_store_ids, prod_ids)
                     batches_list = list(_batches(anchor_prod_ids, BATCH_SIZE))
                     anchor_batch_counts[store_id] = len(batches_list)
 
@@ -522,13 +668,21 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                 s["network_id"], s["zipcode"],
                             )
                         for p in prices:
-                            insert_price(
+                            changed = insert_price(
                                 conn,
                                 p["product_id"], p["store_id"], p["price"],
                                 p["price_date"], p["promo"], p["brand"], p["unit"],
                                 p["retail_categ_id"], p["retail_categ_name"],
                                 p["fetched_at"],
                             )
+                            # Update canary tracking
+                            if active_thresholds:
+                                net = store_network_map.get(p["store_id"])
+                                if net in canary_nets:
+                                    canary_seen[net].add(p["store_id"])
+                                    if changed:
+                                        canary_changed.add(net)
+
                         conn.commit()
                         store_prices += len(prices)
                         batch_bar.set_postfix(prices=store_prices)
@@ -536,37 +690,56 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                         done.add(key)
                         _save_checkpoint(checkpoint_path, fetched_at, done,
                                          product_ids=prod_ids, iso_week=iso_week,
-                                         anchor_batch_counts=anchor_batch_counts)
+                                         anchor_batch_counts=anchor_batch_counts,
+                                         canary_seen=canary_seen,
+                                         canary_changed=canary_changed,
+                                         weekly_tier_ids=weekly_tier)
                         time.sleep(SLEEP_BETWEEN)
 
-                tqdm.write(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]  {name}: {store_prices} prices  ({stores_done + 1}/{len(stores)})")
+                tqdm.write(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]  "
+                           f"{name}: {store_prices} prices  ({stores_done + 1}/{len(stores)})")
                 if cap_hit_batches:
                     tqdm.write(
                         f"  CAP-HIT anchor={store_id} cluster={len(anchor_covers.get(store_id, []))} "
                         f"radius={anchor_radius.get(store_id, BUFFER_M)}m "
                         f"batches_capped={cap_hit_batches}"
                     )
+                # Log when a canary network just crossed its threshold
+                if active_thresholds:
+                    for net, threshold in active_thresholds.items():
+                        seen_count = len(canary_seen.get(net, set()))
+                        if seen_count == threshold:
+                            status = "CHANGED" if net in canary_changed else "uniform"
+                            tqdm.write(f"  Canary: {net} reached {threshold} stores — {status}")
                 total_prices += store_prices
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
 
         _finish_checkpoint(checkpoint_path, fetched_at, done, iso_week=iso_week,
-                           anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids)
+                           anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids,
+                           canary_seen=canary_seen, canary_changed=canary_changed,
+                           weekly_tier_ids=weekly_tier)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
-        print(f"SUMMARY status=completed stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
+        print(f"SUMMARY status=completed stores={stores_done} prices={total_prices} "
+              f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+              f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
 
     except KeyboardInterrupt:
         elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "interrupted", stores_done, total_prices)
         tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
-        print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
+        print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} "
+              f"canary_skipped={canary_skipped} weekly_tier={len(weekly_tier)} "
+              f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
         raise
     except Exception as exc:
         elapsed = int(time.monotonic() - t_start)
         finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
-        print(f"SUMMARY status=error stores={stores_done} prices={total_prices} elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)
+        print(f"SUMMARY status=error stores={stores_done} prices={total_prices} "
+              f"canary_skipped={canary_skipped} elapsed={elapsed}s "
+              f"error={exc!r} fetched_at={fetched_at}", flush=True)
         raise
     finally:
         conn.close()
