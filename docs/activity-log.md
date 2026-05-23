@@ -4,6 +4,14 @@
 
 ## General
 
+### 2026-05-23 — price_date ISO normalization
+
+Fixed `price_date` format in `api.py` so all new inserts land in ISO `YYYY-MM-DD HH:MM` instead of the API's `DD.MM.YYYY HH:MM` (retail) and `DD/MM/YYYY HH:MM` (gas). Added `_parse_date(s)` helper; applied at both parse sites (`parse_stores_and_prices`, `parse_gas_items`/`update_date`). Passes through strings already in ISO form — safe on resume after a partial migration.
+
+One-time backfill script `migrate_price_dates.py` handles ~35M existing rows (20M `prices`, 15M `prices_current`, 67K `gas_prices`, 1.3K `gas_stations.update_date`). Batched 500K rows at a time by rowid to avoid locking the DB; includes dry-run mode. Run on VPS: `python migrate_price_dates.py`.
+
+After migration, SQLite `date()`, `strftime()`, and `<`/`>` comparisons on `price_date` work without wrappers.
+
 ### 2026-05-23 — Fetch pipeline optimisations: dead-store pruning + canary + product tiering
 
 Implemented three complementary optimisations to reduce the ~40–57 h full-sweep cycle:

@@ -36,6 +36,16 @@ def _t(el, tag, default=""):
     return (child.text or "").strip() if child is not None else default
 
 
+def _parse_date(s):
+    """Normalize DD.MM.YYYY HH:MM or DD/MM/YYYY HH:MM → YYYY-MM-DD HH:MM.
+
+    Passes through strings already in ISO form (or empty/None).
+    """
+    if not s or len(s) < 10 or s[2] not in ('.', '/'):
+        return s
+    return s[6:10] + '-' + s[3:5] + '-' + s[0:2] + s[10:]
+
+
 # ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
@@ -159,7 +169,7 @@ def parse_stores_and_prices(root, fetched_at):
 
         for prod_el in store_el.findall(f".//{{{NS}}}Product"):
             price_str = _t(prod_el, "Price")
-            price_date = _t(prod_el, "Pricedate")
+            price_date = _parse_date(_t(prod_el, "Pricedate"))
             # Skip entries where the store doesn't carry this product
             if not price_date or not price_str or price_str == "0":
                 continue
@@ -264,7 +274,7 @@ def parse_gas_items(root, fetched_at):
                 lon = float(lon_s) if lon_s else None
         net_el = st_el.find(f"{{{NS}}}Network")
         network_id = _t(net_el, "Id") if net_el is not None else None
-        update_date = _t(st_el, "Updatedate")
+        update_date = _parse_date(_t(st_el, "Updatedate"))
         stations[st_id] = {
             "id": st_id,
             "name": _t(st_el, "Name"),
