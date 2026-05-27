@@ -428,9 +428,24 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             cp = None
 
     if cp:
-        fetched_at = cp["fetched_at"]
         done = cp["done"]
-        tqdm.write(f"Resuming checkpoint ({len(done)} work units done)  fetched_at={fetched_at}")
+        saved_at = cp["fetched_at"]
+        _today = datetime.now(timezone.utc).date()
+        _cp_date = datetime.fromisoformat(saved_at).date()
+        _age_days = (_today - _cp_date).days
+        # Auto-refresh: if resuming an in_progress session started on a prior day,
+        # reset fetched_at to now so prices are stamped with today's date.
+        # The done-key set is preserved — no work is re-fetched.
+        if cp.get("status", "in_progress") == "in_progress" and _age_days > 0:
+            fetched_at = datetime.now(timezone.utc).isoformat()
+            tqdm.write(
+                f"Resuming checkpoint ({len(done)} work units done)  "
+                f"fetched_at refreshed: {_cp_date} → {_today} "
+                f"({_age_days}d stale, auto-corrected)"
+            )
+        else:
+            fetched_at = saved_at
+            tqdm.write(f"Resuming checkpoint ({len(done)} work units done)  fetched_at={fetched_at}")
     else:
         fetched_at = datetime.now(timezone.utc).isoformat()
         done = set()

@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-05-27 — Auto-refresh `fetched_at` on stale checkpoint resume
+
+**Root cause:** `*/30` cron slices were resuming an `in_progress` checkpoint and inheriting its original `fetched_at` (set when the session first started, potentially days ago). Every price inserted during those slices was stamped with the old date, making the audit see 100% stale stores even though real fetches were happening continuously.
+
+**Fix (`fetch_prices.py:_main_body`):** When loading an `in_progress` checkpoint whose `fetched_at` predates today (UTC), reset `fetched_at = datetime.now(UTC)` before the anchor loop. The `done` key set is fully preserved — no work is re-fetched; only the timestamp advances. Log line: `fetched_at refreshed: YYYY-MM-DD → YYYY-MM-DD (Nd stale, auto-corrected)`. This makes the fix transparent in the log so it's immediately visible on the next cron firing.
+
+**Also confirmed:** SQLite WAL mode (`PRAGMA journal_mode=WAL`) was already active in `db.py:init_db` — no change needed. The two "database is locked" runs (#438, #363) pre-date or are edge-race cases; WAL serializes concurrent writes gracefully going forward.
+
+**Impact:** Removes the need for manual `--fresh` runs after any multi-day backfill. On next cron fire, prices will be stamped today and `store_freshness` audit will begin recovering immediately.
+
 ### 2026-05-23 — Store-level tiering + unknown network backfill
 
 **Store-level tiering (`db.py`, `fetch_prices.py`)**
