@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-05-28 — Fix `database is locked` errors; add SQLite busy_timeout
+
+**Root cause:** `fetch_gas_prices` (cron `0 3 * * *`) and `fetch_prices` (cron `*/30`) both start at 03:00, writing to the same SQLite file simultaneously. With no `busy_timeout` set, the second writer immediately raised `database is locked` instead of retrying (runs #363, #438, #459).
+
+**Fix (`db.py:init_db`):** Added `PRAGMA busy_timeout=30000` (30 s) after `journal_mode=WAL`. SQLite will now retry writes for up to 30 s before erroring, absorbing the brief 03:00 contention window. One-line change; affects all scripts sharing the DB.
+
+**Also:** Identified that the `--max-runtime 1700` crontab setting was already correct. Per-store overshoot to ~1999 s is benign — the PID-guarded lock file prevents any true concurrent retail run.
+
+**Recovery:** Launched a manual `--resume` backfill in a detached `screen` session to clear 9.8 days of stale stores (91.57% stale at time of fix).
+
 ### 2026-05-27 — Auto-refresh `fetched_at` on stale checkpoint resume
 
 **Root cause:** `*/30` cron slices were resuming an `in_progress` checkpoint and inheriting its original `fetched_at` (set when the session first started, potentially days ago). Every price inserted during those slices was stamped with the old date, making the audit see 100% stale stores even though real fetches were happening continuously.
