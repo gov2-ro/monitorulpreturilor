@@ -6,6 +6,9 @@
 
 ### Pending verifications
 
+- [ ] **Tonight 2026-06-01 after ~23:30: confirm `order=stale` in log** — `grep "order=" data/logs/fetch-prices.log | tail -2` should show `order=stale` for the 23:00 or 23:30 slice. If still `order=population`, the new code didn't take effect (check lock / running PID).
+- [ ] **2026-06-02 after 06:10: first real `/pipeline-check`** — 06:00 audit captures tonight's stale-first slices. Look for: `store_freshness` trend dropping from 23.6%, and `run_history` count = 1 (only run #459 left, from 2026-05-28).
+- [ ] **By 2026-06-05: full GREEN expected** — `store_freshness` below 10% (stale-first cycle covers the rural tail) and `run_history` GREEN (run #459 ages out of 7-day window on 2026-06-04). If still RED, convert to a work item.
 - [ ] **By 2026-06-06: `store_freshness` stale_pct stays below 10% for 3+ consecutive days** — confirms stale-first ordering is covering PROFI/Unknown/MEGA IMAGE rural anchors before the 2-day threshold. Check: `/pipeline-check` drill-down should show oldest-stale-days < 5. If still red, grep `"order=stale"` in `data/logs/fetch-prices.log` to confirm the new default took effect.
 - [ ] **By 2026-06-08: PROFI VICOVU DE JOS appears in `anchor_failures` with n≥3 and `skip_until` set** — confirms dead anchor skiplist accumulating. Check: `python -c "import json; print(json.load(open('data/prices_checkpoint.json')).get('anchor_failures', {}))"`. If absent, anchor hasn't been reached in the new stale-first cycle yet (it's low-population, so now lower priority than stale rural stores).
 
