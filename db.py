@@ -41,7 +41,7 @@ def normalize_unit(unit):
 
 
 def init_db(path="data/prices.db"):
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript("""
@@ -173,6 +173,7 @@ def init_db(path="data/prices.db"):
         "ALTER TABLE stores ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE stores ADD COLUMN fetch_tier TEXT DEFAULT 'daily'",
         "CREATE INDEX IF NOT EXISTS idx_prices_current_store ON prices_current(store_id)",
+        "ALTER TABLE runs ADD COLUMN acknowledged_at TEXT",
     ]:
         try:
             conn.execute(ddl)

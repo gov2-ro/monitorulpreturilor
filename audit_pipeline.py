@@ -62,10 +62,11 @@ def check_run_history(conn):
     # it. If any row in that session reached 'completed', the abandoned/error
     # siblings are normal mid-session cleanup, not failures — ignore them.
     rows = conn.execute(f"""
-        SELECT id, script, status, started_at, finished_at, notes
+        SELECT id, script, status, started_at, finished_at, notes, acknowledged_at
         FROM runs r
         WHERE status IN ('abandoned', 'error')
           AND (finished_at IS NULL OR finished_at >= datetime('now', '-{ABANDONED_DAYS} days'))
+          AND acknowledged_at IS NULL
           AND NOT EXISTS (
               SELECT 1 FROM runs r2
               WHERE r2.script     = r.script
@@ -75,7 +76,8 @@ def check_run_history(conn):
         ORDER BY id DESC
     """).fetchall()
     red = len(rows) > 0
-    samples = [{"id": r[0], "script": r[1], "status": r[2], "notes": r[5]} for r in rows[:5]]
+    samples = [{"id": r[0], "script": r[1], "status": r[2], "notes": r[5],
+                "acknowledged": r[6] is not None} for r in rows[:5]]
     return {
         "name": "run_history",
         "red": red,

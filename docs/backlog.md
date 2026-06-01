@@ -6,6 +6,9 @@
 
 ### Pending verifications
 
+- [ ] **By 2026-06-06: `store_freshness` stale_pct stays below 10% for 3+ consecutive days** — confirms stale-first ordering is covering PROFI/Unknown/MEGA IMAGE rural anchors before the 2-day threshold. Check: `/pipeline-check` drill-down should show oldest-stale-days < 5. If still red, grep `"order=stale"` in `data/logs/fetch-prices.log` to confirm the new default took effect.
+- [ ] **By 2026-06-08: PROFI VICOVU DE JOS appears in `anchor_failures` with n≥3 and `skip_until` set** — confirms dead anchor skiplist accumulating. Check: `python -c "import json; print(json.load(open('data/prices_checkpoint.json')).get('anchor_failures', {}))"`. If absent, anchor hasn't been reached in the new stale-first cycle yet (it's low-population, so now lower priority than stale rural stores).
+
 Time-bounded checks after a fix or change: confirm the expected effect by the date, then tick and note in `activity-log.md`. If the check fails, convert into a real work item below.
 
 - [ ] **By 2026-05-16: București MEGA IMAGE stale count drops below 5** — was 44/319 on 2026-05-14 audit. Source: `/pipeline-check` drill-down (`store_freshness` top-stale-networks). Expected after the 2026-05-15 adaptive cluster split fix.
@@ -85,6 +88,10 @@ Time-bounded checks after a fix or change: confirm the expected effect by the da
 ---
 
 ## Gas
+
+### Architecture
+
+- [ ] **Split retail and gas into separate SQLite databases** — currently both pipelines share `data/prices.db`. Splitting would eliminate all cross-pipeline locking permanently, allow independent backup/restore, and let each pipeline vacuum/migrate without affecting the other. Main complication: the `uats` table is shared (both `stores` and `gas_stations` reference it). Options: (a) duplicate `uats` in both DBs — simplest, slight redundancy, no cross-DB joins needed; (b) keep `uats` in retail DB only and `ATTACH` from gas — adds coupling. Option (a) is recommended. Scope: update `db.py` (two `init_db` paths), both fetchers, `status.py`, `audit_pipeline.py`, `generate_map.py`, cron paths. Medium effort (~1 day). Not urgent while the `timeout=30` + cron-stagger fix holds, but the right long-term architecture.
 
 ### Bugs / Known Issues
 

@@ -10,11 +10,12 @@ in its 5 km buffer.  This reduces anchors from ~3800 to ~680 (~82%).
 Combined with 200-product batches, total requests drop ~95%.
 
 Ordering modes (--order):
-  population  [default] — anchors sorted by surrounding_population DESC
+  stale       [default] — stalest anchors first; tiebreak by surrounding_population DESC
+  population            — anchors sorted by surrounding_population DESC
   geographic            — anchors spread across Romania in grid Z-order
 
 Options:
-  --order population|geographic
+  --order population|geographic|stale
   --limit-stores N    process only the first N stores (before clustering)
   --limit-products N  use only the first N products per store
   --store-ids-file PATH   newline-separated store IDs; overrides --order/--limit-stores
@@ -30,7 +31,7 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 from tqdm import tqdm
@@ -60,6 +61,9 @@ CANARY_THRESHOLDS = {
     "4055329000008":  72,   # 361 stores (LIDL DISCOUNT SRL) × 20%
     "PENNY":          82,   # 410 stores × 20%
 }
+
+DEAD_ANCHOR_THRESHOLD = 3   # consecutive all-fail runs before skiplist
+DEAD_ANCHOR_SKIP_DAYS = 7   # days to keep on skiplist before retry
 
 # Romania bounding box for geographic ordering
 _RO_LAT_MIN, _RO_LAT_MAX = 43.6, 48.3
@@ -185,6 +189,31 @@ def _order_stores(stores, mode):
         raise ValueError(f"Unknown order mode: {mode!r}")
 
 
+def _load_stale_map(conn, store_ids):
+    """Return {store_id: days_since_last_checked} for the given store IDs.
+
+    Absent entries mean never fetched (treated as infinity by callers).
+    """
+    if not store_ids:
+        return {}
+    placeholders = ",".join("?" * len(store_ids))
+    rows = conn.execute(
+        f"SELECT store_id, julianday('now') - julianday(date(MAX(last_checked_at)))"
+        f" FROM prices_current WHERE store_id IN ({placeholders}) GROUP BY store_id",
+        store_ids,
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def _stale_age(anchor_id, anchor_covers, stale_map):
+    """Max staleness (days) across all stores in an anchor's cluster.
+
+    Returns 9999 for any store absent from stale_map (never fetched).
+    """
+    covered = anchor_covers.get(anchor_id, [anchor_id])
+    return max(stale_map.get(sid, 9999) for sid in covered)
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint
 # ---------------------------------------------------------------------------
@@ -200,7 +229,7 @@ def _load_checkpoint(path):
 
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
                      anchor_batch_counts=None, canary_seen=None, canary_changed=None,
-                     weekly_tier_ids=None, weekly_store_ids=None):
+                     weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
     if product_ids is not None:
         data["product_ids"] = product_ids
@@ -216,13 +245,15 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
         data["weekly_tier_ids"] = sorted(weekly_tier_ids)
     if weekly_store_ids is not None:
         data["weekly_store_ids"] = sorted(weekly_store_ids)
+    if anchor_failures:
+        data["anchor_failures"] = anchor_failures
     with open(path, "w") as f:
         json.dump(data, f)
 
 
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
                        product_ids=None, canary_seen=None, canary_changed=None,
-                       weekly_tier_ids=None, weekly_store_ids=None):
+                       weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None):
     data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
     if iso_week is not None:
         data["iso_week"] = iso_week
@@ -238,6 +269,8 @@ def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_count
         data["weekly_tier_ids"] = sorted(weekly_tier_ids)
     if weekly_store_ids is not None:
         data["weekly_store_ids"] = sorted(weekly_store_ids)
+    if anchor_failures:
+        data["anchor_failures"] = anchor_failures
     with open(path, "w") as f:
         json.dump(data, f)
 
@@ -349,10 +382,10 @@ def _load_ids_file(path):
         return [int(line.strip()) for line in f if line.strip()]
 
 
-def main(db_path="data/prices.db", order="population", limit_stores=None,
+def main(db_path="data/prices.db", order="stale", limit_stores=None,
          limit_products=None, store_ids_file=None, product_ids_file=None,
          fresh=False, resume=False, max_runtime=0, no_cluster=False,
-         products_order="db"):
+         products_order="db", reset_skiplist=False):
     if store_ids_file and (limit_stores is not None):
         raise ValueError("--store-ids-file and --limit-stores are mutually exclusive")
     if product_ids_file and (limit_products is not None):
@@ -377,7 +410,7 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
     try:
         _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                    limit_products, store_ids_file, product_ids_file, fresh,
-                   resume, max_runtime, no_cluster, products_order)
+                   resume, max_runtime, no_cluster, products_order, reset_skiplist)
     finally:
         if os.path.exists(lock_path):
             os.remove(lock_path)
@@ -385,7 +418,7 @@ def main(db_path="data/prices.db", order="population", limit_stores=None,
 
 def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                limit_products, store_ids_file, product_ids_file, fresh,
-               resume, max_runtime, no_cluster, products_order):
+               resume, max_runtime, no_cluster, products_order, reset_skiplist=False):
     conn = init_db(db_path)
 
     n_abandoned = abandon_stale_runs(conn, "fetch_prices")
@@ -406,6 +439,16 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if total_active:
         tqdm.write(f"Store tiers: {weekly_count}/{total_active} on weekly tier "
                    f"({100 * weekly_count // total_active}%).")
+
+    # Carry anchor_failures across --fresh so the skiplist survives a daily reset.
+    _old_anchor_failures = {}
+    if fresh and os.path.exists(checkpoint_path):
+        try:
+            with open(checkpoint_path) as _f:
+                _old_cp = json.load(_f)
+            _old_anchor_failures = _old_cp.get("anchor_failures", {})
+        except Exception:
+            pass
 
     cp = None if fresh else _load_checkpoint(checkpoint_path)
     if cp:
@@ -486,7 +529,13 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                    f"max/cluster={MAX_STORES_PER_CLUSTER}, "
                    f"min_radius={MIN_CLUSTER_RADIUS_M}m)...")
         stores, anchor_covers, anchor_radius = _cluster_anchors(stores, radius_m=BUFFER_M)
-        stores = _order_stores(stores, order)
+        if order == "stale":
+            all_sids = list({s[0] for s in stores} | {sid for v in anchor_covers.values() for sid in v})
+            stale_map = _load_stale_map(conn, all_sids)
+            stores = sorted(stores, key=lambda s: (-_stale_age(s[0], anchor_covers, stale_map), -(s[4] or 0)))
+            tqdm.write(f"Anchors ordered by staleness (stale-first); tiebreak: population.")
+        else:
+            stores = _order_stores(stores, order)
         split_anchors = sum(1 for r in anchor_radius.values() if r < BUFFER_M)
         tqdm.write(
             f"Clustered {n_before} stores → {len(stores)} anchors "
@@ -589,6 +638,12 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if cp and cp.get("anchor_batch_counts"):
         anchor_batch_counts = {int(k): v for k, v in cp["anchor_batch_counts"].items()}
 
+    # anchor_failures: persists across both resume and --fresh (skiplist survives daily resets)
+    anchor_failures = cp.get("anchor_failures", {}) if cp else _old_anchor_failures
+    if reset_skiplist:
+        anchor_failures = {}
+        tqdm.write("Skiplist cleared (--reset-skiplist).")
+
     global_batches = list(_batches(prod_ids, BATCH_SIZE))
     n_batches = len(global_batches)
     started_anchors = {int(k.split(":")[0]) for k in done} if done else set()
@@ -666,7 +721,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                      canary_seen=canary_seen,
                                      canary_changed=canary_changed,
                                      weekly_tier_ids=weekly_tier,
-                                     weekly_store_ids=weekly_store_tier)
+                                     weekly_store_ids=weekly_store_tier,
+                                     anchor_failures=anchor_failures)
                     continue
 
                 # Store-level tier skip: all covered stores on weekly tier → no API call
@@ -685,11 +741,30 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                      canary_seen=canary_seen,
                                      canary_changed=canary_changed,
                                      weekly_tier_ids=weekly_tier,
-                                     weekly_store_ids=weekly_store_tier)
+                                     weekly_store_ids=weekly_store_tier,
+                                     anchor_failures=anchor_failures)
+                    continue
+
+                # Dead anchor skiplist: skip until retry date
+                _af = anchor_failures.get(str(store_id))
+                if _af and _af.get("skip_until") and _af["skip_until"] > date.today().isoformat():
+                    tqdm.write(f"  SKIPLIST: {name} (skip_until={_af['skip_until']}, n={_af['n']})")
+                    for _i in range(anchor_batch_counts.get(store_id, n_batches)):
+                        done.add(f"{store_id}:{_i}")
+                    stores_done += 1
+                    _save_checkpoint(checkpoint_path, fetched_at, done,
+                                     product_ids=prod_ids, iso_week=iso_week,
+                                     anchor_batch_counts=anchor_batch_counts,
+                                     canary_seen=canary_seen, canary_changed=canary_changed,
+                                     weekly_tier_ids=weekly_tier,
+                                     weekly_store_ids=weekly_store_tier,
+                                     anchor_failures=anchor_failures)
                     continue
 
                 store_prices = 0
                 cap_hit_batches = 0
+                batch_total = 0
+                batch_failures = 0
 
                 # Per-anchor product filtering:
                 # - Started anchors (resume): use global list for stable batch indices.
@@ -703,8 +778,11 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     batches_list = list(_batches(anchor_prod_ids, BATCH_SIZE))
                     anchor_batch_counts[store_id] = len(batches_list)
 
+                batch_total = len(batches_list)
                 with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
                     for i, batch in enumerate(batch_bar):
+                        if max_runtime and (time.monotonic() - t_start) >= max_runtime:
+                            break  # partial anchor — resume will pick up from last saved batch key
                         key = f"{store_id}:{i}"
                         if key in done:
                             batch_bar.set_postfix(status="resumed")
@@ -723,6 +801,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                             tqdm.write(
                                 f"  WARN: skipping {name} batch {i} after all retries failed: {exc}"
                             )
+                            batch_failures += 1
                             time.sleep(SLEEP_BETWEEN)
                             continue
                         result_stores, prices = parse_stores_and_prices(root, fetched_at)
@@ -768,8 +847,34 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                          canary_seen=canary_seen,
                                          canary_changed=canary_changed,
                                          weekly_tier_ids=weekly_tier,
-                                         weekly_store_ids=weekly_store_tier)
+                                         weekly_store_ids=weekly_store_tier,
+                                         anchor_failures=anchor_failures)
                         time.sleep(SLEEP_BETWEEN)
+
+                # Intra-anchor timelimit: break fired mid-batch → exit cleanly now
+                if max_runtime and (time.monotonic() - t_start) >= max_runtime:
+                    elapsed = int(time.monotonic() - t_start)
+                    tqdm.write(f"\nTime limit reached mid-anchor ({elapsed}s). Checkpoint saved.")
+                    finish_run(conn, run_id, "interrupted", stores_done, total_prices)
+                    print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} "
+                          f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
+                          f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
+                    return
+
+                # Dead anchor detection: all non-skipped batches failed → track failure
+                if store_prices > 0:
+                    anchor_failures.pop(str(store_id), None)
+                elif batch_total > 0 and batch_failures == batch_total:
+                    _entry = anchor_failures.get(str(store_id), {"n": 0, "skip_until": None})
+                    _entry["n"] += 1
+                    if _entry["n"] >= DEAD_ANCHOR_THRESHOLD:
+                        _skip_until = (date.today() + timedelta(days=DEAD_ANCHOR_SKIP_DAYS)).isoformat()
+                        _entry["skip_until"] = _skip_until
+                        tqdm.write(
+                            f"  DEAD ANCHOR: {name} ({_entry['n']} consecutive all-fail runs)"
+                            f" → skipping until {_skip_until}"
+                        )
+                    anchor_failures[str(store_id)] = _entry
 
                 tqdm.write(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}]  "
                            f"{name}: {store_prices} prices  ({stores_done + 1}/{len(stores)})")
@@ -793,7 +898,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         _finish_checkpoint(checkpoint_path, fetched_at, done, iso_week=iso_week,
                            anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids,
                            canary_seen=canary_seen, canary_changed=canary_changed,
-                           weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier)
+                           weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
+                           anchor_failures=anchor_failures)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
@@ -827,9 +933,9 @@ if __name__ == "__main__":
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("db", nargs="?", default="data/prices.db")
-    parser.add_argument("--order", choices=["population", "geographic"],
-                        default="population",
-                        help="store ordering mode (default: population)")
+    parser.add_argument("--order", choices=["population", "geographic", "stale"],
+                        default="stale",
+                        help="anchor ordering mode (default: stale — stalest anchors first)")
     parser.add_argument("--limit-stores", type=int, default=None,
                         help="process only the first N stores")
     parser.add_argument("--limit-products", type=int, default=None,
@@ -849,7 +955,9 @@ if __name__ == "__main__":
     parser.add_argument("--products-order", choices=["db", "stale"], default="db",
                         help="product ordering: db=insertion order (default), "
                              "stale=never-fetched first then oldest fetched_at")
+    parser.add_argument("--reset-skiplist", action="store_true",
+                        help="clear the dead-anchor skiplist and retry all skipped anchors")
     args = parser.parse_args()
     main(args.db, args.order, args.limit_stores, args.limit_products,
          args.store_ids_file, args.product_ids_file, args.fresh, args.resume,
-         args.max_runtime, args.no_cluster, args.products_order)
+         args.max_runtime, args.no_cluster, args.products_order, args.reset_skiplist)

@@ -4,6 +4,33 @@
 
 ## General
 
+### 2026-06-01 — Pipeline optimization: stale-first ordering, dead anchor skiplist, intra-anchor timelimit, run_history acknowledgment
+
+**Problem:** Pipeline has been RED since 2026-05-27. Root causes: (1) rural PROFI/Unknown/MEGA IMAGE anchors at the tail of population-ordered cycles were reaching 35–41 day staleness; (2) PROFI VICOVU DE JOS (dead anchor) burned ~46 min/cycle with 0 prices; (3) pre-fix abandoned runs (#363, #388, #413, #438) kept `run_history` RED with no silence path.
+
+**`fetch_prices.py`:**
+- `--order stale` (new default): queries `prices_current.last_checked_at` per store, aggregates to per-anchor max-staleness, sorts descending. New helpers: `_load_stale_map()`, `_stale_age()`. Recomputed at each run start including resumes.
+- Dead anchor skiplist: checkpoint key `anchor_failures`; after `DEAD_ANCHOR_THRESHOLD=3` consecutive all-fail runs (0 prices + all batches `RequestException`), anchor skipped for `DEAD_ANCHOR_SKIP_DAYS=7` days. Survives `--fresh`. Clear with `--reset-skiplist`.
+- Intra-anchor timelimit: check added at top of inner batch loop; caps over-run to < 1 batch (~93s) vs prior ≤ 46 min.
+
+**`db.py`:** Migration adds `acknowledged_at TEXT` to `runs`.
+
+**`audit_pipeline.py`:** `check_run_history` adds `AND acknowledged_at IS NULL`; samples gain `acknowledged` field.
+
+**`ack_run.py` (new):** `python ack_run.py --list | <IDs> | --before <date>` to acknowledge bad runs.
+
+**Immediate action:** Acknowledged pre-fix runs #363, #388, #413, #438.
+
+### 2026-05-31 — Fix `database is locked` (gas) — Python timeout, not PRAGMA
+
+**Root cause (revisited):** The 2026-05-28 fix added `PRAGMA busy_timeout=30000` but gas kept failing with `database is locked` at `db.py:182` for 3 consecutive days (2026-05-29–31). Root cause: Python's `sqlite3` module uses its own `timeout` parameter from `sqlite3.connect()` (default 5 s) to enforce the busy wait — `PRAGMA busy_timeout` sets the SQLite C-layer handler, which the Python module does not use. With the default 5 s timeout and retail holding a write lock at `init_db` time, gas would exhaust the timeout before retail released.
+
+**Fix:** Changed `sqlite3.connect(path)` → `sqlite3.connect(path, timeout=30)` in `db.py:init_db`. The PRAGMA is retained for any non-Python readers of the DB.
+
+**Belt-and-suspenders:** Staggered gas cron from `0 3` → `5 3` (03:05). By 03:05 retail's `init_db` write (ALTER TABLE / UPDATE backfill) is long finished; only brief per-batch commits remain, which release in milliseconds.
+
+**Backlog:** Added "Split retail and gas into separate SQLite databases" entry — the permanent architectural fix, deferred since the timeout+stagger should hold.
+
 ### 2026-05-28 — Fix `database is locked` errors; add SQLite busy_timeout
 
 **Root cause:** `fetch_gas_prices` (cron `0 3 * * *`) and `fetch_prices` (cron `*/30`) both start at 03:00, writing to the same SQLite file simultaneously. With no `busy_timeout` set, the second writer immediately raised `database is locked` instead of retrying (runs #363, #438, #459).
