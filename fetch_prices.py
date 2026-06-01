@@ -178,7 +178,9 @@ def _order_stores(stores, mode):
     stores: list of (id, name, lat, lon, surrounding_population)
     Returns reordered list.
     """
-    if mode == "population":
+    if mode in ("population", "stale"):
+        # stale pre-cluster: use population so cluster representative quality is preserved;
+        # actual stale sort is applied post-cluster once anchor_covers is known
         return sorted(stores, key=lambda s: (-(s[4] or 0), s[0]))
     elif mode == "geographic":
         return sorted(
