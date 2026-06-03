@@ -26,5 +26,13 @@ SHELL=/bin/bash
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'
 
+# DB backup — Sunday 10:00 (after the daily retail pass completes ~08:41). Compressed,
+# lock-safe (sqlite3 .dump | gzip), keeps last 2. Restore + off-box notes in the script.
+0 10 * * 0 cd /home/pax/g2-dev/monitorulpreturilor && scripts/backup_db.sh >> data/logs/backup.log 2>&1
+
+# Log rotation — daily 10:30, size-based (rotates only logs >50M). copytruncate keeps
+# the long-lived fetch_prices fd valid. See scripts/logrotate.conf.
+30 10 * * * cd /home/pax/g2-dev/monitorulpreturilor && /usr/sbin/logrotate -s data/logs/.logrotate.state scripts/logrotate.conf >> data/logs/logrotate.log 2>&1
+
 # Sumal (different project) — left untouched
 0 */3 * * * cd /home/pax/g2-dev/prometeu && source /home/pax/g2-dev/monitorulpreturilor/venv/bin/activate && python sumal-inspectorul-padurii.py >> ~/g2-dev/logs/sumal.log 2>&1; curl -m 10 https://hc-ping.com/0b3b2149-dd3f-4842-8dd4-c91e3c1df74b

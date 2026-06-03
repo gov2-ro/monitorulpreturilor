@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-06-03 — Operational durability: DB backup + log rotation; retention investigated
+
+The pipeline had no safety net for its 7.2 GB dataset. Added two safe, additive guards and investigated (but deferred) retention.
+
+- **DB backup** — `scripts/backup_db.sh`: streamed `sqlite3 .dump | gzip` (consistent snapshot, no full-size temp on a 14 GB-free partition), `gzip -t` verify, ≥4 GB free guard, keeps last 2. Cron Sun 10:00 (after the ~08:41 daily-pass completion). Same-partition only — protects against logical corruption / accidental delete / botched VACUUM, not disk failure; commented `rsync` line for off-box. First backup run + verified.
+- **Log rotation** — `scripts/logrotate.conf` (size 50M, keep 4, compress, `copytruncate` to keep fetch_prices' long-lived fd valid), cron daily 10:30 with a local state file (no root). Validated with `logrotate -d`: correctly flags the 68 MB `fetch-prices.log`, skips the rest.
+- **Crontab** — added both lines to `scripts/crontab.template` and applied to the live crontab (backed up first).
+- **Retention (deferred)** — runway ~12–15 months (~30–100k rows/day, ~20–35 MB/day), so not urgent. Key gotcha logged in backlog: `prices.price_date` is `DD.MM.YYYY` text → lexical sort, so any retention DELETE must parse the date or use `fetched_at` (ISO). First backup must exist before any delete.
+
 ### 2026-06-03 — Committed + verified the throughput fix; declined the run-row rewrite
 
 **Committed** the 2026-06-02 working-tree changes (per-anchor checkpoint, `inflight_prod_ids`, `SLEEP_BETWEEN` 0.05, gas cron 03:00→03:05) as `e3a324c`, with the `gas_checkpoint.json` fixture refresh split into `c11e8f2` to keep the perf diff reviewable.
