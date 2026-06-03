@@ -4,6 +4,14 @@
 
 ## General
 
+### 2026-06-03 — Committed + verified the throughput fix; declined the run-row rewrite
+
+**Committed** the 2026-06-02 working-tree changes (per-anchor checkpoint, `inflight_prod_ids`, `SLEEP_BETWEEN` 0.05, gas cron 03:00→03:05) as `e3a324c`, with the `gas_checkpoint.json` fixture refresh split into `c11e8f2` to keep the perf diff reviewable.
+
+**Verified the throughput fix worked (was the deferred 06-03/04 backlog item):** full pass #583 completed same-day (`fetched_at` 00:33 → completed 08:41, ~8h wall vs ~51h before); `store_freshness` 100% → 41.57% → **0.61%**; audit GREEN 0/4; no real HTTP 429 after the sleep cut (the "429" log hits are the substring in "Skipping 429 …" + numeric counts); resume-list path exercised 45× with no errored runs since #459 (05-28, pre-`busy_timeout`). Ticked the three verify items in `backlog.md`.
+
+**Investigated the run-row "bloat" (#2) and decided against a rewrite.** The idea was one `runs` row per logical daily pass instead of ~18 interrupted rows/day. Declined because `abandon_stale_runs()` (every startup, before `start_run`) would abandon a reused `'running'` row, the change touches all three monitors (`status.py`/`check_runs.py`/audit) for a cosmetic gain, and `status.py` already colors `interrupted` yellow + the audit ack prevents false RED. The per-slice interrupted row is load-bearing. Full rationale logged in `backlog.md`. Net code change this session: none beyond the commits above — the right call was to ship the verified win and not add risk for cosmetics.
+
 ### 2026-06-02 — Retail throughput: per-anchor checkpoint, in-flight product list, lower sleep
 
 **Context:** `/pipeline-check` came back RED — `store_freshness` 41.57% stale (1693/4073 >2d), regressing day-over-day (23.6% → 41.57%), and `check_runs` reporting the last *full* `fetch_prices` completion 51.7h ago. Other checks green (`run_history` now ok, confirming the 2026-06-01 ack fix works).
