@@ -44,7 +44,7 @@ from db import (init_db, insert_price, upsert_store, start_run, finish_run,
 # BATCH_SIZE = 30
 BATCH_SIZE = 200
 # SLEEP_BETWEEN = 0.5
-SLEEP_BETWEEN = 0.15
+SLEEP_BETWEEN = 0.05   # was 0.15; lowered 2026-06-02 to cut ~3h/pass of pure sleep. Watch for HTTP 429.
 BUFFER_M = 5000
 # Adaptive cluster split: any cluster with more than MAX_STORES_PER_CLUSTER
 # members is re-clustered at half the radius (down to MIN_CLUSTER_RADIUS_M).
@@ -231,7 +231,8 @@ def _load_checkpoint(path):
 
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
                      anchor_batch_counts=None, canary_seen=None, canary_changed=None,
-                     weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None):
+                     weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None,
+                     inflight_prod_ids=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
     if product_ids is not None:
         data["product_ids"] = product_ids
@@ -249,13 +250,16 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
         data["weekly_store_ids"] = sorted(weekly_store_ids)
     if anchor_failures:
         data["anchor_failures"] = anchor_failures
+    if inflight_prod_ids:
+        data["inflight_prod_ids"] = {str(k): v for k, v in inflight_prod_ids.items()}
     with open(path, "w") as f:
         json.dump(data, f)
 
 
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
                        product_ids=None, canary_seen=None, canary_changed=None,
-                       weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None):
+                       weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None,
+                       inflight_prod_ids=None):
     data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
     if iso_week is not None:
         data["iso_week"] = iso_week
@@ -273,6 +277,8 @@ def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_count
         data["weekly_store_ids"] = sorted(weekly_store_ids)
     if anchor_failures:
         data["anchor_failures"] = anchor_failures
+    if inflight_prod_ids:
+        data["inflight_prod_ids"] = {str(k): v for k, v in inflight_prod_ids.items()}
     with open(path, "w") as f:
         json.dump(data, f)
 
@@ -640,6 +646,15 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     if cp and cp.get("anchor_batch_counts"):
         anchor_batch_counts = {int(k): v for k, v in cp["anchor_batch_counts"].items()}
 
+    # In-flight anchors: the exact filtered product list (with stable batch indices) for any
+    # anchor interrupted mid-processing. Lets resume continue that SAME narrow list instead of
+    # falling back to the full global batch list — which fires empty requests AND can skip the
+    # anchor's real products, since prices_current DISTINCT order isn't stable and the anchor's
+    # own writes mutate it mid-pass. Stays tiny: fetching is serial, so ≤1 anchor is in-flight.
+    inflight_prod_ids = {}
+    if cp and cp.get("inflight_prod_ids"):
+        inflight_prod_ids = {int(k): v for k, v in cp["inflight_prod_ids"].items()}
+
     # anchor_failures: persists across both resume and --fresh (skiplist survives daily resets)
     anchor_failures = cp.get("anchor_failures", {}) if cp else _old_anchor_failures
     if reset_skiplist:
@@ -668,6 +683,18 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         f"order={order}  fetched_at={fetched_at}"
     )
 
+    # Single checkpoint writer — captures live state by reference (all the sets/dicts below
+    # are mutated in place, never reassigned, after this point). Called once per anchor and on
+    # every exit path, NOT per batch: the old per-batch save re-serialised the whole (growing)
+    # done set ~100k times/pass, which is O(n²) in the size of done.
+    def save_cp():
+        _save_checkpoint(checkpoint_path, fetched_at, done,
+                         product_ids=prod_ids, iso_week=iso_week,
+                         anchor_batch_counts=anchor_batch_counts,
+                         canary_seen=canary_seen, canary_changed=canary_changed,
+                         weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
+                         anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids)
+
     run_id = start_run(conn, "fetch_prices", fetched_at)
     total_prices = 0
     stores_done = 0
@@ -682,6 +709,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     elapsed = int(time.monotonic() - t_start)
                     tqdm.write(f"\nTime limit reached ({elapsed}s / {max_runtime}s). "
                                f"Checkpoint saved — resume with next run.")
+                    save_cp()
                     finish_run(conn, run_id, "interrupted", stores_done, total_prices)
                     print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} "
                           f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
@@ -717,14 +745,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     stores_done += 1
                     store_bar.set_postfix(total_prices=total_prices,
                                          canary_skip=canary_skipped)
-                    _save_checkpoint(checkpoint_path, fetched_at, done,
-                                     product_ids=prod_ids, iso_week=iso_week,
-                                     anchor_batch_counts=anchor_batch_counts,
-                                     canary_seen=canary_seen,
-                                     canary_changed=canary_changed,
-                                     weekly_tier_ids=weekly_tier,
-                                     weekly_store_ids=weekly_store_tier,
-                                     anchor_failures=anchor_failures)
+                    inflight_prod_ids.pop(store_id, None)
+                    save_cp()
                     continue
 
                 # Store-level tier skip: all covered stores on weekly tier → no API call
@@ -737,14 +759,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     stores_done += 1
                     store_bar.set_postfix(total_prices=total_prices,
                                          tier_skip=tier_skipped)
-                    _save_checkpoint(checkpoint_path, fetched_at, done,
-                                     product_ids=prod_ids, iso_week=iso_week,
-                                     anchor_batch_counts=anchor_batch_counts,
-                                     canary_seen=canary_seen,
-                                     canary_changed=canary_changed,
-                                     weekly_tier_ids=weekly_tier,
-                                     weekly_store_ids=weekly_store_tier,
-                                     anchor_failures=anchor_failures)
+                    inflight_prod_ids.pop(store_id, None)
+                    save_cp()
                     continue
 
                 # Dead anchor skiplist: skip until retry date
@@ -754,13 +770,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     for _i in range(anchor_batch_counts.get(store_id, n_batches)):
                         done.add(f"{store_id}:{_i}")
                     stores_done += 1
-                    _save_checkpoint(checkpoint_path, fetched_at, done,
-                                     product_ids=prod_ids, iso_week=iso_week,
-                                     anchor_batch_counts=anchor_batch_counts,
-                                     canary_seen=canary_seen, canary_changed=canary_changed,
-                                     weekly_tier_ids=weekly_tier,
-                                     weekly_store_ids=weekly_store_tier,
-                                     anchor_failures=anchor_failures)
+                    inflight_prod_ids.pop(store_id, None)
+                    save_cp()
                     continue
 
                 store_prices = 0
@@ -772,13 +783,23 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 # - Started anchors (resume): use global list for stable batch indices.
                 # - New anchors with uniform stores: query only non-uniform store products.
                 # - New anchors, all non-uniform: standard per-anchor filter.
-                if store_id in started_anchors:
+                if store_id in started_anchors and store_id in inflight_prod_ids:
+                    # Resume the exact filtered list persisted when this anchor was first
+                    # started → stable batch indices, no wasted/empty requests, no skipped
+                    # products.
+                    anchor_prod_ids = inflight_prod_ids[store_id]
+                    batches_list = list(_batches(anchor_prod_ids, BATCH_SIZE))
+                elif store_id in started_anchors:
+                    # Legacy checkpoint without a persisted list (pre-2026-06-02): fall back to
+                    # the global list for index stability. May fire empty requests for this
+                    # anchor, but stays correct.
                     batches_list = global_batches
                 else:
                     fetch_store_ids = list(non_unif_sids) if uniform_sids else anchor_store_ids
                     anchor_prod_ids = _products_for_anchor(conn, fetch_store_ids, prod_ids)
                     batches_list = list(_batches(anchor_prod_ids, BATCH_SIZE))
                     anchor_batch_counts[store_id] = len(batches_list)
+                    inflight_prod_ids[store_id] = anchor_prod_ids
 
                 batch_total = len(batches_list)
                 with tqdm(batches_list, desc="  batches", unit="batch", leave=False) as batch_bar:
@@ -843,20 +864,17 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                         batch_bar.set_postfix(prices=store_prices)
 
                         done.add(key)
-                        _save_checkpoint(checkpoint_path, fetched_at, done,
-                                         product_ids=prod_ids, iso_week=iso_week,
-                                         anchor_batch_counts=anchor_batch_counts,
-                                         canary_seen=canary_seen,
-                                         canary_changed=canary_changed,
-                                         weekly_tier_ids=weekly_tier,
-                                         weekly_store_ids=weekly_store_tier,
-                                         anchor_failures=anchor_failures)
+                        # Checkpoint is written once per anchor (and on every exit path), not
+                        # here per batch — see save_cp(). done.add stays in memory; on a hard
+                        # kill mid-anchor we re-fetch this anchor's batches next run (idempotent
+                        # via INSERT OR IGNORE). The timelimit break below persists progress.
                         time.sleep(SLEEP_BETWEEN)
 
                 # Intra-anchor timelimit: break fired mid-batch → exit cleanly now
                 if max_runtime and (time.monotonic() - t_start) >= max_runtime:
                     elapsed = int(time.monotonic() - t_start)
                     tqdm.write(f"\nTime limit reached mid-anchor ({elapsed}s). Checkpoint saved.")
+                    save_cp()  # persists this anchor's completed batches + its in-flight list
                     finish_run(conn, run_id, "interrupted", stores_done, total_prices)
                     print(f"SUMMARY status=timelimit stores={stores_done} prices={total_prices} "
                           f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
@@ -896,12 +914,15 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 total_prices += store_prices
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
+                # Anchor fully fetched — drop its in-flight list and checkpoint once.
+                inflight_prod_ids.pop(store_id, None)
+                save_cp()
 
         _finish_checkpoint(checkpoint_path, fetched_at, done, iso_week=iso_week,
                            anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids,
                            canary_seen=canary_seen, canary_changed=canary_changed,
                            weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
-                           anchor_failures=anchor_failures)
+                           anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
@@ -912,6 +933,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
 
     except KeyboardInterrupt:
         elapsed = int(time.monotonic() - t_start)
+        try:
+            save_cp()
+        except Exception:
+            pass
         finish_run(conn, run_id, "interrupted", stores_done, total_prices)
         tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
         print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} "
@@ -921,6 +946,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         raise
     except Exception as exc:
         elapsed = int(time.monotonic() - t_start)
+        try:
+            save_cp()
+        except Exception:
+            pass
         finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
         print(f"SUMMARY status=error stores={stores_done} prices={total_prices} "
               f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "

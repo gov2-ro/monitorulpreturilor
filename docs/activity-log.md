@@ -4,6 +4,22 @@
 
 ## General
 
+### 2026-06-02 — Retail throughput: per-anchor checkpoint, in-flight product list, lower sleep
+
+**Context:** `/pipeline-check` came back RED — `store_freshness` 41.57% stale (1693/4073 >2d), regressing day-over-day (23.6% → 41.57%), and `check_runs` reporting the last *full* `fetch_prices` completion 51.7h ago. Other checks green (`run_history` now ok, confirming the 2026-06-01 ack fix works).
+
+**Diagnosis (root cause):** a full anchor×batch pass takes ~51h but the freshness window is 2 days → **zero margin**, so stores age out faster than the sliced backfill refreshes them. Scale: 87,775 products, ~675 anchors, ~150 batches/anchor avg ≈ ~100k HTTP requests/pass. Effective rate ~1.8s/batch vs ~0.3s theoretical (sleep+HTTP) → ~6× overhead. Need ~2× throughput.
+
+Three fixes implemented in `fetch_prices.py` (chosen as the low-risk, local subset; bigger structural options — single long-lived worker, parallel workers, clustering cache, SLO right-sizing — logged in `backlog.md` under "Pipeline health → 2026-06-02 throughput diagnosis"):
+
+1. **Per-anchor checkpoint instead of per-batch.** `_save_checkpoint` was called after *every* batch, re-serialising the entire growing `done` set ~100k times/pass — O(n²) in `len(done)`. Replaced all call sites with a single `save_cp()` closure (captures live state by reference) invoked once per anchor and on every exit path (timelimit, skip paths, `KeyboardInterrupt`/`Exception`). `done.add(key)` stays in memory per batch; on a hard kill mid-anchor we re-fetch that anchor's batches next run (idempotent via `INSERT OR IGNORE`). The intra-anchor timelimit break — the common interruption — calls `save_cp()`, so normal slicing loses nothing.
+
+2. **Persist the in-flight anchor's filtered product list.** This also fixes a **latent data-gap bug**: when an anchor was interrupted mid-processing, resume fell back to `global_batches` (the full product list) "for stable batch indices". But `_products_for_anchor` has no `ORDER BY` (SQLite `DISTINCT` order isn't stable) and the anchor's own writes mutate `prices_current` mid-pass — so the global fallback could mark batches done while *never fetching the anchor's real products*. New `inflight_prod_ids` checkpoint field stores the exact filtered list (str anchor-id key → int product ids) for the in-flight anchor; resume rebuilds the identical batch list. Stays tiny (fetching is serial → ≤1 anchor in-flight); popped on completion/skip; empty dict omitted from the JSON. Legacy checkpoints without the field fall back to the old global path.
+
+3. **`SLEEP_BETWEEN` 0.15 → 0.05.** ~0.15s × ~100k batches ≈ 4h of pure sleep/pass; cutting it saves ~2.5h. Dated comment in the constant; watch for HTTP 429 (backlog item to monitor).
+
+**Verification:** `py_compile` clean; grep confirms the only `_save_checkpoint` caller is `save_cp()` and all exit paths use it. Checkpoint round-trip test (int-key ↔ on-disk str-key restore; empty-dict omission). Isolated end-to-end on a throwaway DB with mocked network exercising **fresh → mid-anchor interrupt → resume**: PASS1 interrupted, persisted `inflight=['1']` + 2 done batches; PASS2 resumed, consumed the in-flight list, completed all 8 batches with `inflight` omitted and `status=completed`. Live checkpoint/DB untouched (temp dir). Not yet validated under real traffic — see backlog verification items dated 2026-06-03/04.
+
 ### 2026-06-01 — Pipeline optimization: stale-first ordering, dead anchor skiplist, intra-anchor timelimit, run_history acknowledgment
 
 **Problem:** Pipeline has been RED since 2026-05-27. Root causes: (1) rural PROFI/Unknown/MEGA IMAGE anchors at the tail of population-ordered cycles were reaching 35–41 day staleness; (2) PROFI VICOVU DE JOS (dead anchor) burned ~46 min/cycle with 0 prices; (3) pre-fix abandoned runs (#363, #388, #413, #438) kept `run_history` RED with no silence path.

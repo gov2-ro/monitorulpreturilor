@@ -45,6 +45,18 @@ Time-bounded checks after a fix or change: confirm the expected effect by the da
 - [x] **Mark long-stale stores as inactive** (2026-05-23) — added `is_active` column to `stores`; `deactivate_stale_stores(conn, days=21)` called at `fetch_prices.py` startup; `load_store_freshness` now excludes `is_active=0` stores from denominator. Stores re-activate when seen in API response (`upsert_store` sets `is_active=1`).
 - [ ] **Dedicated `/pipeline-check` Claude command** — created at `.claude/commands/pipeline-check.md` on 2026-05-14. Future enhancements: also surface `data/gas_checkpoint.json` and `data/prices_checkpoint.json` age, and detect when a session's anchor progress is below the expected slice rate (e.g. <1 anchor/min sustained).
 
+#### 2026-06-02 — throughput diagnosis (full-pass ~51h vs 48h freshness window)
+
+Root cause of the persistent `store_freshness` RED (41.57% on 2026-06-02, regressing 23.6%→41.57% d/o/d): a full anchor×batch pass takes ~51h, but the freshness window is 2 days — **zero margin**, so any wobble tips it RED. Need ~2× throughput. Diagnosis from reading `fetch_prices.py` + logs (87,775 products, ~675 anchors, ~150 batches/anchor avg, ~100k requests/pass, effective ~1.8s/batch vs theoretical ~0.3s).
+
+Implemented 2026-06-02 (see activity log): (1) per-anchor checkpoint instead of per-batch [was O(n²)], (2) persist in-flight anchor's filtered product list so resume keeps the narrow list, (3) `SLEEP_BETWEEN` 0.15→0.05. Remaining / deferred:
+
+- [ ] **Verify 2026-06-04: full-pass time drops below 48h after the 2026-06-02 throughput fixes** — check `grep "SUMMARY status=completed" data/logs/fetch-prices.log | tail -3` cadence, and `/pipeline-check` `store_freshness` trend should resume falling. If still >48h, escalate to single long-lived worker (see below) or parallel workers (line ~36).
+- [ ] **Verify 2026-06-03: no data gaps from the resume-list fix** — the old `started_anchors → global_batches` resume fallback could *skip an anchor's real products* (prices_current `DISTINCT` order isn't stable, and the anchor's own writes mutate it mid-pass). New code persists the exact filtered list per in-flight anchor. Spot-check a few anchors that span a slice boundary (`grep "Time limit reached mid-anchor" data/logs/fetch-prices.log`) have full product coverage next pass.
+- [ ] **Watch 2026-06-03: HTTP 429 / throttling after `SLEEP_BETWEEN` 0.15→0.05** — `grep -E "429|rate" data/logs/fetch-prices.log`. If throttled, raise to 0.08–0.10. The constant carries a dated comment in `fetch_prices.py`.
+- [ ] **Cache the spatial clustering across cron slices** — the greedy set-cover over ~4,100 stores reruns on every one of 48 cold starts/day (pure repeated startup tax). Memoize anchors/covers/radius to disk keyed by a hash of the active-store set; recompute only when the set changes. Pairs naturally with the single-worker option (line ~28/34) which removes per-slice startup entirely.
+- [ ] **Reconsider the `store_freshness` SLO vs achievable pass time** — 10% threshold over a 2-day window is unachievable if a pass needs ~2 days. After the throughput fixes land, either confirm passes complete <24h (keep window) or widen the audit window to 3 days in `audit_pipeline.py` so it stops paging on a target the architecture can't hit. Relates to the "split store_freshness by structural cause" item above.
+
 ---
 
 ## Retail
