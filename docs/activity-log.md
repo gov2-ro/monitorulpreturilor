@@ -4,6 +4,14 @@
 
 ## General
 
+### 2026-06-08 — pipeline-check: history pattern analysis + upgrade suggestions
+
+Enhanced `/pipeline-check` to scan its own log history and surface recurring issues as actionable upgrade suggestions.
+
+- **New step 8** parses the last 10 `pipeline-check.log` entries, counts how often each audit check went RED, which error strings recurred, and overall verdict distribution. Emits structured tokens (`check:run_history:6/10`, `error:database is locked:4/10`, etc.) gated at ≥3/10 to avoid noise.
+- **New "Upgrade suggestions" section** appears in the report only when patterns hit threshold. Each suggestion names a concrete target (file:line, PRAGMA, cron time). Seeded from actual log history: `database is locked` recurrence → WAL mode; `abandoned` runs → trap/lock cleanup; `store_freshness` cycling → `fetched_at` freshness guard; morning-only `anomaly_drift` RED → shift audit cron to 10:00.
+- Clean pipelines with GREEN history stay quiet — the section is fully gated.
+
 ### 2026-06-03 — Operational durability: DB backup + log rotation; retention investigated
 
 The pipeline had no safety net for its 7.2 GB dataset. Added two safe, additive guards and investigated (but deferred) retention.

@@ -93,7 +93,57 @@ Run the steps below using parallel Bash calls where independent, then output a s
    - retail (`fetch-prices.log`): activity <30 min OR last `completed` <36 h
    - gas (`fetch-gas-prices.log`), audit (`audit.log`), check-runs (`check-runs.log`): <25 h
 
-8. **Log the report** — after composing the final report, append it verbatim to `data/logs/pipeline-check.log` (create dir if missing):
+8. **History pattern analysis** — parse the last 10 entries in `data/logs/pipeline-check.log` (excluding the current run, which hasn't been written yet) to detect recurring issues:
+   ```bash
+   python3 - <<'PY'
+   import re, collections
+
+   log_path = "data/logs/pipeline-check.log"
+   try:
+       text = open(log_path).read()
+   except FileNotFoundError:
+       print("no_history"); raise SystemExit
+
+   reports = re.split(r'(?=^PIPELINE CHECK)', text, flags=re.MULTILINE)
+   reports = [r.strip() for r in reports if r.strip()]
+   recent = reports[-11:-1]  # last 10, exclude current (not yet written)
+   if len(recent) < 3:
+       print("insufficient_history"); raise SystemExit
+
+   n = len(recent)
+   red_checks = collections.Counter()
+   error_patterns = collections.Counter()
+   verdicts = collections.Counter()
+
+   for r in recent:
+       vm = re.search(r'^Verdict:\s*(\w+)', r, re.MULTILINE)
+       if vm:
+           verdicts[vm.group(1)] += 1
+       for check in ['store_freshness', 'run_history', 'coverage_gaps', 'anomaly_drift']:
+           # Count report as RED for this check if it appears in a RED context
+           if re.search(rf'\bRED\b[^\n]*\b{check}\b|\b{check}\b[^\n]*\bRED\b', r):
+               red_checks[check] += 1
+       for pattern in ['database is locked', 'traceback', 'timeout', 'oom', 'abandoned']:
+           if re.search(pattern, r, re.IGNORECASE):
+               error_patterns[pattern] += 1
+
+   results = []
+   for check, count in red_checks.most_common():
+       if count >= 3:
+           results.append(f"check:{check}:{count}/{n}")
+   for err, count in error_patterns.most_common():
+       if count >= 3:
+           results.append(f"error:{err}:{count}/{n}")
+   v_red = verdicts.get('RED', 0)
+   if v_red >= 5:
+       results.append(f"verdict:RED:{v_red}/{n}")
+
+   print('\n'.join(results) if results else "no_patterns")
+   PY
+   ```
+   Keep this output; it feeds the upgrade-suggestions section of the report.
+
+9. **Log the report** — after composing the final report, append it verbatim to `data/logs/pipeline-check.log` (create dir if missing):
    ```bash
    mkdir -p data/logs
    tee -a data/logs/pipeline-check.log <<'REPORT'
@@ -126,7 +176,18 @@ Verdict: GREEN | YELLOW | RED
   <other red checks with their data>
 
 <2-3 lines: what (if anything) needs attention; if YELLOW-downgraded, explain why>
+
+[Upgrade suggestions — only when step 8 returns ≥1 `check:`, `error:`, or `verdict:` line]
+  - <concrete suggestion with file:line or config target>
 ```
+
+**Upgrade suggestions rules:** emit this section only when the history step finds patterns. Each suggestion must be actionable (name the file, PRAGMA, cron line, or flag to change). Examples keyed to known patterns:
+- `check:run_history` + `error:database is locked` → "Enable WAL mode in `db.py` `init_db()`: add `PRAGMA journal_mode=WAL` after connection open — eliminates reader/writer lock contention."
+- `check:store_freshness` recurring → "Add a `fetched_at` freshness guard in `scripts/cron-wrapper.sh` (or the cron line itself): abort and alert if checkpoint `fetched_at` ≠ today before `fetch_prices.py` runs."
+- `check:anomaly_drift` RED every morning clearing by midday → "Shift audit cron from 06:02 to 10:00 — the pattern shows it always clears during the morning retail sweep."
+- `error:abandoned` recurring → "Add `trap` + lock cleanup in `fetch_prices.py` exit handler so interrupted runs don't leave stale checkpoints."
+- `verdict:RED` high frequency → "Consider a PushNotification or alerting hook triggered by this check so issues are caught faster."
+Only suggest what the pattern actually supports — don't invent problems not shown in the history data.
 
 **Verdict rules:**
 - RED: any audit RED check, any cron line >2× expected interval, traceback in last 30 log lines, stale lock with no PID.
