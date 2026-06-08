@@ -30,6 +30,8 @@ import argparse
 import json
 import math
 import os
+import signal
+import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 
@@ -414,6 +416,9 @@ def main(db_path="data/prices.db", order="stale", limit_stores=None,
 
     with open(lock_path, "w") as _lf:
         _lf.write(str(os.getpid()))
+
+    # Convert SIGTERM → SystemExit so the finally block below removes the lock.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     try:
         _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,

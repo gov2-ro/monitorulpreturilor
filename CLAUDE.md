@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Activate the project Python environment before running any scripts:
 ```
-source ~/devbox/envs/240826/bin/activate
+source venv/bin/activate
 ```
 
 ## Running the pipeline
@@ -125,7 +125,7 @@ When refactoring large files break work into logical, independently functional c
 - When detecting things that need to be addressed later, add to `docs/backlog.md` under the relevant section (Retail / Gas / General). Use a checkbox `- [ ]` entry with a clear title and enough context to act on it later.
 - After completing any meaningful work, add an entry to `docs/activity-log.md` under the relevant section heading with a `### YYYY-MM-DD — Short Title` entry. Include what was done, why, and any non-obvious decisions.
 
-When running Python commands, always first activate the following venv `~/devbox/envs/240826/` (/Users/pax/devbox/envs/240826/bin/activate)
+When running Python commands, always first activate the venv: `source venv/bin/activate`
 
 ### WKT centroid
 UAT polygons come as `POLYGON((lon1 lat1, lon2 lat2, ...))`. Centroid = average of min/max lon and lat bounds.

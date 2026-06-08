@@ -4,6 +4,12 @@
 
 ## General
 
+### 2026-06-08 — fetch_prices SIGTERM handler; CLAUDE.md venv path fix
+
+- **SIGTERM handler** (`fetch_prices.py`): added `signal.signal(SIGTERM, lambda *_: sys.exit(0))` immediately after the lock file is written. Converts SIGTERM → SystemExit so the existing `finally` block removes the lock on cron kill. WAL mode and lock `finally` were already in place; this closes the one remaining gap.
+- **CLAUDE.md**: replaced two stale `~/devbox/envs/240826/` references with `source venv/bin/activate` (the local venv that actually exists).
+- Pipeline-check skill already used `venv/bin/activate` correctly — no change needed.
+
 ### 2026-06-08 — pipeline-check: history pattern analysis + upgrade suggestions
 
 Enhanced `/pipeline-check` to scan its own log history and surface recurring issues as actionable upgrade suggestions.
