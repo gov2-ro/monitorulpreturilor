@@ -4,6 +4,8 @@
 
 ## General
 
+- [x] **TLS intermediate: make durable** — done 2026-06-12. `data/extra_certs.pem` committed; `api.py` builds combined bundle at import time via `_build_ca_bundle()`.
+
 ### Pending verifications
 
 - [ ] **Tonight 2026-06-01 after ~23:30: confirm `order=stale` in log** — `grep "order=" data/logs/fetch-prices.log | tail -2` should show `order=stale` for the 23:00 or 23:30 slice. If still `order=population`, the new code didn't take effect (check lock / running PID).

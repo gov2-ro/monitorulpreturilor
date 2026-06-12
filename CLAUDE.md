@@ -9,6 +9,11 @@ Activate the project Python environment before running any scripts:
 source venv/bin/activate
 ```
 
+**TLS note:** `api.py` automatically merges `certifi`'s CA bundle with `data/extra_certs.pem`
+(Sectigo Public Server Authentication CA DV R36 intermediate, added 2026-06-12). If you
+recreate the venv, TLS will work without any extra steps — `data/extra_certs.pem` is
+committed to git and picked up at import time.
+
 ## Running the pipeline
 
 ### Retail

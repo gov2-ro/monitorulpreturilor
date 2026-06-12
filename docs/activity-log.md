@@ -4,6 +4,12 @@
 
 ## General
 
+### 2026-06-12 — Fix TLS breakage: append missing Sectigo intermediate to certifi bundle
+
+- **Root cause**: server renewed its TLS cert on 2026-05-26 with issuer "Sectigo Public Server Authentication CA DV R36" but kept sending the old "Sectigo RSA Domain Validation Secure Server CA" intermediate in the TLS handshake — a mismatched/broken chain. Browsers work because they auto-fetch missing intermediates via AIA; Python `requests`/`certifi` does not.
+- **Fix**: downloaded the missing intermediate from the AIA URL (`http://crt.sectigo.com/SectigoPublicServerAuthenticationCADVR36.crt`), converted DER→PEM, appended to `venv/lib/python3.12/site-packages/certifi/cacert.pem`.
+- **Durable fix** (same session): saved intermediate as `data/extra_certs.pem` (committed); `api.py` now calls `_build_ca_bundle()` at import time — merges certifi roots + `extra_certs.pem` into a per-process tempfile and passes it as `verify=` to all `requests.get` calls. Venv rebuilds no longer break TLS.
+
 ### 2026-06-08 — fetch_prices SIGTERM handler; CLAUDE.md venv path fix
 
 - **SIGTERM handler** (`fetch_prices.py`): added `signal.signal(SIGTERM, lambda *_: sys.exit(0))` immediately after the lock file is written. Converts SIGTERM → SystemExit so the existing `finally` block removes the lock on cron kill. WAL mode and lock `finally` were already in place; this closes the one remaining gap.

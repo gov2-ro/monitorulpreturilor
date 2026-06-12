@@ -8,6 +8,7 @@ data*/*
 !data/prices_ci.db
 !data/prices_ci_checkpoint.json
 !data/gas_checkpoint.json
+!data/extra_certs.pem
 !data/ci_stores.txt
 !data/ci_products.txt
 !data/reference/

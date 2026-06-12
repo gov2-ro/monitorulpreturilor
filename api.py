@@ -1,12 +1,35 @@
+import atexit
+import os
 import re
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 
+import certifi
 import requests
 
 BASE = "https://monitorulpreturilor.info/pmonsvc/Retail"
 GAS_BASE = "https://monitorulpreturilor.info/pmonsvc/Gas"
 NS = "http://schemas.datacontract.org/2004/07/pmonsvc.Models.Protos"
+
+# Build a CA bundle that merges certifi's roots with any extra intermediates
+# kept in data/extra_certs.pem.  This survives venv rebuilds; see activity-log
+# 2026-06-12 for the incident that motivated it (Sectigo chain renewal).
+_EXTRA_CERTS = os.path.join(os.path.dirname(__file__), "data", "extra_certs.pem")
+
+def _build_ca_bundle() -> str:
+    if not os.path.exists(_EXTRA_CERTS):
+        return certifi.where()
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".pem", delete=False)
+    with open(certifi.where()) as f:
+        tmp.write(f.read())
+    with open(_EXTRA_CERTS) as f:
+        tmp.write(f.read())
+    tmp.close()
+    atexit.register(os.unlink, tmp.name)
+    return tmp.name
+
+_VERIFY = _build_ca_bundle()
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +77,7 @@ def fetch_xml(url, retries=3, timeout=30):
     """GET url, return parsed ElementTree root. Retries with exponential backoff."""
     for attempt in range(retries):
         try:
-            r = requests.get(url, timeout=timeout)
+            r = requests.get(url, timeout=timeout, verify=_VERIFY)
             r.raise_for_status()
             cleaned = _strip_invalid_char_refs(r.text).encode("utf-8")
             return ET.fromstring(cleaned)
