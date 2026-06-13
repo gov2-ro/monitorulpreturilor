@@ -4,6 +4,14 @@
 
 ## General
 
+### 2026-06-13 — Implement pipeline-check upgrade suggestions
+
+Three suggestions from the 2026-06-13 pipeline-check history analysis:
+
+1. **WAL mode** — already present in `db.py:45`; no change needed.
+2. **SIGTERM/abandoned fix** (`fetch_prices.py:939`): changed `except KeyboardInterrupt:` to `except (KeyboardInterrupt, SystemExit):`. The SIGTERM handler converts SIGTERM→`SystemExit`, which previously bypassed `save_cp()` and `finish_run()`, leaving runs as "abandoned" in the DB. Now SIGTERM triggers the same clean-shutdown path as Ctrl-C.
+3. **RED alert** (`scripts/alert_red.py` + `scripts/crontab.template`): new script exits 1 when today's audit JSON is RED, 0 otherwise. Wired into cron at 06:02 via `hc_run.sh` with a placeholder HC.io UUID — user must create the HC.io check (period=1d, grace=30m) and replace `REPLACE_WITH_HC_UUID` in the crontab template and live crontab.
+
 ### 2026-06-12 — Fix TLS breakage: append missing Sectigo intermediate to certifi bundle
 
 - **Root cause**: server renewed its TLS cert on 2026-05-26 with issuer "Sectigo Public Server Authentication CA DV R36" but kept sending the old "Sectigo RSA Domain Validation Secure Server CA" intermediate in the TLS handshake — a mismatched/broken chain. Browsers work because they auto-fetch missing intermediates via AIA; Python `requests`/`certifi` does not.

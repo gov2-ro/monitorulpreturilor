@@ -936,7 +936,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
               f"weekly_tier={len(weekly_tier)} weekly_store_tier={len(weekly_store_tier)} "
               f"elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         elapsed = int(time.monotonic() - t_start)
         try:
             save_cp()

@@ -23,6 +23,10 @@ SHELL=/bin/bash
 # Daily audit — 06:00, after both fetchers have had time to start
 0 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh a440ce9b-0547-406f-836a-0570e0737fc6 bash -c 'source venv/bin/activate && python audit_pipeline.py >> data/logs/audit.log 2>&1 && python generate_pipeline_report.py >> data/logs/audit.log 2>&1'
 
+# Audit RED alert — 06:02, exits 1 when audit is RED (triggers HC.io fail notification).
+# Create a check at healthchecks.io.com (period=1d, grace=30m) and paste its UUID below.
+2 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_HC_UUID bash -c 'source venv/bin/activate && python scripts/alert_red.py >> data/logs/alert-red.log 2>&1'
+
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'
 
