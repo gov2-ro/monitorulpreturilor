@@ -22,6 +22,8 @@ Time-bounded checks after a fix or change: confirm the expected effect by the da
 
 ### Pipeline health
 
+- [ ] **Install alert_red.py cron** — `scripts/crontab.template` line 5 has `REPLACE_WITH_HC_UUID`. Create a check at healthchecks.io (period=1d, grace=30m), paste the UUID in the template, then run `crontab scripts/crontab.template`. Until done the 06:02 RED-alert cron is missing and cron drift will show in every pipeline-check.
+
 - [ ] **Full-sweep cycle now takes ~7–9 days** — product catalog grew 12× (87K products, 437 batches/anchor). One cron run (23 h) covers only ~70–100 of 683 anchors. Options: (a) increase `BATCH_SIZE` 200 → 500 and check URL length limit; (b) filter products to only those seen in the last 30 days; (c) investigate what triggered the 80K product spike on the April 28 reference run and whether all products are valid.
 - [ ] **Run `migrate_price_dates.py` on VPS** — one-time backfill of ~35M rows to ISO `price_date`. Command: `python migrate_price_dates.py` (add `--dry-run` first). Safe to run alongside a live fetch (batched, WAL mode). After completion, verify with `sqlite3 data/prices.db "SELECT price_date FROM prices LIMIT 5;"`.
 - [x] **`price_date` stored as non-ISO strings** (2026-05-23) — fixed in `api.py`: `_parse_date()` normalizes `DD.MM.YYYY HH:MM` and `DD/MM/YYYY HH:MM` → `YYYY-MM-DD HH:MM` at parse time (applied in both `parse_stores_and_prices` and `parse_gas_items`). One-time backfill of ~35M existing rows: run `python migrate_price_dates.py` on the VPS (batched 500K rows at a time, safe to resume, dry-run with `--dry-run`).
