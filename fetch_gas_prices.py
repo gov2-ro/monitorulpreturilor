@@ -10,6 +10,8 @@ Options:
 import argparse
 import json
 import os
+import signal
+import sys
 import time
 from datetime import datetime, timezone
 
@@ -46,6 +48,9 @@ def _finish_checkpoint(path, fetched_at, done):
 
 
 def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
+    # Convert SIGTERM → SystemExit so the finally block runs finish_run on kill.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
     conn = init_db(db_path)
 
     n_abandoned = abandon_stale_runs(conn, "fetch_gas_prices")
@@ -67,9 +72,18 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
             cp = None
 
     if cp:
-        fetched_at = cp["fetched_at"]
         done = cp["done"]
-        tqdm.write(f"Resuming from checkpoint ({len(done)} work units already done)  fetched_at={fetched_at}")
+        cp_date_val = datetime.fromisoformat(cp["fetched_at"]).date()
+        today_date = datetime.now(timezone.utc).date()
+        if cp_date_val != today_date:
+            # Stale checkpoint from a prior day's interrupted run — refresh timestamp
+            # so prices are stamped with today's date, not yesterday's.
+            fetched_at = datetime.now(timezone.utc).isoformat()
+            tqdm.write(f"Resuming checkpoint ({len(done)} work units already done)  "
+                       f"fetched_at refreshed: {cp_date_val} → {today_date}")
+        else:
+            fetched_at = cp["fetched_at"]
+            tqdm.write(f"Resuming from checkpoint ({len(done)} work units already done)  fetched_at={fetched_at}")
     else:
         fetched_at = datetime.now(timezone.utc).isoformat()
         done = set()
@@ -125,6 +139,15 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
                         time.sleep(SLEEP_BETWEEN)
                         done.add(key)
                         _save_checkpoint(CHECKPOINT_PATH, fetched_at, done)
+                        continue
+                    except (requests.exceptions.SSLError,
+                            requests.exceptions.ConnectionError) as exc:
+                        # Transient network/TLS failure — log and skip this combo rather
+                        # than aborting the whole run.  Not added to `done` so it will
+                        # be retried on the next run.
+                        tqdm.write(f"  {uat_name} fuel={fuel_id}: network error, skipping "
+                                   f"({type(exc).__name__}: {exc})")
+                        time.sleep(SLEEP_BETWEEN)
                         continue
 
                     stations, prices = parse_gas_items(root, fetched_at)

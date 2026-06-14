@@ -4,6 +4,18 @@
 
 ## General
 
+### 2026-06-14 — fetch_gas_prices hardening: SIGTERM, stale-date, SSL resilience
+
+Implemented three fixes in `fetch_gas_prices.py` based on pipeline-check history analysis:
+
+1. **SIGTERM handler**: added `signal.signal(SIGTERM, lambda *_: sys.exit(0))` at the top of `main()`. Previously SIGTERM left the run in `running` state (marked `abandoned` at next startup). Now it goes through the `finally` → `finish_run()` path like Ctrl-C.
+2. **Stale checkpoint date**: if an in-progress checkpoint's `fetched_at` is from a prior day, `fetched_at` is now refreshed to today before the run starts. Previously gas prices could be stamped with yesterday's date on a resumed interrupted run.
+3. **Per-request SSL/connection resilience**: added `except (SSLError, ConnectionError)` around `fetch_xml()` calls. A transient TLS or network failure on one UAT×fuel combo now logs a warning and continues rather than aborting the entire run. The key is not added to `done` so it gets retried on the next run.
+
+**SSL error investigation**: Runs #692–767 (2026-06-09 to 2026-06-12) failed on the first request because certifi lacked the Sectigo intermediate — same root cause as the 2026-06-12 TLS fix. It wasn't UatId=1017 specifically; that's just the first UAT. The TLS fix (extra_certs.pem) resolved it; these errors will age out of the 7-day audit window by 2026-06-19.
+
+**Alert cron**: still needs a real HC.io UUID before the `alert_red.py` line can be installed from crontab.template. Cron drift expected until then.
+
 ### 2026-06-13 — Implement pipeline-check upgrade suggestions
 
 Three suggestions from the 2026-06-13 pipeline-check history analysis:
