@@ -4,6 +4,13 @@
 
 ## General
 
+### 2026-06-15 — Pipeline check remediation: acknowledge pre-fix gas errors, fix cron drift
+
+Two actions to clear RED pipeline state:
+
+1. **Acknowledged 4 historical gas error runs** (IDs 692, 717, 742, 767 — June 9–12): these failed with `SSLCertVerificationError` before the TLS fix landed. Set `acknowledged_at = now()` via SQL UPDATE so `check_run_history` no longer flags them. `run_history` audit check is now GREEN. Today's gas run (03:05) completed with 5245 records — fix is confirmed working.
+2. **Fixed cron drift**: reinstalled crontab from `scripts/crontab.template` to add the `alert_red.py` line (06:02) in its correct position. HC ping will silently no-op until `REPLACE_WITH_HC_UUID` is replaced with a real UUID, but `alert_red.py` runs and logs to `data/logs/alert-red.log` from today.
+
 ### 2026-06-14 — fetch_gas_prices hardening: SIGTERM, stale-date, SSL resilience
 
 Implemented three fixes in `fetch_gas_prices.py` based on pipeline-check history analysis:
