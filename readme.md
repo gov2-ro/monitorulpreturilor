@@ -625,3 +625,8 @@ Vezi și: [backlog](docs/backlog.md)
 
 ### Open questions
 - Does same network has different prices for different stores? — document scope and frequency
+
+
+## Reference / inspiration / previous art
+
+- https://radarpreturi.ro/ 
