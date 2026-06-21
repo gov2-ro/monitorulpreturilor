@@ -78,7 +78,10 @@ def init_db(path="data/prices.db"):
         lon        REAL,
         uat_id     INTEGER,
         network_id TEXT,
-        zipcode    TEXT
+        zipcode    TEXT,
+        logo_url   TEXT,
+        type_id    INTEGER,
+        type_name  TEXT
     );
     CREATE TABLE IF NOT EXISTS prices (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,6 +175,9 @@ def init_db(path="data/prices.db"):
         "ALTER TABLE prices_current ADD COLUMN last_changed_at TEXT",
         "ALTER TABLE stores ADD COLUMN is_active INTEGER DEFAULT 1",
         "ALTER TABLE stores ADD COLUMN fetch_tier TEXT DEFAULT 'daily'",
+        "ALTER TABLE stores ADD COLUMN logo_url TEXT",
+        "ALTER TABLE stores ADD COLUMN type_id INTEGER",
+        "ALTER TABLE stores ADD COLUMN type_name TEXT",
         "CREATE INDEX IF NOT EXISTS idx_prices_current_store ON prices_current(store_id)",
         "ALTER TABLE runs ADD COLUMN acknowledged_at TEXT",
     ]:
@@ -328,16 +334,24 @@ def upsert_product(conn, id, name, categ_id):
     )
 
 
-def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode):
+def upsert_store(conn, id, name, addr, lat, lon, uat_id, network_id, zipcode,
+                 logo_url=None, type_id=None, type_name=None):
     conn.execute(
-        """INSERT INTO stores (id, name, addr, lat, lon, uat_id, network_id, zipcode, is_active)
-           VALUES (?,?,?,?,?,?,?,?,1)
+        """INSERT INTO stores
+               (id, name, addr, lat, lon, uat_id, network_id, zipcode,
+                logo_url, type_id, type_name, is_active)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
            ON CONFLICT(id) DO UPDATE SET
              name=excluded.name, addr=excluded.addr, lat=excluded.lat,
              lon=excluded.lon, uat_id=excluded.uat_id,
-             network_id=excluded.network_id, zipcode=excluded.zipcode,
+             network_id=COALESCE(excluded.network_id, stores.network_id),
+             zipcode=excluded.zipcode,
+             logo_url=COALESCE(excluded.logo_url, stores.logo_url),
+             type_id=COALESCE(excluded.type_id, stores.type_id),
+             type_name=COALESCE(excluded.type_name, stores.type_name),
              is_active=1""",
-        (id, name, addr, lat, lon, uat_id, network_id, zipcode),
+        (id, name, addr, lat, lon, uat_id, network_id, zipcode,
+         logo_url, type_id, type_name),
     )
 
 
@@ -540,6 +554,51 @@ def backfill_store_network_ids(conn):
             results[network_id] = results.get(network_id, 0) + cur.rowcount
     conn.commit()
     return results
+
+
+def backfill_store_network_from_logo(conn):
+    """Infer network_id for stores where it is NULL but logo_url matches retail_networks.logo_url.
+
+    More reliable than name matching — the logo URL is a direct API-provided signal.
+    Only fills rows where network_id IS NULL; idempotent.
+    Returns number of rows updated.
+    """
+    cur = conn.execute("""
+        UPDATE stores
+        SET network_id = (
+            SELECT id FROM retail_networks
+            WHERE retail_networks.logo_url = stores.logo_url
+            LIMIT 1
+        )
+        WHERE network_id IS NULL
+          AND logo_url IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM retail_networks
+              WHERE retail_networks.logo_url = stores.logo_url
+          )
+    """)
+    conn.commit()
+    return cur.rowcount
+
+
+def check_store_network_conflicts(conn):
+    """Report stores where logo_url implies a different network than network_id.
+
+    Returns list of dicts with store id, name, stored network_id, and logo-implied network_id.
+    Useful for auditing data quality after bulk fetches.
+    """
+    rows = conn.execute("""
+        SELECT s.id, s.name, s.network_id, rn.id AS logo_network_id, rn.name AS logo_network_name
+        FROM stores s
+        JOIN retail_networks rn ON rn.logo_url = s.logo_url
+        WHERE s.network_id IS NOT NULL
+          AND s.network_id != rn.id
+    """).fetchall()
+    return [
+        {"store_id": r[0], "store_name": r[1], "db_network_id": r[2],
+         "logo_network_id": r[3], "logo_network_name": r[4]}
+        for r in rows
+    ]
 
 
 def deactivate_stale_stores(conn, days=21):

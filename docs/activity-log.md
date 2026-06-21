@@ -4,6 +4,16 @@
 
 ## General
 
+### 2026-06-21 — Store enrichment: logo_url, type, and network detection from API
+
+Added three new columns to `stores` (`logo_url`, `type_id`, `type_name`) and improved `network_id` reliability:
+
+- **Parser fix** (`api.py`): `parse_stores_and_prices` now reads `network_id` from `Retailnetwork > Id` on the store element (always present), instead of relying solely on product-level `Networkid` fields (which were silently skipped when all products had price=0 — root cause of the 996 NULL `network_id` stores). Falls back to product-level value if the store element has none. Logs a WARNING if both are present and disagree.
+- **New fields**: `logo_url` from `Logo > Logouri` (per-format brand logo, e.g. `CarrefourMarket.png`); `type_id`/`type_name` from `Type` (e.g. "Supermarket & Discounter"). `upsert_store` uses `COALESCE(excluded.X, stores.X)` for all three + `network_id` so a non-null is never overwritten with null.
+- **Logo-based backfill** (`db.py`): `backfill_store_network_from_logo` matches `stores.logo_url = retail_networks.logo_url` to infer `network_id` for any remaining NULLs after fetch. More reliable than name matching.
+- **Conflict detection** (`db.py`): `check_store_network_conflicts` reports stores where `logo_url` implies a different network than `network_id` — run at fetch startup for data-quality auditing.
+- The 996 existing NULL `network_id` stores will be resolved on the next `fetch_prices.py` run.
+
 ### 2026-06-21 — Full data audit (shops, products, same-price-across-networks)
 
 Thorough point-in-time audit of `data/prices.db` after 68 days of scraping.

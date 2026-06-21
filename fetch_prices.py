@@ -41,7 +41,8 @@ from tqdm import tqdm
 from api import BASE, fetch_xml, parse_stores_and_prices
 from db import (init_db, insert_price, upsert_store, start_run, finish_run,
                 abandon_stale_runs, deactivate_stale_stores, propagate_last_checked,
-                update_store_tiers, backfill_store_network_ids)
+                update_store_tiers, backfill_store_network_ids,
+                backfill_store_network_from_logo, check_store_network_conflicts)
 
 # BATCH_SIZE = 30
 BATCH_SIZE = 200
@@ -445,8 +446,20 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     net_backfill = backfill_store_network_ids(conn)
     if net_backfill:
         total_backfilled = sum(net_backfill.values())
-        tqdm.write(f"Network backfill: tagged {total_backfilled} store(s) by name — "
+        tqdm.write(f"Network backfill (name): tagged {total_backfilled} store(s) — "
                    + ", ".join(f"{n}:{c}" for n, c in net_backfill.items()))
+
+    logo_backfill = backfill_store_network_from_logo(conn)
+    if logo_backfill:
+        tqdm.write(f"Network backfill (logo): tagged {logo_backfill} store(s).")
+
+    conflicts = check_store_network_conflicts(conn)
+    if conflicts:
+        tqdm.write(f"Network conflicts: {len(conflicts)} store(s) where logo implies a different network:")
+        for c in conflicts[:10]:
+            tqdm.write(f"  store {c['store_id']} ({c['store_name']}): db={c['db_network_id']} vs logo→{c['logo_network_id']} ({c['logo_network_name']})")
+        if len(conflicts) > 10:
+            tqdm.write(f"  … and {len(conflicts) - 10} more.")
 
     weekly_count, total_active = update_store_tiers(conn)
     if total_active:
@@ -847,6 +860,9 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                 conn, s["id"], s["name"], s["addr"],
                                 s["lat"], s["lon"], s["uat_id"],
                                 s["network_id"], s["zipcode"],
+                                logo_url=s.get("logo_url"),
+                                type_id=s.get("type_id"),
+                                type_name=s.get("type_name"),
                             )
                         for p in prices:
                             changed = insert_price(

@@ -1,4 +1,5 @@
 import atexit
+import logging
 import os
 import re
 import tempfile
@@ -176,7 +177,7 @@ def parse_stores_and_prices(root, fetched_at):
         store_id = int(store_id_str)
         name = _t(store_el, "Name")
 
-        addr = lat = lon = uat_id = zipcode = network_id = None
+        addr = lat = lon = uat_id = zipcode = None
         addr_el = store_el.find(f"{{{NS}}}Addr")
         if addr_el is not None:
             addr = _t(addr_el, "Addrstring")
@@ -190,6 +191,22 @@ def parse_stores_and_prices(root, fetched_at):
                 lat = float(lat_s) if lat_s else None
                 lon = float(lon_s) if lon_s else None
 
+        # Store-level logo (brand/format logo, e.g. CarrefourMarket.png)
+        logo_el = store_el.find(f"{{{NS}}}Logo")
+        logo_url = _t(logo_el, "Logouri") if logo_el is not None else None
+
+        # Store type (e.g. "Supermarket", "Supermarket & Discounter")
+        type_el = store_el.find(f"{{{NS}}}Type")
+        type_id = _t(type_el, "Id") if type_el is not None else None
+        type_name = _t(type_el, "Name") if type_el is not None else None
+        type_id = int(type_id) if type_id else None
+
+        # Network from store-level Retailnetwork element (primary — present even
+        # when all products have price=0 so the product-loop never fires)
+        net_el = store_el.find(f"{{{NS}}}Retailnetwork")
+        network_id = _t(net_el, "Id") if net_el is not None else None
+
+        prod_network_id = None
         for prod_el in store_el.findall(f".//{{{NS}}}Product"):
             price_str = _t(prod_el, "Price")
             price_date = _parse_date(_t(prod_el, "Pricedate"))
@@ -198,8 +215,8 @@ def parse_stores_and_prices(root, fetched_at):
                 continue
 
             nid = _t(prod_el, "Networkid")
-            if nid and network_id is None:
-                network_id = nid
+            if nid and prod_network_id is None:
+                prod_network_id = nid
 
             catprod = prod_el.find(f"{{{NS}}}Catprod")
             if catprod is None:
@@ -222,6 +239,16 @@ def parse_stores_and_prices(root, fetched_at):
                 "fetched_at": fetched_at,
             })
 
+        # Conflict check: product-level Networkid should match Retailnetwork > Id
+        if prod_network_id and network_id and prod_network_id != network_id:
+            logging.warning(
+                "store %s (%s): network_id conflict — store element=%s, product=%s",
+                store_id, name, network_id, prod_network_id,
+            )
+        # Fall back to product-derived network_id if store element had none
+        if not network_id and prod_network_id:
+            network_id = prod_network_id
+
         stores[store_id] = {
             "id": store_id,
             "name": name,
@@ -231,6 +258,9 @@ def parse_stores_and_prices(root, fetched_at):
             "uat_id": uat_id,
             "network_id": network_id,
             "zipcode": zipcode,
+            "logo_url": logo_url,
+            "type_id": type_id,
+            "type_name": type_name,
         }
 
     return list(stores.values()), prices
