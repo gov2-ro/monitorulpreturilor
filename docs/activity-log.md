@@ -4,6 +4,37 @@
 
 ## General
 
+### 2026-06-21 — Full data audit (shops, products, same-price-across-networks)
+
+Thorough point-in-time audit of `data/prices.db` after 68 days of scraping.
+Full write-up in [`docs/data-audit-2026-06-21.md`](data-audit-2026-06-21.md).
+Headlines: **5,460 shops** (4,135 retail + 1,325 fuel); **87,775 products,
+75,710 priced, 23,200 sold by ≥2 chains**. **Same price across networks is
+rare for retail** — 1,916/23,200 (8.3%) share an identical modal price, but 93%
+are 2-chain coincidences; the robust core (≥3 well-stocked chains) is only **55
+products**, all RRP-driven branded FMCG. Conversely ~83% of well-stocked
+comparable products differ by >5%. **Fuel is the real same-price market**:
+standard diesel varies 1.2% across all 7 networks, and 5 of 7 quote identical
+standard-petrol prices.
+
+Method: built per-(product, network) aggregates incl. modal price from
+`prices_current` (mapped networks only) into a scratch DB
+(`/tmp/audit.db`), then summarised. Reproduce with:
+```sql
+CREATE TABLE pnp AS
+  SELECT pc.product_id pid, s.network_id net, pc.price price, COUNT(*) c
+  FROM prices_current pc JOIN stores s ON pc.store_id=s.id
+  WHERE s.network_id<>'' AND pc.price>0   -- excludes NULL-network stores
+  GROUP BY 1,2,3;
+-- modal price per (pid,net) via ROW_NUMBER() OVER (PARTITION BY pid,net ORDER BY c DESC);
+-- then COUNT(DISTINCT mode_price)=1 over pid with n_networks>=2  => "same price".
+```
+Non-obvious findings: (1) the 996 unmapped stores carry `network_id IS NULL`
+(not `''`), so `<>''` correctly excludes them — but that drops ~2.9M current
+prices (~19%) from cross-network analysis; (2) unmapped-store count grew
+243→996 since 2026-05-23 (likely a resumed `discover_stores.py`) — backlog item
+filed; (3) the snapshot is a rolling ~30-day window (9% of rows >30d stale).
+
 ### 2026-06-21 — Implement pipeline-check upgrade suggestions
 
 Four suggestions from the 2026-06-21 pipeline-check history analysis (check:store_freshness:10/10, check:run_history:10/10, error:database is locked:6/10, error:abandoned:6/10):
