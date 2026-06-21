@@ -27,6 +27,11 @@ SHELL=/bin/bash
 # Create a check at healthchecks.io.com (period=1d, grace=30m) and paste its UUID below.
 2 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_HC_UUID bash -c 'source venv/bin/activate && python scripts/alert_red.py >> data/logs/alert-red.log 2>&1'
 
+# Pipeline-check RED alert — 07:15, reads the most recent on-demand pipeline-check verdict
+# (written by /pipeline-check to data/logs/pipeline-check.log). Exits 1 if last entry
+# within 25h has Verdict: RED. Create a HC.io check (period=1d, grace=2h) and paste UUID.
+15 7 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_PIPELINE_CHECK_HC_UUID bash -c 'source venv/bin/activate && python scripts/alert_pipeline_check.py >> data/logs/alert-pipeline-check.log 2>&1'
+
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'
 

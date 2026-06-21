@@ -942,7 +942,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             save_cp()
         except Exception:
             pass
-        finish_run(conn, run_id, "interrupted", stores_done, total_prices)
+        try:
+            finish_run(conn, run_id, "interrupted", stores_done, total_prices)
+        except Exception:
+            pass
         tqdm.write(f"\nInterrupted. {total_prices} price records written so far.")
         print(f"SUMMARY status=interrupted stores={stores_done} prices={total_prices} "
               f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
@@ -955,7 +958,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             save_cp()
         except Exception:
             pass
-        finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
+        try:
+            finish_run(conn, run_id, "error", stores_done, total_prices, notes=str(exc))
+        except Exception:
+            pass
         print(f"SUMMARY status=error stores={stores_done} prices={total_prices} "
               f"canary_skipped={canary_skipped} tier_skipped={tier_skipped} "
               f"elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)

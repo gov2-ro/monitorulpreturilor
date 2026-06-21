@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-06-21 — Implement pipeline-check upgrade suggestions
+
+Four suggestions from the 2026-06-21 pipeline-check history analysis (check:store_freshness:10/10, check:run_history:10/10, error:database is locked:6/10, error:abandoned:6/10):
+
+1. **WAL mode** — already at `db.py:45`; no change needed.
+2. **Robust `finish_run` in exception handlers** — wrapped `finish_run` calls in `try/except` in all exception handlers in `fetch_prices.py` and `fetch_gas_prices.py`. Previously, if the DB was locked during cleanup, `finish_run` could throw and the run row would stay in `running` state, causing the next invocation's `abandon_stale_runs` to flag it as "abandoned". Now cleanup failures are silenced (the lock file and checkpoint are cleaned up separately and reliably).
+3. **fetched_at freshness guard** — already auto-corrected in `fetch_prices.py:494-503`; no change needed.
+4. **Pipeline-check RED alerting** — created `scripts/alert_pipeline_check.py` (mirrors `alert_red.py` but reads the last entry in `data/logs/pipeline-check.log`; exits 1 if the most recent verdict within 25h is RED). Added cron at 07:15 in `scripts/crontab.template`; placeholder UUID `REPLACE_WITH_PIPELINE_CHECK_HC_UUID` must be replaced before the HC.io alert fires. Crontab installed.
+
 ### 2026-06-15 — Pipeline check remediation: acknowledge pre-fix gas errors, fix cron drift
 
 Two actions to clear RED pipeline state:

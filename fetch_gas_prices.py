@@ -188,13 +188,19 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
         print(f"SUMMARY status=completed uats={uats_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
     except KeyboardInterrupt:
         elapsed = int(time.monotonic() - t_start)
-        finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+        try:
+            finish_run(conn, run_id, "interrupted", uats_done, total_prices)
+        except Exception:
+            pass
         tqdm.write(f"\nInterrupted. {total_prices} gas price records written so far.")
         print(f"SUMMARY status=interrupted uats={uats_done} prices={total_prices} elapsed={elapsed}s fetched_at={fetched_at}", flush=True)
         raise
     except Exception as exc:
         elapsed = int(time.monotonic() - t_start)
-        finish_run(conn, run_id, "error", uats_done, total_prices, notes=str(exc))
+        try:
+            finish_run(conn, run_id, "error", uats_done, total_prices, notes=str(exc))
+        except Exception:
+            pass
         print(f"SUMMARY status=error uats={uats_done} prices={total_prices} elapsed={elapsed}s error={exc!r} fetched_at={fetched_at}", flush=True)
         raise
     finally:
