@@ -4,6 +4,33 @@
 
 ## General
 
+### 2026-06-21 — refresh_stores.py: drain NULL-network stores (996 → 26)
+
+Built `refresh_stores.py`, a one-off that re-surfaces every store cheaply to
+repopulate `network_id`/`logo_url`/`type_*` from the store element (the fix in
+`799d328`), writing **stores only — no prices**. It clusters active stores into
+anchors (reusing `fetch_prices._cluster_anchors`) and queries a small basket of
+near-universal products (dynamic top-10 by store coverage) at each anchor, so
+one ~5-min pass makes ~all stores appear and get re-upserted. Works because
+`network_id` now comes from the store-level `<Retailnetwork>`, present whenever a
+store appears regardless of product/price.
+
+Result: 1011 anchors, 4044 stores seen, 0 errors, 3 cap-hits. **NULL-network
+990 → 26.** Logo backfill tagged 0 (the store-element path does all the work, as
+predicted — store logos are format-specific and don't exact-match network logos).
+
+**Material finding — the NULL bug was a network-attribution _bias_, not random.**
+The 964 recovered stores were disproportionately discounters; per-network counts
+corrected sharply: **PENNY 158→439, LIDL 194→396, CARREFOUR 177→380, PROFI
+1334→1613.** These match real-world chain sizes far better than the old
+undercounts. Consequence: the 2026-06-21 cross-network audit (which excluded the
+then-996 unknown stores) under-represented exactly these chains — its
+comparison-universe figures (audit §3–§6) should be re-run on the corrected data.
+
+Residual 26 NULLs: 25 have prices, 15 active. They carry none of the basket or
+sat at a dense-cluster 50-cap edge; they will drain via the normal daily
+`fetch_prices` (which now parses the store element too). Not worth a second pass.
+
 ### 2026-06-21 — Store enrichment: logo_url, type, and network detection from API
 
 Added three new columns to `stores` (`logo_url`, `type_id`, `type_name`) and improved `network_id` reliability:

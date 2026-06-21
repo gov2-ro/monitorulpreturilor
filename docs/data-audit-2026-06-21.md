@@ -31,6 +31,47 @@ same date.
   (up from 243 a month ago), removing **~2.9M current prices (~19% of the
   snapshot)** from all cross-network analysis.
 
+> **Update (2026-06-21, post-audit):** this gap was root-caused, fixed
+> (`799d328`), and drained with `refresh_stores.py` — **996 → 26** NULL stores.
+> The recovered ~964 stores were disproportionately discounters, so the
+> per-network counts in §2 changed materially: **PENNY 158→439, LIDL 194→396,
+> CARREFOUR 177→380, PROFI 1334→1613.** The cross-network figures in §3–§6 were
+> computed *before* this fix; the corrected re-run is in the **Addendum**
+> immediately below. See activity log 2026-06-21.
+
+## Addendum — corrected re-run (network attribution fixed)
+
+After draining the NULL-network stores (996 → 26 via `refresh_stores.py`), the
+cross-network analysis was recomputed. `prices_current` was **byte-identical** to
+the first pass (15,536,700 rows; no fetch ran in between), so every shift below
+comes purely from corrected store→network attribution — chiefly that
+**discounters (PENNY, LIDL) are now properly included**, plus the authoritative
+store-element network id correcting some earlier name-pattern mis-tags.
+
+**Per-network store counts (corrected):** PROFI 1613, MEGA IMAGE 977, PENNY 439,
+LIDL 396, CARREFOUR 380, KAUFLAND 198, AUCHAN 53, SUPECO 26, SELGROS 23, CORA 11
+(+ 26 still unmapped). These supersede §2.
+
+**Same price across networks — now even rarer.** Including the discounters, which
+undercut, breaks most cross-chain modal-price ties:
+
+| Metric (base prices) | First pass | Corrected |
+|---|---|---|
+| Comparable products (≥2 chains) | 22,297 | 21,032 |
+| Identical modal price across all chains | 1,935 (8.7%) | **876 (4.2%)** |
+| …within 5% | 5,154 | 3,901 |
+| Robust core (≥3 chains, ≥3 stores) | 57 | **55** |
+
+The headline same-price share **halved (8.7% → 4.2%)** once discounters are in —
+a fragile 2-chain tie is easily broken by a cheaper discounter. But the **robust
+core barely moved (57 → 55)**: RRP-fixed branded goods stay identical even with
+discounters present, because discounters honour the RRP on them too.
+
+**Spread (base prices, well-stocked, n ≈ 19,150):** <1% 4.9%, 1–5% 13.8%,
+5–10% 14.9%, 10–25% 33.5%, 25–50% 20.6%, >50% 12.4% — i.e. **~81% still differ by
+>5%, ~66% by >10%.** Conclusion unchanged: cross-chain comparison is worthwhile,
+and identical pricing is a narrow, RRP-driven niche (now demonstrably narrower).
+
 ---
 
 ## 1. Scope & freshness
@@ -210,9 +251,14 @@ discounter and one premium outlier.
 1. **Unmapped stores grew 243 → 996** (`network_id IS NULL`; backfill last
    reported 243 on 2026-05-23). 964 of them are priced, holding **~2.9M current
    prices (~19% of the snapshot)** that are invisible to every cross-network
-   comparison. Names are bare addresses/banners ("MARKET …", "STR. …"). Likely
-   cause: resumed `discover_stores.py` adding stores faster than the name-pattern
-   backfill tags them. → backlog item filed.
+   comparison. Names are bare addresses/banners ("MARKET …", "STR. …"). **Root
+   cause (confirmed 2026-06-21):** the parser read `network_id` only from
+   product-level `Networkid`, which is skipped for zero-price products — so any
+   store with an all-zero batch was never tagged. **Fixed in `799d328`** (parse
+   `Retailnetwork > Id` from the store element + `COALESCE` upsert); the count
+   should drain as stores are re-fetched (gradually, full after one sweep). The
+   companion logo backfill is a weak fallback — store logos are format-specific
+   and won't exact-match the network logo, so it misses multi-format chains.
 2. **Rolling-window snapshot**, not single-day — 9% of current rows are >30 days
    stale. Fine for sticky retail prices, but cross-network comparisons mix
    prices captured up to ~4 weeks apart, which can create artificial spread when
