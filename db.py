@@ -43,7 +43,7 @@ def normalize_unit(unit):
 def init_db(path="data/prices.db"):
     conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS retail_networks (
         id      TEXT PRIMARY KEY,

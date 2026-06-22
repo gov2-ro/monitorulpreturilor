@@ -4,6 +4,19 @@
 
 ## General
 
+### 2026-06-22 — Fix SQLite lock contention between gas and retail fetchers
+
+Resolved recurring `sqlite3.OperationalError: database is locked` on `fetch_gas_prices`
+(6/10 history hits, run #937 most recent). Two changes:
+
+- **`db.py`**: increased `busy_timeout` from 30 000 ms → 60 000 ms (WAL mode was already
+  set; 30 s was too short when retail held a write lock during a large batch commit).
+- **Crontab + `scripts/crontab.template`**: moved gas cron from `5 3 * * *` → `40 3 * * *`.
+  The old 3:05 slot started gas 5 min into the 3:00 retail slice, which runs until ~3:28.
+  The new 3:40 slot also falls within a retail window (3:30–3:58) but WAL+busy_timeout
+  handles brief per-batch lock windows. Crucially, 3:40 avoids the Monday 3:00 reference
+  fetch collision that stacked two write-heavy jobs simultaneously.
+
 ### 2026-06-21 — refresh_stores.py: drain NULL-network stores (996 → 26)
 
 Built `refresh_stores.py`, a one-off that re-surfaces every store cheaply to

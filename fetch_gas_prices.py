@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import signal
+import sqlite3
 import sys
 import time
 from datetime import datetime, timezone
@@ -25,6 +26,8 @@ SLEEP_BETWEEN = 0.3  # seconds between requests
 # API only accepts one product ID per request (CSV returns 500)
 FUEL_IDS = [11, 12, 21, 22, 31, 41]
 CHECKPOINT_PATH = "data/gas_checkpoint.json"
+_DB_LOCK_RETRIES = 5       # Python-level retries after busy_timeout exhausted
+_DB_LOCK_INITIAL_SLEEP = 2.0  # seconds; doubles each attempt (2, 4, 8, 16, 32)
 
 
 def _load_checkpoint(path):
@@ -152,21 +155,33 @@ def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
 
                     stations, prices = parse_gas_items(root, fetched_at)
 
-                    # Commit before saving checkpoint so resume never loses data
-                    for s in stations:
-                        all_stations[s["id"]] = s
-                        upsert_gas_station(
-                            conn, s["id"], s["name"], s["addr"],
-                            s["lat"], s["lon"], s["uat_id"],
-                            s["network_id"], s["zipcode"], s["update_date"],
-                        )
-                    for p in prices:
-                        insert_gas_price(
-                            conn,
-                            p["product_id"], p["station_id"], p["price"],
-                            p["price_date"], p["fetched_at"],
-                        )
-                    conn.commit()
+                    for attempt in range(1, _DB_LOCK_RETRIES + 1):
+                        try:
+                            for s in stations:
+                                all_stations[s["id"]] = s
+                                upsert_gas_station(
+                                    conn, s["id"], s["name"], s["addr"],
+                                    s["lat"], s["lon"], s["uat_id"],
+                                    s["network_id"], s["zipcode"], s["update_date"],
+                                )
+                            for p in prices:
+                                insert_gas_price(
+                                    conn,
+                                    p["product_id"], p["station_id"], p["price"],
+                                    p["price_date"], p["fetched_at"],
+                                )
+                            conn.commit()
+                            break
+                        except sqlite3.OperationalError as exc:
+                            if "locked" not in str(exc) or attempt == _DB_LOCK_RETRIES:
+                                raise
+                            conn.rollback()
+                            delay = _DB_LOCK_INITIAL_SLEEP * (2 ** (attempt - 1))
+                            tqdm.write(
+                                f"  DB locked ({uat_name}/fuel={fuel_id}), "
+                                f"retry {attempt}/{_DB_LOCK_RETRIES} in {delay:.0f}s"
+                            )
+                            time.sleep(delay)
                     uat_prices += len(prices)
 
                     done.add(key)

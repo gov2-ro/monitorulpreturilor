@@ -17,8 +17,8 @@ SHELL=/bin/bash
 # spans more than a calendar day under the new re-entrant scheme.
 5 7 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 48b9dd2d-f5a1-4947-a154-e3aaa0f079da bash -c 'source venv/bin/activate && python check_runs.py --script fetch_prices --max-age-hours 36 >> data/logs/check-runs.log 2>&1'
 
-# Gas prices — daily 03:05 (staggered 5 min after retail cron to avoid init_db write-lock collision)
-5 3 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh d5454af9-13f6-44a4-9771-200426385592 bash -c 'source venv/bin/activate && python fetch_gas_prices.py >> data/logs/fetch-gas-prices.log 2>&1 && python check_runs.py --script fetch_gas_prices --max-age-hours 25 >> data/logs/check-runs.log 2>&1'
+# Gas prices — daily 03:40 (delayed past the 03:00 retail+reference window; WAL+busy_timeout=60s handles any residual overlap)
+40 3 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh d5454af9-13f6-44a4-9771-200426385592 bash -c 'source venv/bin/activate && python fetch_gas_prices.py >> data/logs/fetch-gas-prices.log 2>&1 && python check_runs.py --script fetch_gas_prices --max-age-hours 25 >> data/logs/check-runs.log 2>&1'
 
 # Daily audit — 06:00, after both fetchers have had time to start
 0 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh a440ce9b-0547-406f-836a-0570e0737fc6 bash -c 'source venv/bin/activate && python audit_pipeline.py >> data/logs/audit.log 2>&1 && python generate_pipeline_report.py >> data/logs/audit.log 2>&1'
