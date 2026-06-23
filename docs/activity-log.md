@@ -4,6 +4,12 @@
 
 ## General
 
+### 2026-06-23 — product_stats.py — most common products by store coverage
+
+New standalone script `product_stats.py`. Queries `prices_current` joined with stores, retail_networks, products, and categories to compute per-product: distinct store count, network count, avg/min/max price, and % of all stores. Outputs a terminal table (top 50 globally + top 3 per category by default) and `data/product_stats.csv`. Supports `--top N`, `--by-category N`, `--category NAME`, `--db`.
+
+Top findings: Merci Ciocolata + Jacobs Kronung lead at ~97% coverage (all 10 networks, 4,019/4,009 stores). Data quality issues spotted: Raffaello max price 1,804.90 RON (likely erroneous) and Redis L-Carnitin Ins miscategorized as BRANZETURI — both added to backlog. Also fixed CLAUDE.md venv path (`venv` → `.venv`).
+
 ### 2026-06-23 — Sentinel sampling mode wired into fetch_prices.py
 
 Implemented full sentinel sampling pipeline across three files:

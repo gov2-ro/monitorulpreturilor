@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Activate the project Python environment before running any scripts:
 ```
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 **TLS note:** `api.py` automatically merges `certifi`'s CA bundle with `data/extra_certs.pem`
