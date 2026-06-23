@@ -4,6 +4,28 @@
 
 ## General
 
+### 2026-06-23 — Geo-diverse sentinel store selection in analyze_price_similarity.py
+
+Updated sentinel store selection to combine product coverage with geographic spread. Instead of simply taking the top-N stores by product count (which clusters in Bucharest), the script now fetches top-20 by coverage then applies a greedy farthest-point algorithm: start with the highest-coverage store, each next pick is whichever remaining candidate is furthest (haversine) from all already-selected stores. Result: 3 stores that triangulate the country while still covering the broadest product catalog. Terminal output now shows km spread between sentinels and coordinates.
+
+### 2026-06-22 — Within-network price similarity analysis
+
+Built `analyze_price_similarity.py` — read-only analysis of how uniform prices are within each retail network × store type, to guide store sampling strategy. Uses `fetched_at`-bounded queries (handles the mixed `DD.MM.YYYY` / ISO `price_date` formats by querying on `fetched_at` instead). Produces terminal table + markdown report.
+
+**Key findings (30-day window, ≥3 stores per product×date):**
+
+| Tier | Networks | Criterion |
+|---:|---|---|
+| **A** | PENNY, LIDL, KAUFLAND, SUPECO, AUCHAN-Hypermarket | >80% products within 1% spread |
+| **B** | CARREFOUR-Hypermarket, MEGA IMAGE, AUCHAN-S&D, PROFI (both subtypes) | 40–75% within 1%, tail mostly within 10% |
+| **C** | CORA, SELGROS, PROFI-Unknown | >65% of products have >10% spread |
+
+Sentinel stores identified per Tier-A network (stores with broadest product coverage = best proxies for chain-wide pricing). Output: `docs/price-similarity-2026-06-22.md`.
+
+Notable: CARREFOUR Express (S&D) and CARREFOUR Hypermarket price very differently (42% vs 73% within 1%) — store type is a better predictor than network alone for Carrefour. CORA's 79% spread >10% is surprising given its limited store count; likely reflects genuine regional/format differentiation.
+
+Next step: wire Tier-A sentinel IDs into fetch sampling to reduce API calls for uniform chains.
+
 ### 2026-06-22 — Fix SQLite lock contention between gas and retail fetchers
 
 Resolved recurring `sqlite3.OperationalError: database is locked` on `fetch_gas_prices`
