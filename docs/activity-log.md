@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-06-23 — site: add most popular products section to index + tablou
+
+Added `load_popular_products()` to `generate_site.py` — queries `prices_current` joined with stores/networks/products/categories, returns top N products by store coverage with coverage %, avg price, network count. Surfaces on:
+- `index.html`: compact 10-row ranked section between stats and stories
+- `tablou.html`: full 20-row card in the dashboard grid
+- `analytics.html`: "Produse populare" tab now uses richer data (coverage %, avg price, network count) instead of the basic `v_product_popularity` view (blended rank / record count)
+
+Top result: Ciocolata Asortata Merci (98.0%), Jacobs Kronung Cafea (97.7%) — both in all 10 networks.
+
 ### 2026-06-23 — product_stats.py — most common products by store coverage
 
 New standalone script `product_stats.py`. Queries `prices_current` joined with stores, retail_networks, products, and categories to compute per-product: distinct store count, network count, avg/min/max price, and % of all stores. Outputs a terminal table (top 50 globally + top 3 per category by default) and `data/product_stats.csv`. Supports `--top N`, `--by-category N`, `--category NAME`, `--db`.

@@ -559,7 +559,7 @@ def load_analytics_data(conn):
     return {
         "price_variability": query(conn, "SELECT * FROM v_price_variability"),
         "cross_network":     query(conn, "SELECT * FROM v_cross_network_spread LIMIT 500"),
-        "popular_products":  query(conn, "SELECT * FROM v_product_popularity LIMIT 200"),
+        "popular_products":  load_popular_products(conn, top=200),
         "private_labels":    query(conn, "SELECT * FROM v_private_label_candidates LIMIT 100"),
         "stores_per_network": query(conn, "SELECT * FROM v_stores_per_network"),
         "price_freshness":   query(conn, "SELECT * FROM v_price_freshness LIMIT 30"),
@@ -634,6 +634,31 @@ def load_metodologie_stats(conn):
         """)[0]["n"],
         "uats_with_stores": query(conn, "SELECT COUNT(DISTINCT uat_id) AS n FROM stores WHERE uat_id IS NOT NULL")[0]["n"],
     }
+
+
+def load_popular_products(conn, top: int = 20) -> list[dict]:
+    """Top products by store coverage with price stats (prices_current snapshot)."""
+    total = conn.execute(
+        "SELECT COUNT(*) FROM stores WHERE is_active = 1"
+    ).fetchone()[0] or 1
+    return query(conn, f"""
+        SELECT
+            p.name,
+            COALESCE(c.name, '—')                          AS category,
+            COUNT(DISTINCT pc.store_id)                    AS store_count,
+            COUNT(DISTINCT n.id)                           AS network_count,
+            ROUND(AVG(pc.price), 2)                        AS avg_price,
+            ROUND(100.0 * COUNT(DISTINCT pc.store_id)
+                  / {total}, 1)                            AS coverage_pct
+        FROM prices_current pc
+        JOIN products      p  ON pc.product_id = p.id
+        JOIN stores        s  ON pc.store_id   = s.id
+        JOIN retail_networks n ON s.network_id = n.id
+        LEFT JOIN categories c ON p.categ_id  = c.id
+        GROUP BY pc.product_id
+        ORDER BY store_count DESC
+        LIMIT {top}
+    """)
 
 
 # ── Shared HTML components ──────────────────────────────────────────────
@@ -716,6 +741,26 @@ tr:hover td { background: #f8fafc; }
 .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
             opacity: .15; }
 .bar-text { position: relative; z-index: 1; }
+
+/* Popular products list */
+.pop-row { display:grid; grid-template-columns:22px 1fr auto auto auto; gap:10px;
+           align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+.pop-row:last-child { border-bottom:none; }
+.pop-rank { font-size:11px; color:var(--muted); font-weight:700; text-align:right; }
+.pop-info { min-width:0; }
+.pop-name { font-size:13.5px; font-weight:500; white-space:nowrap; overflow:hidden;
+            text-overflow:ellipsis; display:block; }
+.pop-cat { font-size:11px; color:var(--muted); display:block; margin-top:1px; }
+.pop-chip { display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:3px;
+            background:var(--primary-light); color:var(--primary); white-space:nowrap;
+            max-width:120px; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+.pop-cover { font-size:12px; font-weight:600; color:var(--success); white-space:nowrap; }
+.pop-price { font-size:12px; color:var(--muted); white-space:nowrap; text-align:right; }
+.pop-nets  { font-size:11px; color:var(--muted); white-space:nowrap; }
+@media (max-width:640px) {
+  .pop-row { grid-template-columns:20px 1fr auto auto; }
+  .pop-nets { display:none; }
+}
 
 /* Footer */
 .footer { text-align: center; padding: 32px 20px 24px; color: var(--muted); font-size: 12px; }
@@ -892,7 +937,41 @@ def jdump(obj):
 
 # ── Page generators ─────────────────────────────────────────────────────
 
-def gen_tablou(summary, price_index, fuel_prices, fuel_trends):
+def _popular_card(popular: list | None, title: str = "Cele mai răspândite produse",
+                  top: int = 20) -> str:
+    """Return a card HTML block listing the top N most ubiquitous products."""
+    if not popular:
+        return ""
+    rows_html = ""
+    for i, row in enumerate(popular[:top], 1):
+        name = row["name"][:55]
+        cat  = row["category"][:22]
+        pct  = row["coverage_pct"]
+        avg  = row["avg_price"]
+        nets = row["network_count"]
+        rows_html += (
+            f'<div class="pop-row">'
+            f'<span class="pop-rank">{i}</span>'
+            f'<div class="pop-info">'
+            f'<span class="pop-name" title="{row["name"]}">{name}</span>'
+            f'<span class="pop-cat"><span class="pop-chip">{cat}</span></span>'
+            f'</div>'
+            f'<span class="pop-nets">{nets} rețele</span>'
+            f'<span class="pop-cover">{pct}%</span>'
+            f'<span class="pop-price">{avg} RON</span>'
+            f'</div>'
+        )
+    return f"""
+    <div class="card" style="grid-column: 1 / -1;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <span class="card-title" style="margin:0">{title}</span>
+        <span style="font-size:12px;color:var(--muted)">% magazine active cu prețuri curente</span>
+      </div>
+      {rows_html}
+    </div>"""
+
+
+def gen_tablou(summary, price_index, fuel_prices, fuel_trends, popular=None):
     """Tablou de bord — dashboard for power users (formerly the homepage)."""
     # Fuel summary: cheapest network per fuel type
     fuel_by_type = {}
@@ -981,6 +1060,8 @@ def gen_tablou(summary, price_index, fuel_prices, fuel_trends):
       </div>
       <div class="chart-box" style="height:300px"><canvas id="dashFuelChart"></canvas></div>
     </div>'''}
+
+    {_popular_card(popular, title="Cele mai răspândite produse", top=20)}
   </div>
 </div>"""
 
@@ -1084,7 +1165,48 @@ if (fuelTrendRawDash.length) {{
     return page_shell("Tablou de bord", "tablou.html", body, extra_scripts=scripts)
 
 
-def gen_index(summary, price_index, fuel_prices, fuel_trends):
+def _popular_index_section(popular: list | None) -> str:
+    """Compact 10-row popular products section for the editorial homepage."""
+    if not popular:
+        return ""
+    rows_html = ""
+    for i, row in enumerate(popular[:10], 1):
+        name = row["name"][:52]
+        cat  = row["category"][:20]
+        pct  = row["coverage_pct"]
+        avg  = row["avg_price"]
+        nets = row["network_count"]
+        rows_html += (
+            f'<div class="pop-row">'
+            f'<span class="pop-rank">{i}</span>'
+            f'<div class="pop-info">'
+            f'<span class="pop-name" title="{row["name"]}">{name}</span>'
+            f'<span class="pop-cat"><span class="pop-chip">{cat}</span></span>'
+            f'</div>'
+            f'<span class="pop-nets">{nets} rețele</span>'
+            f'<span class="pop-cover">{pct}%</span>'
+            f'<span class="pop-price">{avg} RON</span>'
+            f'</div>'
+        )
+    return f"""<section aria-labelledby="s-pop" class="reveal">
+  <div class="section-title">
+    <h2 id="s-pop">Cele mai răspândite produse</h2>
+    <div class="after"><a href="analytics.html">date complete →</a></div>
+  </div>
+  <div class="card" style="padding:16px 20px">
+    <div class="pop-row" style="border-bottom:2px solid var(--border);padding-bottom:6px;margin-bottom:2px">
+      <span></span>
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Produs</span>
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Rețele</span>
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Acoperire</span>
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;text-align:right">Preț mediu</span>
+    </div>
+    {rows_html}
+  </div>
+</section>"""
+
+
+def gen_index(summary, price_index, fuel_prices, fuel_trends, popular=None):
     """Buletinul prețurilor — editorial homepage."""
     import datetime
 
@@ -1238,6 +1360,8 @@ def gen_index(summary, price_index, fuel_prices, fuel_trends):
     </div>
     <div class="stats">{stats_html}</div>
   </section>
+
+  {_popular_index_section(popular)}
 
   <section aria-labelledby="s02">
     <div class="section-title">
@@ -2090,7 +2214,7 @@ def gen_analytics(data):
     TABS = [
         ("price_variability",  "Variabilitate prețuri",    "Spread intra-rețea pe produs (outlier-filtrat, ultima dată)",                   "price_variability.csv"),
         ("cross_network",      "Diferențe inter-rețea",    "Raport preț max/min între rețele per produs (excl. SELGROS, min. 2 rețele)",     "cross_network_spread.csv"),
-        ("popular_products",   "Produse populare",         "Top 200 produse după acoperire în magazine și număr de înregistrări",            "popular_products.csv"),
+        ("popular_products",   "Produse populare",         "Top 200 produse după acoperire în magazine (% din total magazine active), cu prețuri și rețele",  "popular_products.csv"),
         ("private_labels",     "Mărci proprii",            "Produse găsite într-o singură rețea (candidați mărci proprii)",                  "private_labels.csv"),
         ("stores_per_network", "Magazine per rețea",       "Numărul total de magazine per lanț de retail",                                   "stores_per_network.csv"),
         ("price_freshness",    "Prospețime date",          "Numărul de înregistrări, magazine și produse per dată de preț",                  "price_freshness.csv"),
@@ -4417,6 +4541,7 @@ def main():
     fuel_trends     = load_fuel_trends(conn)
     compare_index   = load_compare_index(conn)
     analytics_data  = load_analytics_data(conn)
+    popular         = load_popular_products(conn, top=20)
     stores          = load_stores(conn)
     gas_stations    = load_gas_map_data(conn)
     metod_stats     = load_metodologie_stats(conn)
@@ -4428,8 +4553,8 @@ def main():
     conn.close()
 
     pages = {
-        "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends),
-        "tablou.html":      gen_tablou(summary, price_index, fuel_prices, fuel_trends),
+        "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends, popular),
+        "tablou.html":      gen_tablou(summary, price_index, fuel_prices, fuel_trends, popular),
         "cos.html":         gen_cos(),
         "anomalii.html":    gen_anomalii(),
         "categorii.html":   gen_categorii(),
