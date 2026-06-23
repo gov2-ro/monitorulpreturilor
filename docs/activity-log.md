@@ -4,6 +4,29 @@
 
 ## General
 
+### 2026-06-23 — Sentinel sampling mode wired into fetch_prices.py
+
+Implemented full sentinel sampling pipeline across three files:
+
+**`analyze_price_similarity.py`** — added `--export-sentinels PATH` flag. Writes `data/sentinel_stores.json` keyed by `network_id` (matching `stores.network_id`). Only includes networks where ALL store types are Tier A — mixed-type networks (e.g. AUCHAN with Hypermarket=A and S&D=B) are excluded so we don't propagate wrong prices across incompatible formats. Currently qualifies: PENNY, LIDL, KAUFLAND, SUPECO.
+
+**`db.py`** — added `propagate_network_prices(conn, source_store_id, target_store_ids, fetched_at)`. Copies `prices_current` from one store to many targets using SQL-level `INSERT … SELECT` (one statement per target store for efficiency). Writes to both `prices` history (INSERT OR IGNORE — skip if same price_date already recorded) and `prices_current` snapshot (upsert with `last_changed_at` guard — only bumped if price/promo actually differs).
+
+**`fetch_prices.py`** — sentinel mode loads `data/sentinel_stores.json` at startup (auto-disabled on ISO-week full-scan). In the anchor loop, anchors whose entire cluster is non-sentinel stores in a Tier-A network are skipped (`propagate_last_checked` to maintain freshness, no API call). After each sentinel anchor successfully fetches prices, `propagate_network_prices` fires once per network per run to copy the sentinel's prices to all non-sentinel stores. New `sentinel_skipped=N` counter in all SUMMARY log lines.
+
+**Expected impact** once `sentinel_stores.json` is generated:
+- KAUFLAND 198 stores → 3 sentinel queries (~655 anchors saved)
+- PENNY 439 → 3 (~145 anchors saved)
+- LIDL 396 → 3 (~130 anchors saved)
+- SUPECO 26 → 3 (~8 anchors saved)
+
+Weekly full-scan resets sentinel mode, so no store misses a direct query for more than 7 days. Accuracy caveat: ~10–15% of products in Tier-A networks vary regionally; propagated prices for those products use the sentinel's regional price until the weekly full-scan corrects them.
+
+**To activate on VPS:**
+```bash
+python analyze_price_similarity.py --days 30 --export-sentinels data/sentinel_stores.json
+```
+
 ### 2026-06-23 — Geo-diverse sentinel store selection in analyze_price_similarity.py
 
 Updated sentinel store selection to combine product coverage with geographic spread. Instead of simply taking the top-N stores by product count (which clusters in Bucharest), the script now fetches top-20 by coverage then applies a greedy farthest-point algorithm: start with the highest-coverage store, each next pick is whichever remaining candidate is furthest (haversine) from all already-selected stores. Result: 3 stores that triangulate the country while still covering the broadest product catalog. Terminal output now shows km spread between sentinels and coordinates.

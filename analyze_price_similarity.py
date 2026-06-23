@@ -6,15 +6,17 @@ For each network × store-type:
   - % products nationally uniform (<1% spread across stores on same date)
   - Spread distribution bucketed: 0-1%, 1-5%, 5-10%, >10%
   - 7-day rolling trend
-  - Top sentinel stores (broadest product coverage = best sampling proxy)
+  - Top sentinel stores (broadest product coverage + geographic spread)
   - Sampling tier recommendation: A (1-2 stores), B (5-10), C (full)
 
 Usage:
   python analyze_price_similarity.py [--days 30] [--network CARREFOUR] [--debug]
   python analyze_price_similarity.py --output docs/price-similarity-2026-06-22.md
+  python analyze_price_similarity.py --export-sentinels data/sentinel_stores.json
 """
 
 import argparse
+import json
 import sqlite3
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -353,11 +355,77 @@ def build_markdown(all_stats: dict, sentinels: dict, args, since: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def export_sentinels(all_stats: dict, sentinels: dict, conn: sqlite3.Connection,
+                     output_path: str, debug: bool):
+    """Write sentinel_stores.json for fetch_prices.py to consume.
+
+    Only includes networks where ALL store types are Tier A — mixed-type networks
+    (e.g. AUCHAN with Hypermarket=A and S&D=B) are excluded to avoid propagating
+    wrong prices across incompatible store formats.
+    """
+    # network_name → network_id mapping from DB
+    name_to_id = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT name, id FROM retail_networks")
+    }
+
+    # Collect per-network tiers and best sentinel set (from first Tier-A type entry)
+    from collections import defaultdict as _dd
+    network_type_tiers: dict = _dd(list)   # net_id → [tier, ...]
+    network_first_sentinels: dict = {}     # net_id → {network_name, sentinel_ids}
+
+    for (network, type_name), s in sorted(all_stats.items()):
+        buckets = s["buckets"]
+        total = sum(buckets)
+        if total == 0:
+            continue
+        pcts = [b / total * 100 for b in buckets]
+        t = tier(pcts[0], pcts[3])
+        net_id = name_to_id.get(network)
+        if not net_id:
+            if debug:
+                print(f"[debug] No network_id for {network!r} — skipping")
+            continue
+        network_type_tiers[net_id].append(t)
+        if t == "A" and net_id not in network_first_sentinels:
+            rows = sentinels.get(network, [])
+            if rows:
+                network_first_sentinels[net_id] = {
+                    "network_name": network,
+                    "sentinel_ids": [r["store_id"] for r in rows],
+                }
+
+    result = {}
+    skipped = []
+    for net_id, tiers_list in network_type_tiers.items():
+        if all(t == "A" for t in tiers_list) and net_id in network_first_sentinels:
+            cfg = network_first_sentinels[net_id]
+            result[net_id] = {"tier": "A", **cfg}
+        elif any(t == "A" for t in tiers_list):
+            cfg = network_first_sentinels.get(net_id, {})
+            skipped.append(f"{cfg.get('network_name', net_id)} (mixed types: {tiers_list})")
+
+    with open(output_path, "w") as f:
+        json.dump(result, f, indent=2)
+
+    print(f"\n[+] Sentinel config written to {output_path}")
+    print(f"    {len(result)} network(s) included (all types Tier A):")
+    for net_id, cfg in result.items():
+        print(f"    {net_id:30s}  {cfg['network_name']}: {cfg['sentinel_ids']}")
+    if skipped:
+        print(f"\n    Excluded (mixed types — would propagate wrong prices):")
+        for s in skipped:
+            print(f"    {s}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze within-network price similarity")
     parser.add_argument("--days", type=int, default=30, help="Look back N days (default: 30)")
     parser.add_argument("--network", help="Filter to a single network (e.g. CARREFOUR)")
     parser.add_argument("--output", help="Write markdown report to this path")
+    parser.add_argument("--export-sentinels", metavar="PATH",
+                        help="Write sentinel_stores.json for fetch_prices.py "
+                             "(e.g. data/sentinel_stores.json)")
     parser.add_argument("--trend", action="store_true", help="Print weekly trend breakdown")
     parser.add_argument("--debug", action="store_true", help="Verbose logging")
     args = parser.parse_args()
@@ -371,6 +439,7 @@ def main():
 
     if not rows:
         print("No data found for the given filters.")
+        conn.close()
         return
 
     all_stats = compute_network_stats(rows)
@@ -381,8 +450,6 @@ def main():
     for network in networks_to_scan:
         sentinels[network] = fetch_sentinel_stores(conn, network, since)
 
-    conn.close()
-
     print_summary_table(all_stats, sentinels, args)
     print_trend(all_stats, args)
 
@@ -391,6 +458,11 @@ def main():
         with open(args.output, "w") as f:
             f.write(md)
         print(f"\n[+] Report written to {args.output}")
+
+    if args.export_sentinels:
+        export_sentinels(all_stats, sentinels, conn, args.export_sentinels, args.debug)
+
+    conn.close()
 
 
 if __name__ == "__main__":

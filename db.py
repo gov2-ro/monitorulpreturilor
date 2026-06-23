@@ -636,6 +636,59 @@ def propagate_last_checked(conn, store_ids, fetched_at):
     conn.commit()
 
 
+def propagate_network_prices(conn, source_store_id, target_store_ids, fetched_at):
+    """Copy prices_current from a sentinel store to all non-sentinel stores in the same network.
+
+    Used by sentinel mode: after a Tier-A sentinel's prices are fetched, propagate
+    them to the non-sentinel stores so they stay current without individual API calls.
+    Accuracy caveat: ~10-15% of products in Tier-A networks vary regionally; those
+    products will get the sentinel's price until the weekly full-scan corrects them.
+
+    Writes to both prices (history, INSERT OR IGNORE) and prices_current (upsert).
+    Uses SQL-level INSERT … SELECT per target store for efficiency.
+    Returns number of target stores updated.
+    """
+    if not target_store_ids:
+        return 0
+
+    updated = 0
+    for target_id in target_store_ids:
+        conn.execute(
+            """INSERT OR IGNORE INTO prices
+               (product_id, store_id, price, price_date, promo, brand, unit,
+                retail_categ_id, retail_categ_name, fetched_at, last_checked_at)
+               SELECT product_id, ?, price, price_date, promo, brand, unit,
+                      retail_categ_id, retail_categ_name, ?, ?
+               FROM prices_current WHERE store_id = ?""",
+            (target_id, fetched_at, fetched_at, source_store_id),
+        )
+        conn.execute(
+            """INSERT INTO prices_current
+               (product_id, store_id, price, price_date, promo, brand, unit,
+                retail_categ_id, retail_categ_name, first_seen_at,
+                last_checked_at, last_changed_at)
+               SELECT product_id, ?, price, price_date, promo, brand, unit,
+                      retail_categ_id, retail_categ_name, ?, ?, ?
+               FROM prices_current WHERE store_id = ?
+               ON CONFLICT(product_id, store_id) DO UPDATE SET
+                 price=excluded.price, price_date=excluded.price_date,
+                 promo=excluded.promo, brand=excluded.brand, unit=excluded.unit,
+                 retail_categ_id=excluded.retail_categ_id,
+                 retail_categ_name=excluded.retail_categ_name,
+                 last_checked_at=excluded.last_checked_at,
+                 last_changed_at=CASE
+                   WHEN prices_current.price != excluded.price
+                     OR prices_current.promo != excluded.promo
+                   THEN excluded.last_changed_at
+                   ELSE prices_current.last_changed_at
+                 END""",
+            (target_id, fetched_at, fetched_at, fetched_at, source_store_id),
+        )
+        updated += 1
+    conn.commit()
+    return updated
+
+
 def insert_gas_price(conn, product_id, station_id, price, price_date, fetched_at,
                      last_checked_at=None):
     conn.execute(

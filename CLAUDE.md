@@ -24,6 +24,33 @@ python fetch_prices.py --resume  # re-run after adding new stores; skips already
 python generate_map.py           # regenerate site/stores_map.html from DB (run after store discovery)
 ```
 
+#### Sentinel sampling (fetch optimisation)
+
+For networks where prices are nationally uniform (Tier A), `fetch_prices.py` can query
+just 2–3 representative "sentinel" stores instead of all hundreds, then propagate their
+prices to every other store in the network. This reduces API calls to the sentinel stores
+only — the rest get prices written via SQL-level copy, no HTTP requests needed.
+
+**Setup (run once, then re-run weekly to refresh):**
+```bash
+# Analyse 30 days of data and write the sentinel config
+python analyze_price_similarity.py --days 30 --export-sentinels data/sentinel_stores.json
+```
+
+`fetch_prices.py` auto-loads `data/sentinel_stores.json` on startup if the file exists.
+Sentinel mode is **automatically disabled on the ISO-week full scan** (once every 7 days),
+so all stores are queried at least weekly and any pricing drift is caught.
+
+**Current Tier-A networks** (>80% products within 1% spread nationally):
+PENNY (96%), LIDL (91%), KAUFLAND (87%), SUPECO (90%) — totalling ~1,060 stores reduced to 12 sentinel queries.
+
+**Accuracy caveat:** ~10–15% of products in Tier-A networks vary regionally (mainly fresh
+produce). Propagated prices for those products will match the sentinel's region until the
+weekly full scan corrects them. This is acceptable for the consumer comparison use case.
+
+**CLAUDE.md sentinel config location:** `data/sentinel_stores.json` (gitignored if you
+want VPS-only config, or committed if you want it in sync).
+
 ### Gas
 ```bash
 python fetch_gas_reference.py    # one-shot: fetch gas networks + fuel product types
@@ -47,9 +74,10 @@ Six Python modules, stdlib + `requests` + `sqlite3` + `tqdm` only:
 | `db.py` | `init_db(path)` creates all tables; upsert helpers for retail and gas |
 | `api.py` | `fetch_xml(url)` with retry/backoff; all parsers; `centroid_from_wkt(wkt)` |
 | `fetch_reference.py` | Retail: run once/weekly — networks, UATs, categories, products |
-| `fetch_prices.py` | Retail: run daily — iterates stores × product batches; cluster-based anchor deduplication |
+| `fetch_prices.py` | Retail: run daily — iterates stores × product batches; cluster-based anchor deduplication; sentinel mode |
 | `fetch_gas_reference.py` | Gas: run once/weekly — gas networks + fuel product types |
 | `fetch_gas_prices.py` | Gas: run daily — one request per UAT covers all 6 fuel types; 0.3 s sleep |
+| `analyze_price_similarity.py` | Analysis: per-network × store-type spread distribution + sentinel store selection; `--export-sentinels` writes `data/sentinel_stores.json` |
 
 ### Retail database tables (`data/prices.db`)
 

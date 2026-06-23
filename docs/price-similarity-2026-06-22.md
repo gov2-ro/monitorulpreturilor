@@ -1,26 +1,26 @@
 # Price Similarity Analysis — 2026-06-23
 
-**Period:** last 30 days (fetched_at ≥ 2026-05-23)
+**Period:** last 30 days (fetched_at ≥ 2026-05-24)
 **Scope:** products with ≥3 stores on the same date in the same network×type
 
 ## Network Uniformity Summary
 
 | Network | Type | Products | <1% | 1–5% | 5–10% | >10% | Tier |
 |---|---|---:|---:|---:|---:|---:|:---:|
-| AUCHAN | Hypermarket | 1,360 | 91.9% | 1.1% | 1.0% | 6.0% | **A** |
-| AUCHAN | Supermarket & Discounter | 282 | 75.8% | 11.8% | 3.7% | 8.6% | **B** |
-| CARREFOUR | Hypermarket | 4,311 | 73.0% | 21.0% | 2.1% | 4.0% | **B** |
-| CARREFOUR | Supermarket & Discounter | 3,216 | 42.6% | 13.2% | 19.1% | 25.2% | **B** |
-| CORA | Hypermarket | 312 | 6.0% | 5.6% | 9.7% | 78.7% | **C** |
-| KAUFLAND | Hypermarket | 2,872 | 87.0% | 1.4% | 0.9% | 10.7% | **A** |
-| LIDL DISCOUNT SRL | Supermarket & Discounter | 1,182 | 91.1% | 0.4% | 0.3% | 8.2% | **A** |
-| MEGA IMAGE SRL | Supermarket & Discounter | 4,060 | 71.1% | 5.6% | 12.2% | 11.1% | **B** |
-| PENNY | Supermarket & Discounter | 1,403 | 96.1% | 0.1% | 0.4% | 3.4% | **A** |
-| PROFI | Supermarket | 1,545 | 45.7% | 12.8% | 12.8% | 28.7% | **B** |
-| PROFI | Supermarket & Discounter | 1,453 | 41.3% | 13.9% | 19.6% | 25.2% | **B** |
-| PROFI | Unknown | 26 | 22.6% | 3.2% | 6.5% | 67.7% | **C** |
-| SELGROS | Cash & Carry | 78 | 6.9% | 14.9% | 12.4% | 65.8% | **C** |
-| SUPECO | Supermarket & Discounter | 369 | 90.3% | 2.1% | 3.0% | 4.7% | **A** |
+| AUCHAN | Hypermarket | 1,209 | 91.1% | 1.3% | 1.1% | 6.5% | **A** |
+| AUCHAN | Supermarket & Discounter | 263 | 74.6% | 12.9% | 3.1% | 9.4% | **B** |
+| CARREFOUR | Hypermarket | 2,401 | 78.8% | 16.1% | 1.7% | 3.4% | **B** |
+| CARREFOUR | Supermarket & Discounter | 2,038 | 45.6% | 13.1% | 18.6% | 22.6% | **B** |
+| CORA | Hypermarket | 120 | 6.5% | 5.2% | 9.7% | 78.6% | **C** |
+| KAUFLAND | Hypermarket | 2,846 | 87.8% | 1.3% | 0.8% | 10.0% | **A** |
+| LIDL DISCOUNT SRL | Supermarket & Discounter | 1,050 | 91.2% | 0.4% | 0.3% | 8.1% | **A** |
+| MEGA IMAGE SRL | Supermarket & Discounter | 3,828 | 70.9% | 5.6% | 12.2% | 11.2% | **B** |
+| PENNY | Supermarket & Discounter | 1,236 | 96.4% | 0.0% | 0.5% | 3.1% | **A** |
+| PROFI | Supermarket | 1,195 | 46.9% | 12.2% | 12.8% | 28.1% | **B** |
+| PROFI | Supermarket & Discounter | 1,324 | 41.8% | 13.5% | 20.0% | 24.7% | **B** |
+| PROFI | Unknown | 2 | 0.0% | 0.0% | 20.0% | 80.0% | **C** |
+| SELGROS | Cash & Carry | 43 | 10.3% | 16.7% | 15.9% | 57.1% | **C** |
+| SUPECO | Supermarket & Discounter | 186 | 95.5% | 0.3% | 3.1% | 1.1% | **A** |
 
 ## Tier Definitions
 
@@ -34,55 +34,45 @@
 
 ### Tier A
 
-**AUCHAN / Hypermarket** — top sentinel stores:
+**AUCHAN / Hypermarket** — sentinel stores (spread 434 km):
 
-| store_id | Name | Products covered |
-|---:|---|---:|
-| 2533 | AUCHAN DRUMUL TABEREI | 1,434 |
-| 2520 | AUCHAN BAIA MARE | 925 |
-| 2539 | AUCHAN PITESTI BRADU | 884 |
-| 2545 | AUCHAN TARGU MURES | 869 |
-| 2550 | AUCHAN TITAN | 802 |
+| store_id | Name | Products | Lat | Lon |
+|---:|---|---:|---:|---:|
+| 2533 | AUCHAN DRUMUL TABEREI | 1,424 | 44.417 | 26.036 |
+| 2537 | AUCHAN ORADEA | 649 | 47.047 | 21.909 |
+| 2544 | AUCHAN SUCEAVA | 460 | 47.659 | 26.272 |
 
-**KAUFLAND / Hypermarket** — top sentinel stores:
+**KAUFLAND / Hypermarket** — sentinel stores (spread 449 km):
 
-| store_id | Name | Products covered |
-|---:|---|---:|
-| 1401 | Kaufland Bucuresti T Vladimirescu | 2,488 |
-| 10946 | KAUFLAND VOLUNTARI - BD.PIPERA | 2,469 |
-| 1449 | Kaufland Bucuresti Vulcan | 2,442 |
-| 11238 | KAUFLAND BUCURESTI ANDRONACHE | 2,413 |
-| 9973 | KAUFLAND PIPERA FABRICA DE GLUCOZA | 2,391 |
+| store_id | Name | Products | Lat | Lon |
+|---:|---|---:|---:|---:|
+| 1401 | Kaufland Bucuresti T Vladimirescu | 2,486 | 44.418 | 26.039 |
+| 1425 | Kaufland Timisoara D. Bojinca | 1,380 | 45.739 | 21.213 |
+| 1438 | Kaufland Bacau | 1,249 | 46.571 | 26.917 |
 
-**LIDL DISCOUNT SRL / Supermarket & Discounter** — top sentinel stores:
+**LIDL DISCOUNT SRL / Supermarket & Discounter** — sentinel stores (spread 443 km):
 
-| store_id | Name | Products covered |
-|---:|---|---:|
-| 11708 | Turda | 1,705 |
-| 10877 | Timisoara\Balea | 942 |
-| 3303 | Bucuresti/Stefan Crisan | 929 |
-| 7025 | Timişoara 8 | 873 |
-| 3191 | Timisoara/Miresei | 857 |
+| store_id | Name | Products | Lat | Lon |
+|---:|---|---:|---:|---:|
+| 11708 | Turda | 1,705 | 46.564 | 23.779 |
+| 3218 | Popesti Leordeni/Oltenitei | 675 | 44.381 | 26.153 |
+| 7974 | Oradea 5 | 551 | 47.043 | 21.901 |
 
-**PENNY / Supermarket & Discounter** — top sentinel stores:
+**PENNY / Supermarket & Discounter** — sentinel stores (spread 450 km):
 
-| store_id | Name | Products covered |
-|---:|---|---:|
-| 1664 | Sos. Virtutii, 148A, sector 6 | 883 |
-| 6358 | Strada 23 August, 234-238 | 857 |
-| 1683 | Str. V.V. Stanciu, 213, Sector 4 | 848 |
-| 1739 | Bd. Tmisoara, 8-10, sector 6 | 813 |
-| 1714 | Str. Fundeni, 38-40, sector 2 | 755 |
+| store_id | Name | Products | Lat | Lon |
+|---:|---|---:|---:|---:|
+| 1664 | Sos. Virtutii, 148A, sector 6 | 864 | 44.452 | 26.047 |
+| 11402 | LOC. LAZURI, NR.255A | 440 | 47.852 | 22.879 |
+| 6844 | Strada STEFANA, nr 2., Mosnita Noua | 474 | 45.723 | 21.299 |
 
-**SUPECO / Supermarket & Discounter** — top sentinel stores:
+**SUPECO / Supermarket & Discounter** — sentinel stores (spread 442 km):
 
-| store_id | Name | Products covered |
-|---:|---|---:|
-| 7258 | Supeco Galati | 366 |
-| 7266 | Supeco Titan | 353 |
-| 7267 | Supeco Cluj | 339 |
-| 7259 | Supeco Craiova | 335 |
-| 7260 | Supeco Focsani | 328 |
+| store_id | Name | Products | Lat | Lon |
+|---:|---|---:|---:|---:|
+| 7277 | Supeco Bacau | 214 | 46.581 | 26.914 |
+| 7279 | Supeco Arad | 153 | 46.172 | 21.346 |
+| 8228 | Supeco Giurgiu | 147 | 43.900 | 25.963 |
 
 ### Tier B
 - **AUCHAN / Supermarket & Discounter**
