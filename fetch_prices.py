@@ -1017,6 +1017,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                             status = "CHANGED" if net in canary_changed else "uniform"
                             tqdm.write(f"  Canary: {net} reached {threshold} stores — {status}")
                 total_prices += store_prices
+                # Freshen last_checked_at for all covered stores, including those that
+                # returned 0 prices (weekly-tier products excluded → no upserts fired).
+                # Mirrors the tier-skip and sentinel-skip paths which already do this.
+                propagate_last_checked(conn, anchor_store_ids, fetched_at)
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
                 # Anchor fully fetched — drop its in-flight list and checkpoint once.

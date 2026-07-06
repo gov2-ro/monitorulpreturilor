@@ -4,6 +4,20 @@
 
 ## General
 
+### 2026-07-06 — fix: propagate_last_checked missing from API fetch path
+
+**Problem identified via pipeline-check:** `store_freshness` has been RED for 6+ consecutive days, worsening from 14% → 21% stale. Drill-down showed PROFI with 855 stale stores, oldest 72 days — matching when the weekly store tier was introduced.
+
+**Root cause:** `propagate_last_checked` was called in the tier-skip, sentinel-skip, and canary-skip paths but NOT after an actual API fetch. PROFI weekly-tier stores that end up in mixed clusters (alongside daily-tier stores from other networks) bypass all skip paths and go through the API fetch. Their products are excluded by the product-level weekly tier, so the API returns 0 PROFI prices. With no upserts fired, their `last_checked_at` never updates and they accumulate as stale indefinitely.
+
+**Fix (`fetch_prices.py` ~line 1019):** Added `propagate_last_checked(conn, anchor_store_ids, fetched_at)` immediately after `total_prices += store_prices` — mirrors what the tier-skip and sentinel-skip paths already do. Now ALL stores in a cluster get their `last_checked_at` freshened after each anchor is processed, whether or not prices were returned.
+
+### 2026-06-24 — refresh_stores.py: post-activation price catch-up export
+
+Added stale-store export to `refresh_stores.py`. After each run, queries `prices_current` for all seen stores with no prices or `last_checked_at` older than 2 days, writes their IDs to `data/catch_up_store_ids.txt`, and prints the follow-up command (`fetch_prices.py --store-ids-file ...  --fresh`). This fixes the recurring `store_freshness` RED that appears after `refresh_stores.py` activates NULL-network stores — they now have an immediate actionable path to get prices rather than waiting days for the weekly tier to reach them.
+
+Also generated `data/catch_up_store_ids.txt` manually for the 557 stores currently stale.
+
 ### 2026-06-23 — site: add most popular products section to index + tablou
 
 Added `load_popular_products()` to `generate_site.py` — queries `prices_current` joined with stores/networks/products/categories, returns top N products by store coverage with coverage %, avg price, network count. Surfaces on:
