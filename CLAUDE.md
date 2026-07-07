@@ -51,6 +51,29 @@ weekly full scan corrects them. This is acceptable for the consumer comparison u
 **CLAUDE.md sentinel config location:** `data/sentinel_stores.json` (gitignored if you
 want VPS-only config, or committed if you want it in sync).
 
+#### Official inflation overlay (Inflație page)
+
+The `inflatie.html` civic index is anchored against the *official* figure so it
+reads as credible rather than as an isolated prototype. Two sources:
+
+```bash
+# Monthly: pull Romania's HICP (Eurostat) into the official_cpi table.
+# Automatable, no auth. Publishes ~2 weeks after month-end, which is what lets
+# our daily basket data nowcast the current month ahead of it.
+python fetch_official_cpi.py            # [--since YYYY-MM] [--debug]
+```
+
+- `fetch_official_cpi.py` → Eurostat dataset `prc_hicp_minr` (ECOICOP v2), Romania,
+  `TOTAL`→`CP00` (all-items) and `CP01` (food). Stores `I25` index + `RCH_M`/`RCH_A`
+  (Eurostat-computed MoM/YoY) in `official_cpi (source,coicop,period,…)`.
+- `config/ins_ipc.json` — **human-maintained** national INS IPC headline (the
+  number Romanians recognise). Update once a month from the INS press release
+  (~30 s): https://insse.ro/cms/ro/tags/comunicat-indicele-preturilor-de-consum
+- `build_cpi.py` merges both into `site/data/cpi.json` (keys `official`,
+  `ins_headline`, `our_monthly`, `nowcast`); `gen_inflatie` renders the MoM
+  overlay + nowcast callout. All keys degrade gracefully if official data is
+  absent. Comparison is **rate-of-change only** (HICP basket ≠ ours).
+
 ### Gas
 ```bash
 python fetch_gas_reference.py    # one-shot: fetch gas networks + fuel product types

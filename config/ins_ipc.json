@@ -1,0 +1,12 @@
+{
+  "_comment": "Human-maintained. Update once a month when INS publishes the IPC press release (~mid-month, for the prior month). Source: https://insse.ro/cms/ro/tags/comunicat-indicele-preturilor-de-consum — open the latest 'MAI/IUNIE… 20xx' PDF and copy the figures below. This is the recognizable NATIONAL IPC headline; the automated chart/nowcast uses Eurostat HICP (see fetch_official_cpi.py).",
+  "period": "2026-05",
+  "period_ro": "mai 2026",
+  "all_items_annual": 10.9,
+  "all_items_monthly": 0.58,
+  "avg_12m": 9.4,
+  "harmonized_annual": 9.7,
+  "food_annual": null,
+  "source": "INS — Comunicat IPC",
+  "source_url": "https://insse.ro/cms/sites/default/files/com_presa/com_pdf/ipc05r26_0.pdf"
+}

@@ -2946,8 +2946,10 @@ def gen_inflatie() -> str:
 <script>
 (function(){
   const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const FMT1 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:1, maximumFractionDigits:1});
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const pctFmt = v => (v==null ? '—' : (v>0?'+':'') + FMT1.format(v) + '%');
 
   const COLORS = ['#2563eb','#16a34a','#f59e0b','#ef4444'];
   const BASKET_COLORS = {camara:'#2563eb', student:'#16a34a', copt:'#f59e0b', sarbatori:'#ef4444'};
@@ -2960,9 +2962,16 @@ def gen_inflatie() -> str:
       document.getElementById('cpi-dates').textContent =
         `${d.n_dates} zile de date: ${d.first_date} → ${d.last_date}`;
 
+      // Our civic index vs the official figure (Eurostat HICP + INS headline)
+      renderVsOfficial(d);
+
       // Trend chart — cost_month per basket over dates
-      // Use short date labels
-      const labels = d.dates.map(dt => dt.slice(0,5)); // DD.MM
+      // Short DD.MM labels; handle both ISO (YYYY-MM-DD) and legacy DD.MM.YYYY
+      const labels = d.dates.map(dt => {
+        const s = String(dt), iso = s.slice(0,10);
+        return (iso.length === 10 && iso[4] === '-')
+          ? iso.slice(8,10) + '.' + iso.slice(5,7) : s.slice(0,5);
+      });
 
       const datasets = d.baskets.map((b, i) => ({
         label: b.name_ro,
@@ -3009,6 +3018,110 @@ def gen_inflatie() -> str:
       document.getElementById('cpi-chart-wrap').innerHTML =
         `<div style="padding:30px;color:#991b1b;background:#fee2e2;border-radius:8px">Eroare: ${esc(err.message)}</div>`;
     });
+
+  function kpi(value, label, color) {
+    return `<div class="kpi"><div class="kpi-value" style="color:${color}">${value}</div>`
+         + `<div class="kpi-label">${label}</div></div>`;
+  }
+
+  function renderVsOfficial(d) {
+    const off = d.official, ins = d.ins_headline, nc = d.nowcast, ours = d.our_monthly || [];
+    // A provisional (in-progress month) nowcast built from too few days is noise, not
+    // signal — hold the number back until enough days accumulate, so the credibility
+    // story isn't undercut by a spurious partial-month spike.
+    const NOWCAST_MIN_POINTS = 10;
+    const ncTooEarly = nc && nc.provisional && (nc.n_points || 0) < NOWCAST_MIN_POINTS;
+    const ncShow = nc && nc.our_mom_pct != null && !ncTooEarly;
+
+    // KPI tiles — official food (HICP), national headline (INS), our nowcast
+    const tiles = [];
+    if (off && off.food_latest)
+      tiles.push(kpi(pctFmt(off.food_latest.yoy),
+        `Alimente, oficial (HICP) — anual, ${esc(off.food_latest.period)}`, 'var(--primary)'));
+    if (ins && ins.all_items_annual != null)
+      tiles.push(kpi(pctFmt(ins.all_items_annual),
+        `Total, oficial (INS) — anual, ${esc(ins.period_ro || ins.period)}`, 'var(--text)'));
+    if (ncShow)
+      tiles.push(kpi(pctFmt(nc.our_mom_pct),
+        `Coșul nostru de alimente — lunar, ${esc(nc.our_month)}${nc.provisional ? ' (provizoriu)' : ''}`,
+        'var(--success)'));
+    else if (ncTooEarly)
+      tiles.push(kpi('—',
+        `Coșul nostru — se acumulează date (${nc.n_points} ${nc.n_points === 1 ? 'zi' : 'zile'} din ${esc(nc.our_month)})`,
+        'var(--muted)'));
+    document.getElementById('vs-kpis').innerHTML = tiles.join('');
+
+    // Nowcast callout
+    const co = document.getElementById('nowcast-callout');
+    if (ncTooEarly) {
+      co.innerHTML = `<b>Estimare în curs:</b> pentru <b>${esc(nc.our_month)}</b> avem deocamdată `
+        + `${nc.n_points} ${nc.n_points === 1 ? 'zi' : 'zile'} de date — prea puține pentru o `
+        + `estimare lunară stabilă. Estimarea timpurie apare după cel puțin ${NOWCAST_MIN_POINTS} zile de colectare.`
+        + (off && nc.official_food_month
+            ? ` Ultima cifră oficială pentru alimente: <b>${esc(nc.official_food_month)}</b> `
+              + `(${pctFmt(off.food_latest.yoy)} anual, ${pctFmt(off.food_latest.mom)} lunar).`
+            : '');
+      co.style.display = 'block';
+    } else if (ncShow) {
+      if (off && nc.official_food_month) {
+        co.innerHTML = `<b>Estimare timpurie:</b> inflația oficială pentru alimente e publicată `
+          + `până în <b>${esc(nc.official_food_month)}</b> (${pctFmt(off.food_latest.yoy)} anual, `
+          + `${pctFmt(off.food_latest.mom)} lunar). Din prețurile de raft, estimăm pentru `
+          + `<b>${esc(nc.our_month)}</b> o variație lunară de <b>${pctFmt(nc.our_mom_pct)}</b> a `
+          + `coșului de alimente${nc.ahead_of_official ? ' — înainte ca INS/Eurostat să publice luna respectivă' : ''}. `
+          + `Estimare provizorie.`;
+      } else {
+        co.innerHTML = `<b>Estimarea noastră:</b> pentru <b>${esc(nc.our_month)}</b>, coșul de alimente a `
+          + `variat cu <b>${pctFmt(nc.our_mom_pct)}</b> față de luna precedentă. `
+          + `(Seria oficială apare după rularea <code>fetch_official_cpi.py</code>.)`;
+      }
+      co.style.display = 'block';
+    }
+
+    // Monthly rate-of-change chart — our food basket vs official HICP food
+    const wrap = document.getElementById('vs-chart-wrap');
+    const monthsSet = new Set(ours.map(m => m.month));
+    if (off && off.food) off.food.forEach(m => monthsSet.add(m.period));
+    const months = [...monthsSet].sort();
+    if (!months.length) { wrap.style.display = 'none'; }
+    else {
+      const ourMap = Object.fromEntries(ours.map(m => [m.month, m.mom_pct]));
+      const offMap = (off && off.food) ? Object.fromEntries(off.food.map(m => [m.period, m.mom])) : {};
+      const ds = [{
+        label: 'Coșul nostru (alimente) — %/lună',
+        data: months.map(m => (m in ourMap ? ourMap[m] : null)),
+        borderColor: '#16a34a', backgroundColor: '#16a34a22',
+        tension: 0.3, spanGaps: false, pointRadius: 4,
+      }];
+      if (off && off.food) ds.push({
+        label: 'Oficial HICP alimente — %/lună',
+        data: months.map(m => (m in offMap ? offMap[m] : null)),
+        borderColor: '#2563eb', backgroundColor: '#2563eb22', borderDash: [6, 4],
+        tension: 0.3, spanGaps: false, pointRadius: 4,
+      });
+      new Chart(document.getElementById('vs-chart'), {
+        type: 'line', data: { labels: months, datasets: ds },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'top' },
+            tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${pctFmt(ctx.raw)}` } } },
+          scales: { y: { title: { display: true, text: 'variație lunară %' } },
+                    x: { title: { display: true, text: 'Lună' } } },
+        },
+      });
+    }
+
+    // Source note
+    const bits = [];
+    if (off && off.food_latest)
+      bits.push(`Oficial: Eurostat HICP (RO), `
+        + `<a href="https://ec.europa.eu/eurostat/databrowser/product/view/prc_hicp_minr" target="_blank" rel="noopener">prc_hicp_minr</a>, `
+        + `până în ${esc(off.food_latest.period)}.`);
+    if (ins && ins.source_url)
+      bits.push(`Referință națională: <a href="${esc(ins.source_url)}" target="_blank" rel="noopener">`
+        + `${esc(ins.source || 'INS')}</a> (${esc(ins.period_ro || ins.period)}).`);
+    document.getElementById('vs-source').innerHTML = bits.join(' ');
+  }
 })();
 </script>
 """
@@ -3019,6 +3132,23 @@ def gen_inflatie() -> str:
 
   <div class="cos-disclaimer" id="cpi-caveat" style="background:#fef9c3;color:#78350f"></div>
   <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="cpi-dates"></p>
+
+  <div class="card" id="vs-official-card">
+    <div class="card-title">Inflația noastră vs. cea oficială</div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0">
+      Comparăm variația <b>lunară</b> a coșului nostru de alimente (prețuri reale de raft) cu inflația
+      oficială pentru alimente publicată de Eurostat (HICP) și cu rata oficială națională (INS).
+      Comparăm <em>ritmuri de schimbare</em>, nu niveluri — coșurile și ponderile diferă.
+    </p>
+    <div class="kpi-grid" id="vs-kpis" style="margin-bottom:14px"></div>
+    <div id="nowcast-callout" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;
+         color:#1e3a8a;border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.55;
+         margin-bottom:14px"></div>
+    <div id="vs-chart-wrap" style="height:320px;position:relative;margin-top:12px">
+      <canvas id="vs-chart"></canvas>
+    </div>
+    <p id="vs-source" style="font-size:11.5px;color:var(--muted);margin-top:10px"></p>
+  </div>
 
   <div class="card">
     <div class="card-title">Cost lunar coș — evoluție zilnică</div>
@@ -3045,13 +3175,17 @@ def gen_inflatie() -> str:
   </div>
 
   <div class="card">
-    <div class="card-title">Metodologie</div>
+    <div class="card-title">Metodologie & surse</div>
     <p style="font-size:14px;line-height:1.6">
-      Urmărim costul total al fiecărui coș de produse stabile, folosind cel mai mic preț disponibil la orice rețea în ziua respectivă (after filtrare outlieri). Aceasta este o aproximare Laspeyres simplificată — cantitățile rămân fixe (definite în <code>config/baskets.json</code>), iar prețurile se actualizează zilnic.
+      Urmărim costul total al fiecărui coș de produse stabile, folosind cel mai mic preț disponibil la orice rețea în ziua respectivă (după filtrare outlieri). Aceasta este o aproximare Laspeyres simplificată — cantitățile rămân fixe (definite în <code>config/baskets.json</code>), iar prețurile se actualizează zilnic.
       <br><br>
-      <b>Limitare importantă:</b> cu {n} zile de date, variațiile zi-la-zi reflectă și fluctuații de acoperire (câte magazine au fost interogați azi vs ieri), nu doar modificări reale de preț. Semnalul devine robust după ~4 săptămâni de colectare consecventă. Până atunci, folosiți acest grafic ca <em>schelet</em>, nu ca indicator definitiv.
+      <b>Comparația cu inflația oficială.</b> Linia „oficial” provine din Eurostat — <b>Indicele Armonizat al Prețurilor de Consum (HICP)</b> pentru România, categoria „alimente și băuturi nealcoolice” (CP01), actualizat lunar. HICP este cifra oficială europeană, derivată din datele INS, dar folosește un coș ponderat pe consum, diferit de coșul nostru de produse selectate. De aceea comparăm doar <em>ritmul de schimbare</em> (variația lunară/anuală), niciodată valorile absolute. Rata națională INS (IPC) diferă ușor de HICP — de exemplu, în mai 2026 INS a raportat 10,9% anual (IPC național) față de 9,7% (HICP armonizat).
       <br><br>
-      Detalii complete: <a href="metodologie.html">pagina de metodologie</a>.
+      <b>Nowcast.</b> Datele oficiale se publică la ~2 săptămâni după încheierea lunii. Fiindcă noi colectăm zilnic, putem estima luna în curs <em>înainte</em> de publicarea oficială — o marcăm explicit drept provizorie, apoi o comparăm cu cifra reală când apare.
+      <br><br>
+      <b>Limitare importantă:</b> cu puține săptămâni de date, variațiile zi-la-zi reflectă și fluctuații de acoperire (câte magazine au fost interogate azi vs ieri), nu doar modificări reale de preț. Semnalul devine robust după ~4 săptămâni de colectare consecventă.
+      <br><br>
+      Surse: <a href="https://ec.europa.eu/eurostat/databrowser/product/view/prc_hicp_minr" target="_blank" rel="noopener">Eurostat HICP</a> · <a href="https://insse.ro/cms/ro/tags/comunicat-indicele-preturilor-de-consum" target="_blank" rel="noopener">INS — comunicate IPC</a> · <a href="metodologie.html">metodologia completă</a>.
     </p>
   </div>
 </div>

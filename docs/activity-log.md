@@ -4,6 +4,25 @@
 
 ## General
 
+### 2026-07-07 — Inflație page: guard the nowcast against noisy partial months + ship
+
+**Why:** the current-month nowcast was reading +4.7% MoM off only 5 early-July data points. On a page whose whole point is *credibility*, a spurious partial-month spike undercuts the message more than a missing number would.
+
+- **`generate_site.py`** (`renderVsOfficial`): added `NOWCAST_MIN_POINTS = 10`. When the provisional (in-progress) month has fewer days than that, the KPI tile shows `—` ("se acumulează date, N zile") and the callout switches to an "Estimare în curs" message instead of a precise-looking percentage. Once ≥10 days accumulate, the real nowcast renders. Completed months are unaffected (they always have ~30 points).
+- Regenerated the full static site (`site/*.html`) from the rebuilt `cpi.json` (169 dates; `official` HICP through 2026-05, `ins_headline`, `our_monthly` 4 months, `nowcast`). `site/` is gitignored build output — this run was to eyeball `inflatie.html`; the commit carries only the source changes.
+- Follow-up noted in backlog: the `api.py:212` `_parse_date` still emits legacy `DD.MM.YYYY`, so each fetch re-adds old-format dates (25.9M ISO + 6.9M DD.MM in `prices`). `month_key()` normalizes both for the overlay, but the daily-chart x-axis ordering is still affected — worth fixing at the source.
+
+### 2026-07-06 — Civic inflation vs official (Eurostat HICP + INS) on the Inflație page
+
+**Why:** the `inflatie.html` civic index tracked our basket cost but had nothing to anchor against, so it read as an isolated prototype. Anchoring it to the official figure — and, crucially, *nowcasting* the current month before the official number is published (~2 weeks after month-end) — turns it into a credibility feature.
+
+- **`fetch_official_cpi.py`** (new): pulls Romania's HICP from Eurostat `prc_hicp_minr` (ECOICOP v2) — `TOTAL`→`CP00` (all-items) and `CP01` (food) — storing `I25` index + Eurostat-computed `RCH_M`/`RCH_A` into a new `official_cpi` table. Generic JSON-stat linear-index parser (no hard-coded dimension positions). Monthly cron; no auth. The dimension is `coicop18` (not `coicop`) and all-items is `TOTAL` (not `CP00`) — codes verified against the live API.
+- **`db.py`**: added `official_cpi` table via a standalone `ensure_official_cpi_table()` (kept out of the heavy `init_db()` migration path so the fetcher can guarantee the table without triggering unrelated ALTER/UPDATE writes) + `upsert_official_cpi()`.
+- **`config/ins_ipc.json`** (new): human-maintained national INS IPC headline (the recognizable number). Seeded with May 2026 real figures — 10.9% annual national IPC vs 9.7% harmonized (HICP), which cross-confirmed the Eurostat fetch.
+- **`build_cpi.py`**: emits monthly median cost + MoM % for the `camara` (food) basket, reads `official_cpi` (resilient to a missing table) + `ins_ipc.json`, and merges `official` / `ins_headline` / `our_monthly` / `nowcast` into `cpi.json`. Added `month_key()` handling both ISO and legacy `DD.MM.YYYY` dates (robust to the price_date migration).
+- **`generate_site.py`** (`gen_inflatie`): new "Inflația noastră vs. cea oficială" card — MoM overlay (our food basket vs HICP food, dashed), KPI tiles, a nowcast callout, source citations; expanded methodology (HICP vs our basket, rate-of-change only, nowcast caveat). All render paths degrade gracefully if official keys are absent. Also fixed the daily-chart date labels for ISO dates and removed a pre-existing literal `{n}` placeholder.
+- **Verified:** fetcher against a temp DB and live `prices.db` (34 rows, values match Eurostat); `build_cpi` helpers unit-tested (month grouping, MoM, nowcast, missing-table resilience); generated inline JS passes `node --check` with all DOM hooks present. Comparison is deliberately **rate-of-change only** — the HICP basket and weights differ from ours.
+
 ### 2026-07-06 — fix: propagate_last_checked missing from API fetch path
 
 **Problem identified via pipeline-check:** `store_freshness` has been RED for 6+ consecutive days, worsening from 14% → 21% stale. Drill-down showed PROFI with 855 stale stores, oldest 72 days — matching when the weekly store tier was introduced.

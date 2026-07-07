@@ -40,6 +40,35 @@ def normalize_unit(unit):
     return u
 
 
+def ensure_official_cpi_table(conn):
+    """Create the official_cpi table if missing (idempotent, write-light).
+
+    Kept standalone so fetch_official_cpi.py can guarantee the table exists
+    without invoking the full init_db() — which runs heavy ALTER/UPDATE
+    migrations we don't want to trigger during an unrelated bulk write.
+
+    One row per (source, coicop, period):
+      source        e.g. 'HICP' (Eurostat, harmonised) — the automated series
+      coicop        'CP00' (all-items) | 'CP01' (food & non-alcoholic beverages)
+      period        'YYYY-MM'
+      index_value   HICP index level (base 2025=100)
+      rate_annual   official annual rate of change (%), as published
+      rate_monthly  month-over-month change (%), derived from index_value
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS official_cpi (
+            source       TEXT NOT NULL,
+            coicop       TEXT NOT NULL,
+            period       TEXT NOT NULL,
+            index_value  REAL,
+            rate_annual  REAL,
+            rate_monthly REAL,
+            fetched_at   TEXT,
+            UNIQUE(source, coicop, period)
+        )
+    """)
+
+
 def init_db(path="data/prices.db"):
     conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -295,6 +324,7 @@ def init_db(path="data/prices.db"):
     WHERE pr.id NOT IN (SELECT DISTINCT product_id FROM prices)
     ORDER BY c.name, pr.name;
     """)
+    ensure_official_cpi_table(conn)
     conn.commit()
     return conn
 
@@ -303,6 +333,15 @@ def upsert_network(conn, id, name, logo_url):
     conn.execute(
         "INSERT OR REPLACE INTO retail_networks VALUES (?,?,?)",
         (id, name, logo_url),
+    )
+
+
+def upsert_official_cpi(conn, source, coicop, period, index_value,
+                        rate_annual, rate_monthly, fetched_at):
+    """Insert or replace one official inflation datapoint (reference data)."""
+    conn.execute(
+        "INSERT OR REPLACE INTO official_cpi VALUES (?,?,?,?,?,?,?)",
+        (source, coicop, period, index_value, rate_annual, rate_monthly, fetched_at),
     )
 
 

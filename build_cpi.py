@@ -24,6 +24,10 @@ from networks import is_b2b  # noqa: E402
 DEFAULT_DB = ROOT / "data" / "prices.db"
 DEFAULT_OUT = ROOT / "site" / "data" / "cpi.json"
 BASKETS_CFG = ROOT / "config" / "baskets.json"
+INS_CFG = ROOT / "config" / "ins_ipc.json"
+
+# The pantry basket is the comparable for official food inflation (HICP CP01).
+FOOD_BASKET_ID = "camara"
 
 OUTLIER_LOW, OUTLIER_HIGH = 0.30, 3.0
 WEEKS_PER_MONTH = 52 / 12
@@ -85,6 +89,102 @@ def score_basket_cheapest(basket, prices):
             cost += it["qty_per_week"] * best
             found += 1
     return round(cost, 2), found
+
+
+def month_key(date_str):
+    """Return 'YYYY-MM' from an ISO 'YYYY-MM-DD …' or legacy 'DD.MM.YYYY …' date.
+
+    Robust to the price_date migration being mid-flight (mixed formats).
+    """
+    if not date_str:
+        return None
+    if len(date_str) >= 7 and date_str[4] == "-":          # ISO YYYY-MM-DD
+        return date_str[:7]
+    if len(date_str) >= 10 and date_str[2] in "./":        # DD.MM.YYYY / DD/MM/YYYY
+        return date_str[6:10] + "-" + date_str[3:5]
+    return None
+
+
+def monthly_series(daily_series):
+    """Collapse a daily basket series into monthly median cost + MoM %.
+
+    Uses only 'comparable' daily points (≥50% of items found). Multiple intra-day
+    fetch timestamps in a month are collapsed via the median so days with more
+    fetches don't dominate. Returns [{month, cost_month, mom_pct, n_points}].
+    """
+    buckets = {}
+    for p in daily_series:
+        if not p.get("comparable"):
+            continue
+        mk = month_key(p["date"])
+        if mk:
+            buckets.setdefault(mk, []).append(p["cost_month"])
+    out, prev = [], None
+    for m in sorted(buckets):
+        cost = round(_median(buckets[m]), 2)
+        mom = round(100.0 * (cost - prev) / prev, 1) if prev else None
+        out.append({"month": m, "cost_month": cost, "mom_pct": mom,
+                    "n_points": len(buckets[m])})
+        prev = cost
+    return out
+
+
+def load_official_cpi(conn):
+    """Read the official HICP series; resilient if the table is absent/empty.
+
+    Returns {"food": [...CP01...], "food_latest": {...}, "all_items_latest": {...}}
+    or None when official data has not been fetched yet (so the page degrades).
+    """
+    try:
+        rows = conn.execute(
+            "SELECT coicop, period, index_value, rate_monthly, rate_annual "
+            "FROM official_cpi WHERE source='HICP' ORDER BY period"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    if not rows:
+        return None
+    food = [{"period": p, "index": iv, "mom": rm, "yoy": ra}
+            for c, p, iv, rm, ra in rows if c == "CP01"]
+
+    def latest(code):
+        pub = [r for r in rows if r[0] == code and r[4] is not None]  # yoy published
+        if not pub:
+            return None
+        c, p, iv, rm, ra = max(pub, key=lambda r: r[1])
+        return {"period": p, "index": iv, "mom": rm, "yoy": ra}
+
+    return {"food": food, "food_latest": latest("CP01"),
+            "all_items_latest": latest("CP00")}
+
+
+def load_ins_headline():
+    """Read the human-maintained INS IPC headline JSON; None if absent/invalid."""
+    try:
+        with open(INS_CFG, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def build_nowcast(our_monthly, official):
+    """Provisional current-month read vs the last published official food month."""
+    if not our_monthly:
+        return None
+    from datetime import datetime, timezone
+    cur_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    last = our_monthly[-1]
+    off = (official or {}).get("food_latest")
+    return {
+        "our_month": last["month"],
+        "our_mom_pct": last["mom_pct"],
+        "n_points": last["n_points"],
+        "provisional": last["month"] == cur_month,
+        "ahead_of_official": bool(off and last["month"] > off["period"]),
+        "official_food_month": off["period"] if off else None,
+        "official_food_mom": off["mom"] if off else None,
+        "official_food_yoy": off["yoy"] if off else None,
+    }
 
 
 def build():
@@ -169,6 +269,13 @@ def build():
     # Base index: cost on first date for camara basket = 100
     camara_first = next((p["cost_month"] for p in series["camara"] if p["comparable"]), None)
 
+    # Official-inflation overlay: our food basket (camara) month-over-month vs
+    # Eurostat HICP food (CP01), plus the INS headline and a current-month nowcast.
+    our_monthly = monthly_series(series.get(FOOD_BASKET_ID, []))
+    official = load_official_cpi(conn)
+    ins_headline = load_ins_headline()
+    nowcast = build_nowcast(our_monthly, official)
+
     payload = {
         "dates": dates,
         "n_dates": len(dates),
@@ -184,6 +291,10 @@ def build():
             for b in baskets
         ],
         "product_changes": unique_changes,
+        "our_monthly": our_monthly,
+        "official": official,
+        "ins_headline": ins_headline,
+        "nowcast": nowcast,
         "caveat": (
             f"Date insuficiente pentru un indice robust — {len(dates)} zile disponibile. "
             "Valorile vor deveni semnificative după acumularea a cel puțin 4 săptămâni de date."
@@ -203,6 +314,17 @@ def build():
             last_c = pts[-1]["cost_month"]
             print(f"  {b['id']:12s}  {first_c:>6.2f} → {last_c:>6.2f} lei/lună")
     print(f"  cpi.json — {size_kb:.0f} KB, {len(dates)} dates, {len(unique_changes)} products tracked")
+    if official and official.get("food_latest"):
+        fl = official["food_latest"]
+        print(f"  official food (HICP CP01) latest {fl['period']}: "
+              f"YoY {fl['yoy']}%  MoM {fl['mom']}%")
+    else:
+        print("  official CPI: not available yet (run fetch_official_cpi.py)")
+    if our_monthly:
+        wm = our_monthly[-1]
+        print(f"  our food basket latest month {wm['month']}: "
+              f"MoM {wm['mom_pct']}% ({wm['n_points']} points)"
+              + ("  [nowcast, provisional]" if nowcast and nowcast["provisional"] else ""))
 
 
 if __name__ == "__main__":
