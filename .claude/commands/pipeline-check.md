@@ -123,7 +123,7 @@ Run the steps below using parallel Bash calls where independent, then output a s
            # Count report as RED for this check if it appears in a RED context
            if re.search(rf'\bRED\b[^\n]*\b{check}\b|\b{check}\b[^\n]*\bRED\b', r):
                red_checks[check] += 1
-       for pattern in ['database is locked', 'traceback', 'timeout', 'oom', 'abandoned']:
+       for pattern in ['traceback', 'timeout', 'oom']:
            if re.search(pattern, r, re.IGNORECASE):
                error_patterns[pattern] += 1
 
@@ -182,10 +182,10 @@ Verdict: GREEN | YELLOW | RED
 ```
 
 **Upgrade suggestions rules:** emit this section only when the history step finds patterns. Each suggestion must be actionable (name the file, PRAGMA, cron line, or flag to change). Examples keyed to known patterns:
-- `check:run_history` + `error:database is locked` → "Enable WAL mode in `db.py` `init_db()`: add `PRAGMA journal_mode=WAL` after connection open — eliminates reader/writer lock contention."
 - `check:store_freshness` recurring → "Add a `fetched_at` freshness guard in `scripts/cron-wrapper.sh` (or the cron line itself): abort and alert if checkpoint `fetched_at` ≠ today before `fetch_prices.py` runs."
 - `check:anomaly_drift` RED every morning clearing by midday → "Shift audit cron from 06:02 to 10:00 — the pattern shows it always clears during the morning retail sweep."
-- `error:abandoned` recurring → "Add `trap` + lock cleanup in `fetch_prices.py` exit handler so interrupted runs don't leave stale checkpoints."
+- `error:timeout` recurring → "Investigate whether API timeouts cluster on a specific network or time window; consider increasing `TIMEOUT_S` in `api.py` or adding per-network backoff."
+- `error:oom` recurring → "The catch-up run is hitting memory limits; reduce `BATCH_SIZE` in `fetch_prices.py` or add `ulimit -v` in the cron wrapper."
 - `verdict:RED` high frequency → "Consider a PushNotification or alerting hook triggered by this check so issues are caught faster."
 Only suggest what the pattern actually supports — don't invent problems not shown in the history data.
 

@@ -33,6 +33,7 @@ import os
 import signal
 import sys
 import time
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 
 import requests
@@ -223,12 +224,42 @@ def _stale_age(anchor_id, anchor_covers, stale_map):
 # Checkpoint
 # ---------------------------------------------------------------------------
 
-def _load_checkpoint(path):
+def _atomic_write_json(path, data):
+    """Write JSON durably: temp file → fsync → os.replace (atomic on POSIX).
+
+    Keeps the previous good file as `path + ".bak"` so a crash mid-write can
+    never leave us without a loadable checkpoint. See _load_checkpoint for the
+    read-side recovery.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
     if os.path.exists(path):
-        with open(path) as f:
-            data = json.load(f)
-        data["done"] = set(data["done"])
-        return data
+        try:
+            os.replace(path, path + ".bak")
+        except OSError:
+            pass  # bak is best-effort; the .tmp→path replace below is what matters
+    os.replace(tmp, path)
+
+
+def _load_checkpoint(path):
+    """Load a checkpoint, recovering from the .bak sidecar if the primary is
+    corrupt (e.g. truncated by a hard kill mid-write). Returns None if neither
+    is loadable — a clean start, never a crash at startup."""
+    for candidate in (path, path + ".bak"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate) as f:
+                data = json.load(f)
+            data["done"] = set(data["done"])
+            if candidate != path:
+                tqdm.write(f"Checkpoint {path} unreadable — recovered from {candidate}.")
+            return data
+        except (json.JSONDecodeError, KeyError, OSError) as exc:
+            tqdm.write(f"Checkpoint {candidate} unreadable ({exc}); trying fallback.")
     return None
 
 
@@ -255,8 +286,7 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
         data["anchor_failures"] = anchor_failures
     if inflight_prod_ids:
         data["inflight_prod_ids"] = {str(k): v for k, v in inflight_prod_ids.items()}
-    with open(path, "w") as f:
-        json.dump(data, f)
+    _atomic_write_json(path, data)
 
 
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
@@ -282,8 +312,7 @@ def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_count
         data["anchor_failures"] = anchor_failures
     if inflight_prod_ids:
         data["inflight_prod_ids"] = {str(k): v for k, v in inflight_prod_ids.items()}
-    with open(path, "w") as f:
-        json.dump(data, f)
+    _atomic_write_json(path, data)
 
 
 # ---------------------------------------------------------------------------
@@ -906,7 +935,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                         )
                         try:
                             root = fetch_xml(url)
-                        except requests.exceptions.RequestException as exc:
+                        except (requests.exceptions.RequestException,
+                                ET.ParseError, ValueError) as exc:
                             tqdm.write(
                                 f"  WARN: skipping {name} batch {i} after all retries failed: {exc}"
                             )

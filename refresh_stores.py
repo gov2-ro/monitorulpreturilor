@@ -23,8 +23,9 @@ Usage:
 """
 import argparse
 import logging
+import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from tqdm import tqdm
@@ -129,6 +130,33 @@ def main():
         time.sleep(SLEEP_BETWEEN)
 
     conn.commit()
+
+    # Export store IDs that need a price catch-up (no prices or stale >2d).
+    catch_up_ids = []
+    if seen_stores:
+        stale_cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        placeholders = ",".join("?" * len(seen_stores))
+        rows = conn.execute(
+            f"""SELECT s.id FROM stores s
+                LEFT JOIN (
+                    SELECT store_id, MAX(last_checked_at) AS last_checked
+                    FROM prices_current GROUP BY store_id
+                ) pc ON pc.store_id = s.id
+                WHERE s.id IN ({placeholders})
+                AND (pc.last_checked IS NULL OR pc.last_checked < ?)""",
+            (*seen_stores, stale_cutoff),
+        ).fetchall()
+        catch_up_ids = [r[0] for r in rows]
+
+    if catch_up_ids:
+        catch_up_path = os.path.join(os.path.dirname(args.db), "catch_up_store_ids.txt")
+        with open(catch_up_path, "w") as f:
+            f.write("\n".join(str(i) for i in catch_up_ids) + "\n")
+        tqdm.write(
+            f"\n{len(catch_up_ids)} seen stores have no recent prices — catch-up needed.\n"
+            f"  Written: {catch_up_path}\n"
+            f"  Run:     python fetch_prices.py --store-ids-file {catch_up_path} --fresh"
+        )
 
     # Logo fallback for any store the store-element parse still left NULL.
     logo_tagged = backfill_store_network_from_logo(conn)

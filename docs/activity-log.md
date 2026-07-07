@@ -4,6 +4,17 @@
 
 ## General
 
+### 2026-07-07 — Checkpoint durability + write-lock retries; refresh_stores catch-up export
+
+**Why:** checkpoint files (`data/retail_checkpoint.json`, `data/gas_checkpoint.json`) were written with a plain `open(path, "w") + json.dump`, so a hard kill mid-write (OOM, reboot, `kill -9`) truncates the file and the next run can't load it. `migrate_price_dates.py` also had no retry on `database is locked`, unlike `fetch_gas_prices.py`/`db.py`, even though it runs concurrently with the daily fetch.
+
+- **`fetch_prices.py` / `fetch_gas_prices.py`**: added `_atomic_write_json()` — write to `.tmp`, `fsync`, `os.replace()` (atomic on POSIX), keeping the prior good file as `.bak`. `_load_checkpoint()` now falls back to `.bak` if the primary is corrupt/unreadable, logging the recovery instead of crashing at startup.
+- **`fetch_prices.py`**: also catch `xml.etree.ElementTree.ParseError` and `ValueError` (not just `requests.exceptions.RequestException`) around `fetch_xml()` so a malformed API response skips the batch with a warning instead of killing the run.
+- **`migrate_price_dates.py`**: added `_execute_write()` with the same exponential-backoff retry on `database is locked` used elsewhere (`_DB_LOCK_RETRIES=8`, 1s→128s), plus `PRAGMA busy_timeout=60000` — the daily fetch runs ~28/30 min so there's effectively no idle window to run migrations in otherwise. Batches are already idempotent (`WHERE` filters already-ISO rows), so retrying is safe.
+- **`refresh_stores.py`**: after each run, exports store IDs with no `prices_current` row or `last_checked_at` older than 2 days to `data/catch_up_store_ids.txt`, printing the follow-up `fetch_prices.py --store-ids-file ... --fresh` command. (This closes the gap noted in the 2026-06-24 entry below — that work had been drafted but never actually committed.)
+- **`.claude/commands/pipeline-check.md`**: dropped `database is locked` and `abandoned` from the tracked error patterns/upgrade-suggestion rules (both resolved by `busy_timeout` + this retry work); added `error:timeout` and `error:oom` suggestions in their place.
+- Verified: all four scripts `ast.parse` clean and `--help` runs under `venv`. Not exercised against an actual corrupt/truncated checkpoint file — logic reviewed but no live crash-recovery test performed.
+
 ### 2026-07-07 — Inflație page: guard the nowcast against noisy partial months + ship
 
 **Why:** the current-month nowcast was reading +4.7% MoM off only 5 early-July data points. On a page whose whole point is *credibility*, a spurious partial-month spike undercuts the message more than a missing number would.

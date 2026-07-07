@@ -25,6 +25,32 @@ _TRANSFORM = (
 )
 _OLD_FORMAT = "substr({col}, 3, 1) IN ('.', '/')"
 
+# busy_timeout (set in main) handles ordinary lock contention, but SQLite
+# bypasses the busy handler for write-vs-write deadlock avoidance and returns
+# SQLITE_BUSY immediately — so a Python-level retry is still needed to survive
+# the daily fetch's concurrent maintenance writes. Same shape as
+# fetch_gas_prices.py. Each batch is idempotent (WHERE filters already-ISO rows).
+_DB_LOCK_RETRIES = 8          # 1,2,4,…,128 s backoff → ~255 s of total patience
+_DB_LOCK_INITIAL_SLEEP = 1.0
+
+
+def _execute_write(conn, sql):
+    """Run a write statement, committing on success. Retries on 'database is
+    locked' with exponential backoff; re-raises other errors or the final lock."""
+    for attempt in range(1, _DB_LOCK_RETRIES + 1):
+        try:
+            cur = conn.execute(sql)
+            conn.commit()
+            return cur.rowcount
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or attempt == _DB_LOCK_RETRIES:
+                raise
+            conn.rollback()
+            delay = _DB_LOCK_INITIAL_SLEEP * (2 ** (attempt - 1))
+            print(f"  DB locked; retry {attempt}/{_DB_LOCK_RETRIES} in {delay:.0f}s",
+                  flush=True)
+            time.sleep(delay)
+
 
 def _count_old(conn, table, col="price_date"):
     return conn.execute(
@@ -57,9 +83,7 @@ def _migrate_batched(conn, table, id_col, col, batch_size, dry_run):
                 f"WHERE {id_col} BETWEEN {cursor} AND {batch_hi} AND {old_cond}"
             ).fetchone()[0]
         else:
-            cur = conn.execute(sql)
-            conn.commit()
-            n = cur.rowcount
+            n = _execute_write(conn, sql)
         total_updated += n
         batch_num += 1
         if n or batch_num % 20 == 0:
@@ -80,9 +104,7 @@ def _migrate_single(conn, table, col, dry_run):
             f"SELECT COUNT(*) FROM {table} WHERE {old_cond}"
         ).fetchone()[0]
     else:
-        cur = conn.execute(sql)
-        conn.commit()
-        n = cur.rowcount
+        n = _execute_write(conn, sql)
     print(f"  {table}.{col}: {n} rows {'(dry-run)' if dry_run else 'updated'}.")
 
 
@@ -98,6 +120,10 @@ def main():
     conn = sqlite3.connect(args.db)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
+    # Wait for the write lock instead of erroring instantly: the daily fetch
+    # runs ~28 of every 30 min, so there is no idle window. Matches db.py so
+    # the two writers interleave under WAL rather than one aborting the other.
+    conn.execute("PRAGMA busy_timeout=60000")
 
     print(f"DB: {args.db}  batch={args.batch}  dry_run={args.dry_run}")
 

@@ -30,24 +30,48 @@ _DB_LOCK_RETRIES = 5       # Python-level retries after busy_timeout exhausted
 _DB_LOCK_INITIAL_SLEEP = 2.0  # seconds; doubles each attempt (2, 4, 8, 16, 32)
 
 
-def _load_checkpoint(path):
+def _atomic_write_json(path, data):
+    """Write JSON durably: temp file → fsync → os.replace (atomic on POSIX).
+    Keeps the previous good file as `path + ".bak"` so a crash mid-write can
+    never leave us without a loadable checkpoint."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
     if os.path.exists(path):
-        with open(path) as f:
-            data = json.load(f)
-        data["done"] = set(data["done"])
-        return data
+        try:
+            os.replace(path, path + ".bak")
+        except OSError:
+            pass
+    os.replace(tmp, path)
+
+
+def _load_checkpoint(path):
+    """Load a checkpoint, recovering from the .bak sidecar if the primary is
+    corrupt. Returns None if neither loads — a clean start, never a crash."""
+    for candidate in (path, path + ".bak"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate) as f:
+                data = json.load(f)
+            data["done"] = set(data["done"])
+            if candidate != path:
+                tqdm.write(f"Checkpoint {path} unreadable — recovered from {candidate}.")
+            return data
+        except (json.JSONDecodeError, KeyError, OSError) as exc:
+            tqdm.write(f"Checkpoint {candidate} unreadable ({exc}); trying fallback.")
     return None
 
 
 def _save_checkpoint(path, fetched_at, done):
-    with open(path, "w") as f:
-        json.dump({"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}, f)
+    _atomic_write_json(path, {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)})
 
 
 def _finish_checkpoint(path, fetched_at, done):
     """Mark checkpoint as completed so same-day re-runs exit immediately."""
-    with open(path, "w") as f:
-        json.dump({"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}, f)
+    _atomic_write_json(path, {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)})
 
 
 def main(db_path="data/prices.db", limit_uats=None, fresh=False, max_runtime=0):
