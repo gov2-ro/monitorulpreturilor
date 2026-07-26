@@ -9,6 +9,14 @@ Tables:
 Safe to re-run: the WHERE clause filters on DD.MM or DD/ prefix so already-ISO
 rows are never touched.
 
+Collisions: `prices` / `gas_prices` carry UNIQUE(..., price_date), so a legacy
+row can normalize onto an existing ISO twin (same product+store+date fetched
+before and after the parser was fixed). Plain UPDATE would abort the batch with
+"UNIQUE constraint failed". We use `UPDATE OR REPLACE` so the redundant ISO twin
+(an identical observation under the UNIQUE key) is dropped and the legacy row is
+migrated in its place. `prices_current` / `gas_stations` key on product+store
+only, so they never collide — OR REPLACE is a harmless no-op there.
+
 Usage:
   python migrate_price_dates.py [--db data/prices.db] [--batch 500000] [--dry-run]
 """
@@ -74,7 +82,7 @@ def _migrate_batched(conn, table, id_col, col, batch_size, dry_run):
     while cursor <= hi:
         batch_hi = cursor + batch_size - 1
         sql = (
-            f"UPDATE {table} SET {col} = {transform} "
+            f"UPDATE OR REPLACE {table} SET {col} = {transform} "
             f"WHERE {id_col} BETWEEN {cursor} AND {batch_hi} AND {old_cond}"
         )
         if dry_run:
@@ -98,7 +106,7 @@ def _migrate_single(conn, table, col, dry_run):
     """Single-pass UPDATE for small tables."""
     transform = _TRANSFORM.format(col=col)
     old_cond = _OLD_FORMAT.format(col=col)
-    sql = f"UPDATE {table} SET {col} = {transform} WHERE {old_cond}"
+    sql = f"UPDATE OR REPLACE {table} SET {col} = {transform} WHERE {old_cond}"
     if dry_run:
         n = conn.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {old_cond}"

@@ -4,6 +4,27 @@
 
 ## General
 
+### 2026-07-26 — `alert_red.py`: annotate paging with RED-streak length
+
+**Why:** `/pipeline-check` history showed overall verdict RED in 7/10 of the last 10 runs, but `scripts/alert_red.py` pages the same way whether it's a fresh one-day blip or a persistent multi-day failure — on-call has no way to tell from the alert alone whether this is new or already-known-and-ignored.
+
+- **`scripts/alert_red.py`**: added `red_streak(today)`, which walks backwards from today through `data/logs/audit-{date}.json`, counting consecutive days with `overall == "RED"` until it hits a missing file or a non-RED day. The page message now reads `RED pipeline audit {date} — N check(s) failing (RED for 1st day)` or `(RED for K consecutive days)`. Exit-code semantics (0/1, i.e. whether it pages at all) are unchanged — this is purely additive context on an alert that already fires, chosen over suppressing single-day RED or escalating severity at a threshold.
+- Verified via a scratch-dir simulation (synthetic `audit-*.json` files, not the real `data/logs/`): a 3-day RED streak reports "RED for 3 consecutive days" exit 1; an isolated RED day with a GREEN day before it reports "RED for 1st day" exit 1; today's real GREEN audit still exits 0 unchanged.
+
+### 2026-07-07 — Root-cause + drain legacy `DD.MM.YYYY` price_date rows (collision-safe migration)
+
+**Why:** the backlog claimed `api.py:_parse_date` was still emitting legacy `DD.MM.YYYY` on every fetch, re-adding ~7M old-format rows. That was a **misdiagnosis**. `_parse_date` has emitted ISO since 2026-05-23 (`b8e900f`) and every direct API fetch is ISO. The real chain:
+
+- `price_date` holds the retailer's *Pricedate* (the date a price was set), not the fetch date — so a product whose shelf price hasn't changed keeps its old-format value in `prices_current` until it's re-fetched and re-parsed.
+- **Sentinel propagation** (`propagate_network_prices`) SQL-copies `prices_current.price_date` verbatim from a sentinel to all its non-sentinels. With fresh `fetched_at` but a legacy `price_date` string, this manufactured "recent" legacy rows — all in the four Tier-A sentinel networks (KAUFLAND, LIDL, PENNY, SUPECO), which matched the data exactly.
+- The one-time `migrate_price_dates.py` **had never drained them**: ~1.24M legacy rows in `prices` have an ISO twin (same product+store+date fetched both before and after the 05-23 fix), so a plain `UPDATE` to ISO hit `UNIQUE(product_id,store_id,price_date)` and aborted the batch.
+
+**Fix — `migrate_price_dates.py`:** switched both `_migrate_batched` and `_migrate_single` from `UPDATE` to `UPDATE OR REPLACE`. On a collision the redundant ISO twin (an identical observation under the UNIQUE key) is dropped and the legacy row is migrated in its place. `prices_current`/`gas_stations` key on product+store only, so they never collide (no-op there). Verified the collision behavior on an in-memory reproduction before running. No triggers/FKs on `prices`, so the REPLACE-deletes don't cascade.
+
+**Run (local, concurrent with the live fetch cron):** 1279s. Migrated `prices` 8,189,040 · `prices_current` 13,186,339 · `gas_prices` 66,899 (these were `DD/MM/YYYY` slash format, missed by a dot-only `LIKE`) · `gas_stations.update_date` 41. Lock-retry survived one 7-step backoff mid-run with no data loss. Once `prices_current` is all-ISO, propagation only ever copies ISO, so the "recurring" legacy rows stop at the source.
+
+**Follow-up (backlog):** re-check for a small residue (concurrent propagation during the run can re-seed a few) and run the same migration on the **VPS** (separate DB).
+
 ### 2026-07-07 — Checkpoint durability + write-lock retries; refresh_stores catch-up export
 
 **Why:** checkpoint files (`data/retail_checkpoint.json`, `data/gas_checkpoint.json`) were written with a plain `open(path, "w") + json.dump`, so a hard kill mid-write (OOM, reboot, `kill -9`) truncates the file and the next run can't load it. `migrate_price_dates.py` also had no retry on `database is locked`, unlike `fetch_gas_prices.py`/`db.py`, even though it runs concurrently with the daily fetch.
@@ -21,7 +42,7 @@
 
 - **`generate_site.py`** (`renderVsOfficial`): added `NOWCAST_MIN_POINTS = 10`. When the provisional (in-progress) month has fewer days than that, the KPI tile shows `—` ("se acumulează date, N zile") and the callout switches to an "Estimare în curs" message instead of a precise-looking percentage. Once ≥10 days accumulate, the real nowcast renders. Completed months are unaffected (they always have ~30 points).
 - Regenerated the full static site (`site/*.html`) from the rebuilt `cpi.json` (169 dates; `official` HICP through 2026-05, `ins_headline`, `our_monthly` 4 months, `nowcast`). `site/` is gitignored build output — this run was to eyeball `inflatie.html`; the commit carries only the source changes.
-- Follow-up noted in backlog: the `api.py:212` `_parse_date` still emits legacy `DD.MM.YYYY`, so each fetch re-adds old-format dates (25.9M ISO + 6.9M DD.MM in `prices`). `month_key()` normalizes both for the overlay, but the daily-chart x-axis ordering is still affected — worth fixing at the source.
+- Follow-up noted in backlog: `prices` held 25.9M ISO + ~8.2M legacy `DD.MM` dates whose lexical `ORDER BY` interleaves the two formats. (Root-caused and drained later the same day — see the "Root-cause + drain legacy `DD.MM.YYYY` price_date rows" entry above; the cause was **not** `_parse_date`, which has emitted ISO since 05-23.)
 
 ### 2026-07-06 — Civic inflation vs official (Eurostat HICP + INS) on the Inflație page
 

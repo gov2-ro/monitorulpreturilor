@@ -13,6 +13,23 @@ import sys
 import datetime as dt
 
 
+def red_streak(today):
+    """Count consecutive days (including today) with overall == RED, walking backwards
+    until a day is missing or not RED."""
+    streak = 0
+    day = today
+    while True:
+        try:
+            data = json.load(open(f"data/logs/audit-{day}.json"))
+        except FileNotFoundError:
+            break
+        if data.get("overall") != "RED":
+            break
+        streak += 1
+        day -= dt.timedelta(days=1)
+    return streak
+
+
 def main():
     today = dt.date.today()
     path = f"data/logs/audit-{today}.json"
@@ -28,8 +45,10 @@ def main():
         print(f"OK  pipeline audit {today}: {overall}", flush=True)
         sys.exit(0)
 
+    streak = red_streak(today)
+    streak_note = " (RED for 1st day)" if streak <= 1 else f" (RED for {streak} consecutive days)"
     red_checks = [c for c in data.get("checks", []) if c.get("red")]
-    print(f"RED pipeline audit {today} — {len(red_checks)} check(s) failing:", flush=True)
+    print(f"RED pipeline audit {today} — {len(red_checks)} check(s) failing{streak_note}:", flush=True)
     for c in red_checks:
         print(f"  [{c['name']}] {c.get('summary', '')}", flush=True)
     sys.exit(1)
