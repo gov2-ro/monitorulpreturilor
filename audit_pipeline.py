@@ -35,6 +35,8 @@ from generate_pipeline_report import (
 # Red thresholds — when breached, audit fails and triggers /fail ping.
 STALE_PCT_RED = 10.0     # >10% of stores stale → red
 ABANDONED_DAYS = 7       # any abandoned/error run in last N days → red
+RUN_RECOVERY_WINDOW_MINUTES = 60  # a completed run of the same script starting within this
+                                    # window after a bad run's finished_at counts as recovered
 COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
 
@@ -57,33 +59,57 @@ def check_store_freshness(conn):
 
 
 def check_run_history(conn):
-    # `started_at` doubles as a session id: fetch_prices reuses the original
-    # fetched_at across cron firings, so all rows for one logical session share
-    # it. If any row in that session reached 'completed', the abandoned/error
-    # siblings are normal mid-session cleanup, not failures — ignore them.
-    rows = conn.execute(f"""
+    # A bad run (abandoned/error) is excluded from the count if the same script has a
+    # completed run that either (a) shares its exact started_at — fetch_prices reuses
+    # started_at as a session id across resumed cron ticks, so a completed sibling means
+    # the abandoned/error rows are normal mid-session cleanup — or (b) started within
+    # RUN_RECOVERY_WINDOW_MINUTES after the bad run's finished_at, which covers scripts
+    # like fetch_gas_prices that don't share a session id: a hung run gets reaped by
+    # abandon_stale_runs() and immediately replaced by a fresh completed run.
+    candidates = conn.execute(f"""
         SELECT id, script, status, started_at, finished_at, notes, acknowledged_at
-        FROM runs r
+        FROM runs
         WHERE status IN ('abandoned', 'error')
           AND (finished_at IS NULL OR finished_at >= datetime('now', '-{ABANDONED_DAYS} days'))
           AND acknowledged_at IS NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM runs r2
-              WHERE r2.script     = r.script
-                AND r2.started_at = r.started_at
-                AND r2.status     = 'completed'
-          )
         ORDER BY id DESC
     """).fetchall()
-    red = len(rows) > 0
+
+    bad, suppressed = [], []
+    for r in candidates:
+        run_id, script, status, started_at, finished_at, notes, acknowledged_at = r
+        recovered = conn.execute("""
+            SELECT id FROM runs
+            WHERE script = ?
+              AND status = 'completed'
+              AND (
+                  started_at = ?
+                  OR (
+                      ? IS NOT NULL
+                      AND datetime(started_at) BETWEEN datetime(?) AND datetime(?, ?)
+                  )
+              )
+            ORDER BY id ASC
+            LIMIT 1
+        """, (script, started_at,
+              finished_at, finished_at, finished_at,
+              f'+{RUN_RECOVERY_WINDOW_MINUTES} minutes')).fetchone()
+        if recovered:
+            suppressed.append({"id": run_id, "script": script, "status": status,
+                                "recovered_by": recovered[0]})
+        else:
+            bad.append(r)
+
+    red = len(bad) > 0
     samples = [{"id": r[0], "script": r[1], "status": r[2], "notes": r[5],
-                "acknowledged": r[6] is not None} for r in rows[:5]]
+                "acknowledged": r[6] is not None} for r in bad[:5]]
     return {
         "name": "run_history",
         "red": red,
-        "summary": f"{len(rows)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d",
-        "bad_run_count": len(rows),
+        "summary": f"{len(bad)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d",
+        "bad_run_count": len(bad),
         "samples": samples,
+        "suppressed": suppressed,
         "window_days": ABANDONED_DAYS,
     }
 
