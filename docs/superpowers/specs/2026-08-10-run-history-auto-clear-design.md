@@ -79,8 +79,8 @@ def check_run_history(conn):
                     r2.started_at = r.started_at
                     OR (
                         r.finished_at IS NOT NULL
-                        AND r2.started_at BETWEEN r.finished_at
-                                               AND datetime(r.finished_at, '+{RUN_RECOVERY_WINDOW_MINUTES} minutes')
+                        AND datetime(r2.started_at) BETWEEN datetime(r.finished_at)
+                                                          AND datetime(r.finished_at, '+{RUN_RECOVERY_WINDOW_MINUTES} minutes')
                     )
                 )
           )
@@ -91,6 +91,14 @@ def check_run_history(conn):
 
 No schema change. No write to `runs`. Purely a broader read-side exclusion, same spirit as
 the rule it extends.
+
+**Verified empirically:** raw `r2.started_at BETWEEN r.finished_at AND datetime(r.finished_at,
+'+60 minutes')` silently fails whenever both timestamps fall on the same calendar day — SQLite's
+`datetime()` output uses a space separator (`'2026-08-07 04:41:00'`) while the stored ISO8601
+columns use `'T'` and a UTC offset (`'2026-08-07T04:41:00.847081+00:00'`); `'T'` (0x54) sorts
+after `' '` (0x20), so the same-day upper-bound comparison is always false. Both sides of the
+comparison must go through `datetime(...)` to normalize format before comparing — confirmed
+against the real `#1162`/`#1166` timestamps in `sqlite3` before writing the implementation plan.
 
 ### Observability: `suppressed` list
 
