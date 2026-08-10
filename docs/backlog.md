@@ -129,6 +129,7 @@ Health check was GREEN but the pipeline had no durability safety net. Found: `da
 
 ### Bugs / Known Issues
 
+- [ ] **`abandon_stale_runs()` doesn't record why a run hung** — when a `running` row is reaped on the next cron tick because it never reached a terminal status, `notes` stays NULL (unlike `error` rows, which capture the exception text). Found while investigating `run_history` RED for `fetch_gas_prices #1162` (hung 2026-08-07 03:40 → reaped 2026-08-08 03:40, ~24h). We know *that* it hung, not *why* (network stall? DB lock? OOM?). Fix: capture a lightweight signal at abandon-time so recurring hangs are diagnosable instead of silently reaped.
 - [ ] **Some UATs have NULL `name` in the `uats` table** — `fetch_gas_prices.py` crashes at `uat_name[:30]` when `name` is NULL (patched with fallback to `uat_id`). Root cause unknown — likely rows inserted without a name during reference fetch or partial UAT discovery. Fix: audit `SELECT id, name FROM uats WHERE name IS NULL;`, backfill names via `GetUATByName?uatname=` or a static lookup, and add a NOT NULL constraint or a fetch-time warning.
 
 ### Todo

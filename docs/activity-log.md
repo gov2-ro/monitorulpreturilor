@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-08-10 — `/pipeline-check`: root-caused `run_history` RED, designed auto-clear for gas's non-session run pattern
+
+**Why:** today's audit was RED on `run_history` alone (all other checks clean). Rather than just acknowledging the flagged run, traced it to a real gap in the existing auto-suppress logic.
+
+- Root cause: `fetch_gas_prices` run `#1162` started 2026-08-07 03:40 and hung ~24h without reaching a terminal status; the next day's cron reaped it via `abandon_stale_runs()` and, in the same invocation, started + completed `#1166` a fraction of a second later. `check_run_history` (`audit_pipeline.py:59`) already auto-suppresses exactly this shape for `fetch_prices`, which deliberately reuses `started_at` as a session id across resumed cron ticks — but `fetch_gas_prices` gets a fresh `started_at` every invocation, so the existing exact-match `NOT EXISTS` clause never catches gas's version of "reaped and immediately replaced," leaving it flagged for the full 7-day `ABANDONED_DAYS` window.
+- Brainstormed a fix (via `superpowers:brainstorming`, user chose each option): extend the same `NOT EXISTS` exclusion with an OR'd time-window clause — a `completed` run of the same script within a flat 60-minute window after the bad run's `finished_at` also counts as recovered. Kept query-only, no `acknowledged_at` write, so `ack_run.py`'s human-review audit trail stays unambiguous. Also proposed adding a `suppressed` list to the check's JSON output so it's visible *what* got auto-excluded and *why*.
+- Design pending final approval before implementation; spec not yet written to `docs/superpowers/specs/`.
+- Filed the underlying diagnostic gap — `abandon_stale_runs()` never records *why* a run hung — to `docs/backlog.md` (Gas / Bugs).
+
 ### 2026-07-26 — `alert_red.py`: annotate paging with RED-streak length
 
 **Why:** `/pipeline-check` history showed overall verdict RED in 7/10 of the last 10 runs, but `scripts/alert_red.py` pages the same way whether it's a fresh one-day blip or a persistent multi-day failure — on-call has no way to tell from the alert alone whether this is new or already-known-and-ignored.
