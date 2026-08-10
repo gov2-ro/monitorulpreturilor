@@ -47,10 +47,10 @@ This is the trap. `started_at` in the schema sounds like a process start time, b
 | `running` | Process is (claimed to be) alive right now | Not a finished row; ignore in summaries |
 | `completed` | Session reached end-of-anchors cleanly | Green |
 | `interrupted` | Graceful `--max-runtime` exit between anchors | Normal mid-session checkpoint; **not** a failure |
-| `abandoned` | Next firing found a stale `running` row and reclaimed it. Means: previous process was killed externally without calling `finish_run` | Real signal of an external kill — but routine if the same session also has a later `completed` |
+| `abandoned` | Next firing found a stale `running` row and reclaimed it. Means: previous process was killed externally without calling `finish_run` | Real signal of an external kill — but routine if the same session also has a later `completed`, or if a different session of the same script starts and completes within 60 minutes of this run's `finished_at` |
 | `error` | An exception escaped `_main_body` | Real failure |
 
-**Audit rule (post-2026-05-12 fix):** `abandoned`/`error` rows are only counted when no row with the same `(script, started_at)` later reaches `completed`. If the session ultimately succeeded, mid-flight cleanup rows are ignored. See `audit_pipeline.py:check_run_history`.
+**Audit rule (post-2026-05-12 fix, extended 2026-08-10):** `abandoned`/`error` rows are only counted when no row with the same `(script, started_at)` later reaches `completed`. If the session ultimately succeeded, mid-flight cleanup rows are ignored. Extended in 2026-08-10: a bad run is also excluded if a `completed` run of the *same script* started within `RUN_RECOVERY_WINDOW_MINUTES` (60 min) after this run's `finished_at` — covers scripts like `fetch_gas_prices` that don't reuse `started_at` as a session id across cron ticks. See `audit_pipeline.py:check_run_history`.
 
 ## Why a sweep takes 3–7 days
 
@@ -92,5 +92,5 @@ Measured cost of one full sweep (from `data/prices_checkpoint.json` after the 20
 A practical decoder:
 
 - **`status.py`** is honest about counts but its `duration` column is the misleading session span. Don't trust it for retail.
-- **`AUDIT run_history`** is now correct after the 2026-05-12 fix — only flags real unrecovered failures.
+- **`AUDIT run_history`** is now correct after the 2026-05-12 fix (extended 2026-08-10 with 60-min time-window recovery) — only flags real unrecovered failures.
 - **"Last completed `fetch_prices`"** is the only reliable cadence signal. If the most recent `completed` is >7 days old, the pipeline is truly stuck. Within 7 days, the noise of intermediate rows means nothing about health — only the next `completed` does.

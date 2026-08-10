@@ -128,3 +128,67 @@ def test_acknowledged_run_excluded_regardless_of_recovery(db):
     assert result["red"] is False
     assert result["bad_run_count"] == 0
     assert result["suppressed"] == []
+
+
+def test_summary_includes_suppressed_count(db):
+    # When suppressed runs exist, the summary should include the count in parentheses.
+    _insert_run(db, 600, "fetch_gas_prices",
+                "2026-08-07T03:40:00+00:00",
+                "2026-08-07T03:41:00+00:00", "error", notes="timeout")
+    _insert_run(db, 601, "fetch_gas_prices",
+                "2026-08-07T04:40:00+00:00",
+                "2026-08-07T04:45:00+00:00", "completed")
+
+    result = check_run_history(db)
+    assert result["red"] is False
+    assert "(1 auto-suppressed)" in result["summary"]
+
+
+def test_summary_omits_suppressed_count_when_empty(db):
+    # When no suppressed runs exist, the summary should not include a parenthetical.
+    _insert_run(db, 700, "fetch_gas_prices",
+                "2026-08-07T03:40:00+00:00",
+                "2026-08-07T03:41:00+00:00", "error", notes="timeout")
+
+    result = check_run_history(db)
+    assert result["red"] is True
+    assert "auto-suppressed" not in result["summary"]
+
+
+def test_cross_script_isolation_no_recovery(db):
+    # A completed run of a *different* script should not suppress a bad run,
+    # even if it's within the recovery window. Protects against accidental
+    # cross-script matching in future refactors.
+    _insert_run(db, 800, "fetch_gas_prices",
+                "2026-08-07T03:40:00+00:00",
+                "2026-08-07T03:41:00+00:00", "abandoned")
+    _insert_run(db, 801, "fetch_prices",  # different script!
+                "2026-08-07T04:40:00+00:00",
+                "2026-08-07T04:45:00+00:00", "completed")
+
+    result = check_run_history(db)
+    assert result["red"] is True
+    assert result["bad_run_count"] == 1
+    assert result["samples"][0]["id"] == 800
+    assert result["suppressed"] == []
+
+
+def test_null_finished_at_uses_exact_match_only(db):
+    # A bad run with finished_at IS NULL should fall back to exact-started_at
+    # match only (not attempt time-window recovery, which would crash or
+    # produce wrong results). This tests that the `? IS NOT NULL` guard
+    # in the recovery query works correctly.
+    session = "2026-08-05T04:00:00+00:00"
+    _insert_run(db, 900, "fetch_prices", session,
+                None,  # finished_at is NULL
+                "error", notes="transient")
+    _insert_run(db, 901, "fetch_prices", session,
+                "2026-08-05T06:10:00+00:00", "completed")
+
+    result = check_run_history(db)
+    # Should be suppressed via exact-session match despite NULL finished_at
+    assert result["red"] is False
+    assert result["bad_run_count"] == 0
+    assert result["suppressed"] == [
+        {"id": 900, "script": "fetch_prices", "status": "error", "recovered_by": 901}
+    ]

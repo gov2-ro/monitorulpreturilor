@@ -36,7 +36,7 @@ from generate_pipeline_report import (
 STALE_PCT_RED = 10.0     # >10% of stores stale → red
 ABANDONED_DAYS = 7       # any abandoned/error run in last N days → red
 RUN_RECOVERY_WINDOW_MINUTES = 60  # a completed run of the same script starting within this
-                                    # window after a bad run's finished_at counts as recovered
+                                   # window after a bad run's finished_at counts as recovered
 COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
 
@@ -77,7 +77,7 @@ def check_run_history(conn):
 
     bad, suppressed = [], []
     for r in candidates:
-        run_id, script, status, started_at, finished_at, notes, acknowledged_at = r
+        run_id, script, status, started_at, finished_at, _, _ = r
         recovered = conn.execute("""
             SELECT id FROM runs
             WHERE script = ?
@@ -106,7 +106,8 @@ def check_run_history(conn):
     return {
         "name": "run_history",
         "red": red,
-        "summary": f"{len(bad)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d",
+        "summary": (f"{len(bad)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d"
+                    + (f" ({len(suppressed)} auto-suppressed)" if suppressed else "")),
         "bad_run_count": len(bad),
         "samples": samples,
         "suppressed": suppressed,
