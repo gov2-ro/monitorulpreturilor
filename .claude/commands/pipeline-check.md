@@ -116,6 +116,9 @@ Run the steps below using parallel Bash calls where independent, then output a s
    verdicts = collections.Counter()
 
    for r in recent:
+       # Drop each report's own "Upgrade suggestions" section before scanning —
+       # otherwise this regex re-detects its own past commentary as a live pattern.
+       r = r.split('\nUpgrade suggestions')[0]
        vm = re.search(r'^Verdict:\s*(\w+)', r, re.MULTILINE)
        if vm:
            verdicts[vm.group(1)] += 1
@@ -123,8 +126,12 @@ Run the steps below using parallel Bash calls where independent, then output a s
            # Count report as RED for this check if it appears in a RED context
            if re.search(rf'\bRED\b[^\n]*\b{check}\b|\b{check}\b[^\n]*\bRED\b', r):
                red_checks[check] += 1
+       # The "Logs:" line's own clean-declaration boilerplate ("clean — no
+       # Traceback/ERROR/5xx/oom in tails") mentions these words even when
+       # nothing is wrong, so drop that line before scanning for real hits.
+       err_scan = re.sub(r'^\s*Logs:.*$', '', r, flags=re.MULTILINE)
        for pattern in ['traceback', 'timeout', 'oom']:
-           if re.search(pattern, r, re.IGNORECASE):
+           if re.search(pattern, err_scan, re.IGNORECASE):
                error_patterns[pattern] += 1
 
    results = []
