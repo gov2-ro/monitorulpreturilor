@@ -21,45 +21,121 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = ROOT / "data" / "prices.db"
 DEFAULT_OUT = ROOT / "site" / "pipeline-health.html"
 
-STALE_DAYS = 2
+# Freshness budgets, in days, measured from the last time a store actually yielded *new*
+# data — not from the last time we polled it. `update_store_tiers` demotes quiet stores to
+# the weekly tier, so the two tiers get different budgets.
+STALE_DAYS_DAILY = 3
+STALE_DAYS_WEEKLY = 10
+STALE_DAYS = STALE_DAYS_DAILY   # back-compat default for callers passing no tier
+
+# A store can be receiving fresh writes while every price carries an ancient retailer
+# Pricedate (LIDL has done exactly this since 2026-07-16). That is a distinct failure from
+# "no data at all", so it gets its own budget and its own status.
+FROZEN_DATE_DAYS = 14
+
 OUTLIER_Z = 3.0
 PROMO_DEPTH_PCT = 20.0  # promo price < 20% of median regular = suspicious
 
 
 # ── Data loaders ─────────────────────────────────────────────────────────────
 
-def load_store_freshness(conn, stale_days=STALE_DAYS, as_of_date=None):
-    """Return list of {store_id, name, network, last_date, days_stale, stale}."""
+def load_store_freshness(conn, stale_days=None, as_of_date=None):
+    """Per-store freshness, classified by *failure mode*.
+
+    Returns list of dicts with: store_id, name, network, tier, budget_days,
+    last_date (day of the last actual price change we recorded), days_stale,
+    days_unpolled, days_price_date, status, stale.
+
+    Why not `last_checked_at`: it is bumped on every visit whether or not the API returned
+    anything (db.py:420 updates it even on the unchanged path), so a store that is polled
+    perfectly but has returned nothing for six weeks reports zero days stale. That is how
+    the audit printed "0/4066 stores stale — GREEN" while 386 LIDL stores sat frozen at
+    2026-07-16. `last_checked_at` is still read here, but only to tell *unpolled* apart
+    from *starved*.
+
+    Statuses, in precedence order:
+      unpolled     — we are not even visiting it within its budget
+      starved      — polled on schedule, but no new data within budget
+      frozen_dates — data is flowing, but the retailer's price_date is stuck (>FROZEN_DATE_DAYS)
+      ok
+    """
     if as_of_date is None:
         as_of_date = datetime.now(timezone.utc).date().isoformat()
     rows = conn.execute("""
         SELECT s.id AS store_id, s.name, COALESCE(n.name,'Unknown') AS network,
-               MAX(pc.last_checked_at) AS last_date
-        FROM prices_current pc
-        JOIN stores s ON pc.store_id = s.id
+               COALESCE(s.fetch_tier,'daily') AS tier,
+               agg.last_changed, agg.last_checked, agg.max_price_date
+        FROM (
+            SELECT store_id,
+                   MAX(last_changed_at) AS last_changed,
+                   MAX(last_checked_at) AS last_checked,
+                   MAX(price_date)      AS max_price_date
+            FROM prices_current
+            GROUP BY store_id
+        ) agg
+        JOIN stores s ON s.id = agg.store_id
         LEFT JOIN retail_networks n ON s.network_id = n.id
         WHERE (s.is_active IS NULL OR s.is_active = 1)
-        GROUP BY s.id
     """).fetchall()
+
+    today = date.fromisoformat(as_of_date[:10])
+
+    def age(ts):
+        day = (ts or "")[:10]
+        if not day:
+            return 9999
+        try:
+            return (today - date.fromisoformat(day)).days
+        except ValueError:
+            return 9999
+
     out = []
-    for store_id, name, network, last_date in rows:
-        last_day = (last_date or "")[:10]
-        if last_day:
-            d0 = date.fromisoformat(last_day)
-            d1 = date.fromisoformat(as_of_date[:10])
-            days = (d1 - d0).days
+    for store_id, name, network, tier, last_changed, last_checked, max_price_date in rows:
+        budget = stale_days if stale_days is not None else (
+            STALE_DAYS_WEEKLY if tier == "weekly" else STALE_DAYS_DAILY)
+        d_changed = age(last_changed)
+        d_polled = age(last_checked)
+        d_pricedate = age(max_price_date)
+
+        if d_polled > budget:
+            status = "unpolled"
+        elif d_changed > budget:
+            status = "starved"
+        elif d_pricedate > FROZEN_DATE_DAYS:
+            status = "frozen_dates"
         else:
-            days = 9999
+            status = "ok"
+
         out.append({
             "store_id": store_id,
             "name": name,
             "network": network,
-            "last_date": last_day,
-            "days_stale": days,
-            "stale": days > stale_days,
+            "tier": tier,
+            "budget_days": budget,
+            "last_date": (last_changed or "")[:10],
+            "days_stale": d_changed,
+            "days_unpolled": d_polled,
+            "days_price_date": d_pricedate,
+            "status": status,
+            "stale": status != "ok",
         })
     out.sort(key=lambda r: (-r["days_stale"], r["name"]))
     return out
+
+
+def freshness_breakdown(rows):
+    """Count stores per status, and per (network, status) for the worst offenders."""
+    by_status = {}
+    by_network = {}
+    for r in rows:
+        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+        if r["status"] != "ok":
+            key = r["network"]
+            by_network.setdefault(key, {"total": 0})
+            by_network[key][r["status"]] = by_network[key].get(r["status"], 0) + 1
+            by_network[key]["total"] += 1
+    worst = sorted(by_network.items(), key=lambda kv: -kv[1]["total"])
+    return by_status, worst
 
 
 def load_run_stats(conn, limit=15):
@@ -234,6 +310,8 @@ def render_html(data):
     freshness = data["store_freshness"]
     stale_count = sum(1 for r in freshness if r["stale"])
     stale_pct = round(100 * stale_count / len(freshness), 1) if freshness else 0
+    status_counts, worst_networks = freshness_breakdown(freshness)
+    status_line = ", ".join(f"{k}: {v}" for k, v in sorted(status_counts.items()))
 
     runs = data["run_stats"]
     outlier = data["outlier_summary"]
@@ -242,6 +320,7 @@ def render_html(data):
 
     rag_fresh = _rag(stale_pct == 0, stale_pct > 10,
                      "All stores fresh", f"{stale_pct}% stale — monitor", f"{stale_pct}% stale — investigate")
+    # Sorted worst-first so the table's first rows are the ones worth acting on.
     rag_outlier = _rag(outlier["flagged_pct"] < 1, outlier["flagged_pct"] > 5,
                        "Outlier rate nominal", "Some outliers — review", "High outlier rate")
     rag_vel = _rag(velocity["status"] == "ok", velocity["status"] in ("stuck", "insufficient_data"),
@@ -261,12 +340,25 @@ def render_html(data):
         return f"<table><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>"
 
     freshness_table = rows_table(
-        ["Store", "Network", "Last seen", "Days stale", "Status"],
+        ["Store", "Network", "Tier", "Last new data", "Days since", "Polled (d)",
+         "Pricedate age (d)", "Status"],
         freshness[:50],
         lambda r: (
             f"<td>{html.escape(str(r['name']))}</td><td>{html.escape(str(r['network']))}</td>"
+            f"<td>{html.escape(str(r['tier']))}</td>"
             f"<td>{html.escape(str(r['last_date']))}</td><td>{r['days_stale']}</td>"
-            f"<td>{'Stale' if r['stale'] else 'OK'}</td>"
+            f"<td>{r['days_unpolled']}</td><td>{r['days_price_date']}</td>"
+            f"<td>{html.escape(r['status'])}</td>"
+        )
+    )
+
+    network_table = rows_table(
+        ["Network", "Affected stores", "Unpolled", "Starved", "Frozen dates"],
+        [dict(net=k, **v) for k, v in worst_networks],
+        lambda r: (
+            f"<td>{html.escape(str(r['net']))}</td><td>{r['total']}</td>"
+            f"<td>{r.get('unpolled', 0)}</td><td>{r.get('starved', 0)}</td>"
+            f"<td>{r.get('frozen_dates', 0)}</td>"
         )
     )
 
@@ -325,7 +417,7 @@ def render_html(data):
 <p class="ts">Generated: {data['generated_at']}</p>
 
 <div class="grid">
-  <div class="card"><h3>Store Freshness</h3>{rag_badge(rag_fresh)}<br><small>{stale_count} of {len(freshness)} stores stale</small></div>
+  <div class="card"><h3>Store Freshness</h3>{rag_badge(rag_fresh)}<br><small>{stale_count} of {len(freshness)} stores stale — {html.escape(status_line)}</small></div>
   <div class="card"><h3>Price Outliers</h3>{rag_badge(rag_outlier)}<br><small>{outlier['flagged_count']} records ({outlier['flagged_pct']}%)</small></div>
   <div class="card"><h3>Price Velocity</h3>{rag_badge(rag_vel)}<br><small>{velocity.get('changed_count', 0)} changes on {velocity.get('curr_date') or '—'}</small></div>
   <div class="card"><h3>Promo Sanity</h3>{rag_badge(rag_promo)}<br><small>{len(promos)} deep promo anomalies</small></div>
@@ -333,6 +425,9 @@ def render_html(data):
 
 <h2>Run History (last {len(run_rows)} runs)</h2>
 {run_table}
+
+<h2>Freshness by network — where the data loss is</h2>
+{network_table}
 
 <h2>Store Freshness — Top 50 by staleness</h2>
 {freshness_table}
@@ -359,8 +454,14 @@ def main(db_path=DEFAULT_DB, out_path=DEFAULT_OUT, as_of_date=None):
     print(f"  Written {out} ({len(report_html) // 1024} KB)")
     v = data["price_velocity"]
     s = data["outlier_summary"]
+    counts, worst = freshness_breakdown(data["store_freshness"])
     stale = sum(1 for r in data["store_freshness"] if r["stale"])
-    print(f"  Stores stale: {stale} | Outlier records: {s['flagged_count']} ({s['flagged_pct']}%) | Velocity: {v['changed_pct']}%")
+    print(f"  Stores stale: {stale} ({', '.join(f'{k}={n}' for k, n in sorted(counts.items()))})")
+    for net, c in worst[:5]:
+        print(f"    {net:<20} {c['total']:>5} affected "
+              f"(unpolled={c.get('unpolled', 0)}, starved={c.get('starved', 0)}, "
+              f"frozen_dates={c.get('frozen_dates', 0)})")
+    print(f"  Outlier records: {s['flagged_count']} ({s['flagged_pct']}%) | Velocity: {v['changed_pct']}%")
 
 
 if __name__ == "__main__":

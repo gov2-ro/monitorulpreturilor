@@ -4,6 +4,63 @@
 
 ## General
 
+### 2026-09-04 — Site published to gh-pages; `idx_prices_date` added; build profiled
+
+**Why:** finishing Phase 0 (the site had to actually reach the internet) and answering the open question of why a full build took over an hour.
+
+- **Published.** `scripts/publish_site.sh` now force-pushes 146 files to `origin/gh-pages`. Two problems surfaced on the first real run:
+  - *Push denied.* `~/.ssh/config` names `IdentityFile ~/.ssh/id_monitpret` for the `github.com-monitpret` alias, but without `IdentitiesOnly` ssh-agent offered `id_ed25519_fb-fomo-gobbler` first; GitHub authenticated that key (a deploy key for a different repo) and refused. The deploy key itself is fine — a forced-identity dry-run pushed cleanly. Fixed repo-locally with `git config core.sshCommand 'ssh -i ~/.ssh/id_monitpret -o IdentitiesOnly=yes'`, which fixes every git operation from this box, not just the publish.
+  - *Silent skip.* The script's "no changes to publish" short-circuit compared the staged tree against the **local** `gh-pages` branch, so after the failed push it saw a matching local commit and exited 0 without ever pushing. Now it also compares against `git ls-remote origin gh-pages` and republishes when the remote is missing or behind.
+- **`CREATE INDEX idx_prices_date ON prices(price_date)`** — built in 1m35s, exit 0, ~770 MB. `MAX(price_date)` went from a ~2m24s full scan to **6 ms**, and both hot query shapes now report `SEARCH prices USING COVERING INDEX`. Full build: **1:10:48 → 53:30**.
+- **`generate_site.py --debug`** — new per-stage timer (`_timed`). The build is I/O-bound and takes tens of minutes, so per-stage timing was the only practical way to find the hot spot rather than guessing. First profile:
+
+  | Stage | Time |
+  |---|---:|
+  | `load_analytics_data` | 1146.6 s |
+  | `load_price_index` | 916.9 s |
+  | `load_price_index_by_category` | 671.7 s |
+  | `load_network_trends` | 244.8 s |
+  | `load_category_trends` | 151.2 s |
+  | `build_compare_data_files` | 134.8 s |
+  | `load_popular_products` | 88.9 s |
+  | `load_metodologie_stats` | 62.0 s |
+  | everything else (13 stages) | < 12 s combined |
+  | **page rendering + write** | **0.1 s** |
+
+  The cost is entirely data loading; rendering is free.
+
+- **The important finding is a correctness bug, not a performance one.** `load_price_index` and `load_price_index_by_category` average `prices` with **no `price_date` filter** — so the network price index leading the homepage is a mean over all 183 collected days presented as a current comparison, and because networks entered the panel at different dates (the 2026-06-21 attribution fix moved 996 stores) the per-network means aren't even over comparable windows. That is the number the headline quotes, so correcting it moves a public figure and needs a `metodologie.html` note; filed to `docs/backlog.md` rather than changed here. The planned `mart_spread` table is the intended replacement.
+- Refreshed `official_cpi` from Eurostat — now current through **2026-07** (August isn't published yet). `config/ins_ipc.json` is human-maintained and still at 2026-05.
+
+**Still manual:** GitHub → Settings → Pages → source `gh-pages`, folder `/ (root)`, then re-add the custom domain.
+
+### 2026-09-03 — Phase 0/0.5: restored the dead site's publishing path, and fixed the freshness check that was reporting GREEN over a starving pipeline
+
+**Why:** five months of collection had produced 36.5M price rows that nobody could see. `monitorulpreturilor.gov2.ro` served GitHub Pages' "Site not found" (HTTP 404, generic `*.github.io` cert), `git ls-files site` returned 0 files, every page on disk was stamped 2026-07-07, and the daily audit reported `0/4066 stores stale — GREEN` throughout. Both problems traced to the same class of error: a check that measures the wrong thing succeeds silently.
+
+**Phase 0 — publishing (the site is buildable and deployable again):**
+
+- Recovered `app.css` (731 lines), `charts.js` and `logo.svg` from `git show 5f5e478:docs/assets/…`; they were deleted by `59f306a` ("delete site from docs") and never re-created under `site/`, so `page_shell`'s `<link href="assets/app.css">` had been dangling for eight weeks. Placed them at repo root `assets/` as tracked **source** rather than build output, so they cannot be lost with the output directory again.
+- `generate_site.py`: added `copy_assets()`, which copies `assets/` into `<out>/assets` and re-emits `CNAME` on every build. It **raises** on a missing required asset rather than warning — a silent miss is precisely how this broke the first time, and an unstyled site is worse than a failed build.
+- `generate_site.py`: added a `use_charts` flag to `page_shell()` and removed the six per-page Chart.js CDN tags. The shell now emits Chart.js followed by `assets/charts.js` in the head. Order is load-bearing: `charts.js` mutates `Chart.defaults`, and those only apply at construction time, so both must run before any page script calls `new Chart()`.
+- `scripts/publish_site.sh` (new): builds the aggregator chain in the order `readme.md` documents, then force-pushes `site/` to an orphan `gh-pages` branch through a git worktree at `.worktrees/gh-pages`. GitHub Pages can only serve a branch root or that branch's `/docs`, never an arbitrary `/site`, so committing the output to `main` cannot work; this keeps `.gitignore`'s `/site` intact and `main` free of build output. Single-commit force-push rather than accumulating history — ~3 MB of derived output daily would add ~1 GB/year of git objects for no audit value, since `main` is the audit trail. Refuses to publish if any of `index.html`, the three assets or `CNAME` is missing, if fewer than 20 files are present, or if the staged file count doesn't match what was copied (a gitignore rule silently eating output would otherwise ship a broken site over a working one).
+- `scripts/crontab.template`: daily rebuild + publish at 06:30, wrapped in `hc_run.sh` like every other job — placed after the 06:00 audit so `pipeline-health.html` carries fresh numbers, and away from the 30-minute `fetch_prices` ticks.
+- **Verified:** clean build emits 19 pages (3,027 KB) plus assets and CNAME; Playwright over a local server confirms `body` background `rgb(250,248,242)`, IBM Plex loaded, `window.MP_PALETTE` present, `Chart.defaults.font.family` already themed at chart-construction time, and zero console errors on `index`, `inflatie` and `tablou`.
+- **Still manual (no `gh` CLI on this box):** set the repo's Pages source to branch `gh-pages`, folder `/ (root)`, and re-add the custom domain.
+
+**Phase 0.5 — the false GREEN:**
+
+- Root cause: both freshness checks measured `MAX(prices_current.last_checked_at)`, which `db.py:420` bumps on **every visit even when the price is unchanged**. It answers "are we polling?", never "are we receiving?" — so a store polled perfectly that has returned nothing for ten weeks reported zero days stale. Measured across the live DB, `last_checked_at` finds **0 stale stores in all 11 networks**.
+- Rewrote `load_store_freshness()` to measure from `last_changed_at`, with budgets taken from the store's `fetch_tier` (daily 3d / weekly 10d), and to classify each store by *failure mode* rather than a single boolean: `unpolled` (not visited), `starved` (visited on schedule, no new data), `frozen_dates` (data flowing, but the retailer's `price_date` is stuck >14d), `ok`. `last_checked_at` is still read — but only to tell `unpolled` apart from `starved`, which is the one question it can actually answer.
+- `audit_pipeline.py`: `check_store_freshness` now reports the per-status and per-network breakdown; new `check_frozen_price_dates` check; `check_coverage_gaps` switched off `last_checked_at` too. Both freshness checks share one `load_store_freshness()` call — the per-store `GROUP BY` over 16.4M rows takes ~6 min and must not run twice.
+- `generate_pipeline_report.py`: the health page gained a "Freshness by network — where the data loss is" table, and the per-store table now shows tier, days since new data, days unpolled and price_date age side by side, so the two failure modes are distinguishable at a glance.
+- Coverage: `tests/test_store_freshness.py`, 9 tests, each built from a state actually observed in the live DB on 2026-09-03 — including the LIDL case (fresh writes, 49-day-old `price_date`, invisible to a `last_changed_at`-only check) and the PROFI case (polled today, 70 days without new data).
+- Also repaired `tests/test_pipeline_report.py`, whose fixture used positional `INSERT`s into `prices_current` and `runs`. Both tables had since gained a column, so **all 7 tests in that file had been erroring at setup** — the freshness tests it contained were not testing anything. Columns are now named explicitly.
+
+**What the fix surfaced (filed to `docs/backlog.md`, not fixed here):** 2,211 weekly-tier stores — 54% of the estate — have produced no new price data for a median of 70 days (PROFI 1,585 stores at p50 70d, AUCHAN 63d, MEGA IMAGE 27d, CARREFOUR 18d), all while reporting fresh `last_checked_at`. There is a feedback loop underneath: `update_store_tiers` demotes a store to weekly based on `last_changed_at`, and `fetch_prices.py` then skips weekly stores except on the ISO-week full scan — so a store that stops returning data gets fetched *less*. The networks that still look healthy (PENNY, KAUFLAND, LIDL, SUPECO) are exactly the four sentinel-propagation networks, where prices are SQL-copied rather than fetched; the suspected root cause is the retail API's 50-stores-per-request cap within a 5 km buffer starving the densest networks. Separately, 401 LIDL stores are receiving fresh writes carrying a `price_date` frozen at 2026-07-16.
+
+**Consequence to expect:** the daily audit will now go RED on `store_freshness` and `frozen_price_dates`, because it is finally measuring something real. That is the correct reading, not a regression — the thermometer was broken, not the patient.
+
 ### 2026-08-10 — `/pipeline-check`: root-caused `run_history` RED, designed auto-clear for gas's non-session run pattern
 
 **Why:** today's audit was RED on `run_history` alone (all other checks clean). Rather than just acknowledging the flagged run, traced it to a real gap in the existing auto-suppress logic.

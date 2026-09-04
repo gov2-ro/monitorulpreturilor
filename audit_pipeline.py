@@ -27,8 +27,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from generate_pipeline_report import (
-    STALE_DAYS,
+    FROZEN_DATE_DAYS,
+    STALE_DAYS_DAILY,
+    STALE_DAYS_WEEKLY,
     compute_outlier_summary,
+    freshness_breakdown,
     load_store_freshness,
 )
 
@@ -41,20 +44,62 @@ COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
 
 
-def check_store_freshness(conn):
-    rows = load_store_freshness(conn, stale_days=STALE_DAYS)
+def check_store_freshness(conn, rows=None):
+    """Stores that are not yielding new data, split by failure mode.
+
+    Budgets come from the store's fetch_tier (daily 3d / weekly 10d) and are measured from
+    `last_changed_at`, not `last_checked_at` — see load_store_freshness for why the old
+    column reported 0% stale while whole networks were frozen.
+    """
+    if rows is None:
+        rows = load_store_freshness(conn)
     total = len(rows)
+    counts, worst = freshness_breakdown(rows)
     stale = sum(1 for r in rows if r["stale"])
     pct = round(100 * stale / total, 2) if total else 0.0
     red = pct > STALE_PCT_RED
+    detail = ", ".join(f"{k}={n}" for k, n in sorted(counts.items()) if k != "ok")
     return {
         "name": "store_freshness",
         "red": red,
-        "summary": f"{stale}/{total} stores stale (>{STALE_DAYS}d): {pct}%",
+        "summary": (f"{stale}/{total} stores not yielding new data "
+                    f"({STALE_DAYS_DAILY}d daily / {STALE_DAYS_WEEKLY}d weekly budget): "
+                    f"{pct}%" + (f" — {detail}" if detail else "")),
         "stale_pct": pct,
         "stale_count": stale,
         "total_stores": total,
+        "by_status": counts,
+        "worst_networks": [{"network": n, **c} for n, c in worst[:8]],
         "threshold_pct": STALE_PCT_RED,
+        "budget_days": {"daily": STALE_DAYS_DAILY, "weekly": STALE_DAYS_WEEKLY},
+    }
+
+
+def check_frozen_price_dates(conn, rows=None):
+    """Stores where writes keep landing but the retailer's price_date never advances.
+
+    Invisible to every other check: the rows are fresh, the polling is fresh, only the
+    embedded Pricedate is ancient. LIDL has been in this state since 2026-07-16, and
+    propagation copies the sentinel's frozen date to every store in the network — so a
+    network-wide MAX(price_date) hides it too. Must be evaluated per store.
+    """
+    if rows is None:
+        rows = load_store_freshness(conn)
+    frozen = [r for r in rows if r["status"] == "frozen_dates"]
+    by_net = {}
+    for r in frozen:
+        by_net.setdefault(r["network"], []).append(r["days_price_date"])
+    nets = sorted(((n, len(v), max(v)) for n, v in by_net.items()), key=lambda t: -t[1])
+    return {
+        "name": "frozen_price_dates",
+        "red": len(frozen) > 0,
+        "summary": (f"{len(frozen)} store(s) receiving writes with price_date "
+                    f">{FROZEN_DATE_DAYS}d old"
+                    + (f" — {', '.join(f'{n}: {c} stores, up to {a}d' for n, c, a in nets[:3])}"
+                       if nets else "")),
+        "frozen_count": len(frozen),
+        "networks": [{"network": n, "stores": c, "max_age_days": a} for n, c, a in nets],
+        "threshold_days": FROZEN_DATE_DAYS,
     }
 
 
@@ -119,12 +164,14 @@ def check_coverage_gaps(conn):
     rows = conn.execute(f"""
         SELECT n.id, n.name,
                COUNT(DISTINCT s.id) AS stores,
-               MAX(pc.last_checked_at) AS latest
+               MAX(pc.last_changed_at) AS latest
         FROM retail_networks n
         LEFT JOIN stores s ON s.network_id = n.id
         LEFT JOIN prices_current pc ON pc.store_id = s.id
         GROUP BY n.id, n.name
     """).fetchall()
+    # NOTE: keyed on last_changed_at, not last_checked_at — the latter is bumped on every
+    # visit even when the API returns nothing, so it can never detect a coverage gap.
 
     gaps = []
     cutoff = datetime.now(timezone.utc).timestamp() - COVERAGE_GAP_DAYS * 86400
@@ -219,8 +266,12 @@ def run_audit(db_path, include_outliers=False):
     # write lock during the daily 06:00 audit window.
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
+        # One pass over prices_current feeds both freshness checks: the per-store GROUP BY
+        # scans ~16M rows and takes minutes, so it must not be run twice.
+        freshness_rows = load_store_freshness(conn)
         checks = [
-            check_store_freshness(conn),
+            check_store_freshness(conn, rows=freshness_rows),
+            check_frozen_price_dates(conn, rows=freshness_rows),
             check_run_history(conn),
             check_coverage_gaps(conn),
             check_anomaly_drift(conn),

@@ -103,6 +103,23 @@ python generate_site.py            # HTML pages → site/
 python generate_pipeline_report.py # pipeline health → site/pipeline-health.html
 ```
 
+### Publish
+
+```bash
+scripts/publish_site.sh              # full build, then force-push site/ to gh-pages
+scripts/publish_site.sh --skip-build # publish whatever is already in site/
+scripts/publish_site.sh --dry-run    # build + stage, show the diff, don't push
+```
+
+GitHub Pages can only serve a branch root or that branch's `/docs`, never an arbitrary
+`/site` — so the build output is published to an orphan `gh-pages` branch through a git
+worktree, and `.gitignore`'s `/site` keeps it off `main`. `CNAME` is re-emitted by every
+build, so the custom domain survives each deploy. Wired into cron at 06:30 daily
+(`scripts/crontab.template`).
+
+One-time repo setting: **Settings → Pages → Source: branch `gh-pages`, folder `/ (root)`**,
+then re-add the custom domain.
+
 ### Weekly refresh (reference data may change)
 
 ```bash
@@ -371,13 +388,22 @@ python build_uat_geojson.py --out path/to/file
 ### Site generation
 
 #### `generate_site.py`
-Generates the full static site from the database — 9 HTML pages (dashboard, price index, fuel leaderboard, pipeline health, store map, trends, compare, analytics, gas map) plus per-product CSVs in `site/data/products/`.
+Generates the full static site from the database — 19 HTML pages (homepage, dashboard, price
+index, fuel, trends, compare, analytics, anomalies, categories, basket, maps, methodology,
+open data, pipeline) plus per-product CSVs in `site/data/products/`, the design system from
+`assets/`, and `CNAME`.
 
 ```bash
-python generate_site.py                      # → site/
+python generate_site.py                     # → site/
 python generate_site.py --out path/to/out   # custom output directory
 python generate_site.py --db path/to/db     # custom DB path
+python generate_site.py --debug             # per-stage elapsed time
 ```
+
+**Runtime: ~55 min.** The build is I/O-bound on full-history aggregations, not on rendering
+(page generation is 0.1 s of it). `--debug` prints per-stage timings; as of 2026-09-04 four
+loaders account for 93% of the run — see `docs/backlog.md` for the profile and the
+underlying bug (`load_price_index` aggregates all 183 days with no `price_date` filter).
 
 #### `generate_pipeline_report.py`
 Generates a self-contained HTML pipeline diagnostic report with traffic-light indicators for store freshness, run completion, price outliers, price change velocity, and promo sanity.

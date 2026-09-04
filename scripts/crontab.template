@@ -32,6 +32,15 @@ SHELL=/bin/bash
 # within 25h has Verdict: RED. Create a HC.io check (period=1d, grace=2h) and paste UUID.
 15 7 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_PIPELINE_CHECK_HC_UUID bash -c 'source venv/bin/activate && python scripts/alert_pipeline_check.py >> data/logs/alert-pipeline-check.log 2>&1'
 
+# Site rebuild + publish — 06:30, after the daily audit at 06:00 so pipeline-health.html
+# carries fresh numbers. Builds the aggregators, regenerates all pages, then force-pushes
+# site/ to the gh-pages branch (GitHub Pages cannot serve an arbitrary /site folder from
+# main). Runs long — generate_site.py aggregates the full price history — so it deliberately
+# sits between the audit and the 07:05 retail health ping rather than near the 30-min
+# fetch_prices ticks. SQLite is in WAL mode, so a concurrent fetch is not blocked.
+# Create a HC.io check (period=1d, grace=3h) and paste its UUID below.
+30 6 * * * cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_PUBLISH_SITE_HC_UUID bash -c 'scripts/publish_site.sh >> data/logs/publish-site.log 2>&1'
+
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'
 
