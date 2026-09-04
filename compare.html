@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Comparare — Monitorul Prețurilor</title>
+<meta name="description" content="Monitorul prețurilor din România — date publice, comparații între rețele, analize zilnice."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="assets/app.css"/>
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="assets/charts.js"></script>
+
+</head>
+<body>
+<a href="#main" class="skip">Sări la conținut</a>
+<div class="disclaimer" id="disclaimer">
+  Acest site nu este un proiect oficial al Guvernului României. Date publice preluate de pe <a href="https://monitorulpreturilor.info/">monitorulpreturilor.info</a> (Consiliul Concurenței).
+  <button class="close" type="button" aria-label="Închide" onclick="this.parentElement.style.display='none';try{localStorage.setItem('mp-dis','1')}catch(e){}">×</button>
+</div>
+<script>try{if(localStorage.getItem('mp-dis')==='1'){var d=document.getElementById('disclaimer');if(d)d.style.display='none';}}catch(e){}</script>
+<header class="masthead">
+  <div class="masthead-row">
+    <a href="index.html" class="wordmark" aria-label="Monitorul Prețurilor — acasă">
+      <span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup>
+    </a>
+    <span class="dateline"><span class="num">joi, 3 septembrie 2026</span><span class="dot">·</span>ediția zilei</span>
+  </div>
+  <nav class="nav" aria-label="Navigare principală"><a href="index.html">Acasă</a><a href="povesti.html">Povești</a><a href="tablou.html">Tablou</a><span class="sep" aria-hidden="true"></span><a href="aproape.html">Aproape</a><a href="cos.html">Coșul</a><a href="harta.html">Hartă</a><a href="anomalii.html">Anomalii</a><a href="compare.html" class="active" aria-current="page">Comparare</a><a href="fuel.html">Carburanți</a><span class="sep" aria-hidden="true"></span><a href="date-deschise.html">Date</a><a href="metodologie.html">Metodologie</a></nav>
+</header>
+<main id="main">
+
+<div class="container">
+  <h1>Comparare Produse</h1>
+  <p class="subtitle">Prețuri comparate pe rețea — 2026-09-02 20:00</p>
+
+  <div class="card" style="margin-bottom:0">
+    <div class="card-title">Selectează produsul</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <select id="productSelect" style="flex:1;min-width:280px;max-width:620px;padding:9px 12px;
+        border-radius:6px;border:1px solid var(--border);font-size:14px;
+        background:var(--card);color:var(--text);cursor:pointer">
+        <optgroup label="ALTELE"><option value="1021379">Almette Smantana 150</option><option value="1011039">Autentic Rom Baton 30g</option><option value="1066742">Barilla Penne Rigate</option><option value="1014357">Barni Prajitura Choco 150g</option><option value="1023192">Bere Cu Aroma De Zmeura Si Afine Fresh 0%, 0.5l</option><option value="1014902">Bere Ursus Cooler Grepfrut, 0% Alcool, Doza, 0.5 L</option><option value="1024247">Bunica Ulei Floarea Soarelui 1.8l</option><option value="1361582">Burn Original Bautura Energizanta 0.25l</option><option value="1010344">Capsuni Amb 250g Cal1 Ro</option><option value="1012741">Cioc.Amaruie Al.Pad.100g Ritte</option><option value="1012440">Ciocolata Asortata Merci Rosu, 250g</option><option value="1014020">Ciocolata Kinder 8 Bucati, 100 G</option><option value="1361006">Coca-Cola Zero Bautura Carbo 2l</option><option value="1038498">Ferrero Rocher Praline T16 200g</option><option value="1017631">Ferrero Rondnoir Praline 138g</option><option value="1360641">Fresh Bere Zmeura&Afine Na St 0.33l</option><option value="1011036">Guma De Mestecat Orbit Peppermint Pellets 14 G</option><option value="1010682">Kitkat Napolitana Cioco Alba41.5g</option><option value="1086464">Lindt Tableta Ciocolata Alune Si Stafide 300g</option><option value="1011324">Milka Bubbly Lapte 90g</option><option value="1016063">Milka Oreo/Toffee</option><option value="1012282">Orbit Refreshers Mars</option><option value="1356207">Pepsi Max 2.5l-Sgr</option><option value="1395806">Pepsi Twist Zero Zah</option><option value="1396077">Pet X6 Coca Cola Dp Ro</option><option value="1018351">Pm_Coca Cola Coca-Cola</option><option value="1362039">Pop Cola Classic Extractebotanicedz0.33l</option><option value="1011640">Red Bull Bautura Energiz. Red Bull</option><option value="1025476">Staropramen Blonda D</option><option value="1015899">Tableta Alba 100g</option><option value="1034309">Twix Extra King Size Baton Bisc Cioco 75g</option><option value="1017641">Vit A Baut Nec Zero Acai&Coacz600ml</option></optgroup><optgroup label="ALTELE (FRUCTE CONG, FRUCTE/NUCI)"><option value="1011779">Sweet N Fun Ou Paw Pat&Bomboane 10g</option></optgroup><optgroup label="APA CARBOGAZOASA"><option value="1361562">Borsec Apa Minerala Naturala Carbo 1l</option></optgroup><optgroup label="APA PLATA"><option value="1361003">Izvorul Alb Apa Plata 0.5l</option></optgroup><optgroup label="BERE"><option value="1361309">Ciucas Bere St 0.33l</option><option value="1407298">Fresh Cirese&Lamaie</option><option value="1010550">Sgr*Ursus Bere Blonda 5%Alc.6x500ml 5+1</option><option value="1015467">Timisoreana Bere Blonda</option></optgroup><optgroup label="BRANZETURI"><option value="1011430">G Dor Blu50%-Brnz</option><option value="1043376">Olympus Telemea De Oaie 350g</option><option value="1017597">Orbit Spearmint 14g</option></optgroup><optgroup label="CAFEA"><option value="1378320">Amigo 3in Unu Aroma Crema Irlandeza 24x13g</option><option value="1011721">Cafea Boabe 1 Kg Doncafe Elita</option><option value="1024224">Cafea Exclusive 250g Tchibo</option><option value="1017072">Caii Letea Vin Alb Aligote 750ml</option><option value="1024829">Doncafe  Selected Cafea Macinata 600g</option><option value="1032938">Doncafe Selected Cafea 300g</option><option value="1021765">Heineken Bere Blonda</option><option value="1016436">Nescafe Brasero Plic 1.8g</option><option value="1042041">Nescafe Gold Cafea 100g</option></optgroup><optgroup label="CEAI"><option value="1014437">Cappucino Clas.12.5g La Festa</option><option value="1015451">Nescafe 3in1 Mild 15g Plic</option></optgroup><optgroup label="CEREALE"><option value="1272054">Nesquik 450g</option><option value="1030830">Vitalis Ovaz Cioc50</option></optgroup><optgroup label="CITRICE"><option value="1013392">Portocale Amb 1kg Cal1 Imp</option></optgroup><optgroup label="CONDIMENTE, CONSERVANTI"><option value="1016230">Delikat Baza Pentru Mancare Gaina 75g</option><option value="1014207">Dr.Oetker Esenta Rom 4x2ml "</option><option value="1012168">Heinz Ketchup De Rosii 570g</option><option value="1034075">Heinz Sos De Maioneza 395g</option><option value="1014162">Kamis Cimbru 10g</option><option value="1034479">Kamis Usturoi Granulat 25g</option><option value="1026407">Maggi Ideea Zilei Carbonara 40g</option></optgroup><optgroup label="FRISCA"><option value="1014869">Hulala Prep Baza Vegetala 500ml</option><option value="1026511">Ladorna Smantana Gatit 20% 200ml</option></optgroup><optgroup label="GATITA"><option value="1011341">Rio Mare Insalatissime Legume Si Ton160g</option></optgroup><optgroup label="IAURTURI"><option value="1020198">Branzica De Vaci Danonino Cu Piure De Capsuni Si Caise, 4 X 50 G</option><option value="1032584">Covalact Iaurt 3% 300g</option><option value="1028135">Roshen Praline Lichi</option><option value="1027821">Sgr*Schweppes Carbo Tonic Water500ml</option></optgroup><optgroup label="LAPTE"><option value="1024121">Branza Fagaras 185g Covalact</option><option value="1026990">Lapte Cutie 3.5% 1l Napolact</option></optgroup><optgroup label="OREZ"><option value="1018191">Orez Camolino 1kg Atifco</option></optgroup><optgroup label="PASTE"><option value="1012824">Barilla Spaghettini N.3 Fara Ou 500g</option><option value="1015240">Monte Banato Melci Spiralati 400g</option></optgroup><optgroup label="SEMIPREPARATA"><option value="1036681">Alpro Desert Soia Cu Vanilie 125g</option><option value="1054568">Alpro Greces Ferment Soia Mango150g</option><option value="1022474">Carnati Oltenesti 300g M.Macelaru</option><option value="1020361">Dr Oetker Mix Musuroi Cartita350g</option><option value="1435558">Gusturi Pescaresti Salata Icre Hering Si Ceapa100g</option><option value="1020508">Hipp2 Lapte Prafbio De Contin300g</option><option value="1032748">Hulala Spray Uht Gras Veg 250g</option><option value="1016278">Maggi Cub Legume 120g</option><option value="1041817">Maggi Fidea Instant Gust Pui Mil60g</option><option value="1016154">Maggi Secretul Gustului Legume75g</option><option value="1011619">Martinel Pate 125g</option><option value="1017005">Matache Macelaru Muschi Tig 100g</option><option value="1014705">Panzani Malai Pt Mamaliga Rapid 500g</option></optgroup><optgroup label="SEMIPREPARATE CONGELATE"><option value="1019437">Corso Dream Ing.Cornet Capsuni 74g</option><option value="1370767">Milka Inghe Praline Cioco Bat 67g</option><option value="1061834">Oreo Inghetata Cornet 66g</option><option value="1019244">Pizza Feliciana Spec</option></optgroup><optgroup label="SNACKS"><option value="1016285">Barni Prajitura Ciocolata 30g</option><option value="1010947">Bisc Ar Cioco Lapte 128g Milka</option><option value="1012876">Biscuiti Digestivi 400g</option><option value="1014356">Bounty Inghetata Baton 39g</option><option value="1030792">Chio Popcorn Micro Gust Cascaval80g</option><option value="1199855">Dare Prajitura Cioco</option><option value="1036886">Eti Crax Sticks Cu Sare 120g</option><option value="1012128">Joe Noir Crema Cacao 160g</option><option value="1024615">Joe Zi Buna Napolitana Cacao115g</option><option value="1024493">Knoppers Napolitana 25g</option><option value="1010690">Mix Milk Burger Cacao/Lapte 35g</option></optgroup><optgroup label="SOSURI/PROD TARTINABILE"><option value="1011917">Merci Mousse Choc210</option><option value="1016477">Unt Arahide 341gr Maxim'S</option></optgroup><optgroup label="SUCURI"><option value="1013960">Perla Harghitei Apa</option></optgroup><optgroup label="UNT"><option value="1023867">Albalact Unt 65% 200g</option></optgroup><optgroup label="VIN"><option value="1037173">Etich. Galb.Demise</option><option value="1013590">Eticheta Galbena</option><option value="1014454">Zarea Bon Fruits Sort.</option><option value="1012443">Zarea Spumant Crystal -</option></optgroup>
+      </select>
+      <span id="loadingMsg" style="display:none;color:var(--muted);font-size:13px">Se încarcă…</span>
+      <span id="errMsg" style="display:none;color:var(--danger);font-size:13px"></span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px">
+    <div class="card">
+      <div class="card-title" id="latestTitle">Prețuri pe rețea (ultima zi)</div>
+      <div class="chart-box" style="height:320px"><canvas id="latestChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="trendTitle">Evoluție preț</div>
+      <div class="chart-box" style="height:320px" id="trendBox">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" id="tableTitle">Detalii pe rețea</div>
+    <div class="table-wrap">
+      <table id="compareTable">
+        <thead>
+          <tr><th>#</th><th>Rețea</th><th>Preț mediu</th><th>Min</th><th>Max</th><th>Magazine</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+@media (max-width:640px) {
+  #compareTable { display: block; overflow-x: auto; }
+  [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+}
+</style>
+</main>
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="about">
+      <a href="index.html" class="wordmark"><span class="mark" aria-hidden="true"></span>Monitorul Prețurilor<sup>+</sup></a>
+      <p>Monitorizare independentă a prețurilor de consum din România. Date publice, colectate zilnic, prezentate fără intermediari.</p>
+    </div>
+    <div>
+      <h4>Citește</h4>
+      <ul>
+        <li><a href="index.html">Buletin</a></li>
+        <li><a href="povesti.html">Povești</a></li>
+        <li><a href="inflatie.html">Inflație</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Instrumente</h4>
+      <ul>
+        <li><a href="aproape.html">Aproape de tine</a></li>
+        <li><a href="cos.html">Coșul</a></li>
+        <li><a href="harta.html">Hartă costuri</a></li>
+        <li><a href="anomalii.html">Anomalii</a></li>
+        <li><a href="categorii.html">Categorii</a></li>
+        <li><a href="compare.html">Comparare</a></li>
+        <li><a href="trends.html">Tendințe</a></li>
+        <li><a href="fuel.html">Carburanți</a></li>
+        <li><a href="stores_map.html">Hartă magazine</a></li>
+        <li><a href="gas_map.html">Hartă carburanți</a></li>
+        <li><a href="price-index.html">Index prețuri</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Transparență</h4>
+      <ul>
+        <li><a href="tablou.html">Tablou de bord</a></li>
+        <li><a href="date-deschise.html">Date deschise</a></li>
+        <li><a href="metodologie.html">Metodologie</a></li>
+        <li><a href="pipeline.html">Status pipeline</a></li>
+        <li><a href="analytics.html">Analiză date</a></li>
+        <li><a href="https://github.com/gov2-ro/monitorulpreturilor" rel="nofollow">Cod sursă</a></li>
+      </ul>
+    </div>
+    <div class="credit">
+      <span>Date sub <a href="https://creativecommons.org/licenses/by/4.0/" rel="nofollow">CC BY 4.0</a> · Cod sub licența MIT</span>
+      <span>Actualizat automat zilnic · <a href="https://github.com/gov2-ro/monitorulpreturilor" rel="nofollow">contribuie</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+const netColors = {"AUCHAN":"#27ae60","CARREFOUR":"#2980b9","CORA":"#2c3e50","KAUFLAND":"#e67e22","LIDL DISCOUNT SRL":"#f1c40f","MEGA IMAGE SRL":"#8e44ad","PENNY":"#c0392b","PROFI":"#e74c3c","SELGROS":"#16a085","SUPECO":"#d35400"};
+
+/* ── CSV parser: two sections separated by a blank line ────────── */
+function parseCSV(text) {
+  const parts = text.trim().split(/\r?\n\r?\n/);
+  function parseSection(s) {
+    if (!s || !s.trim()) return [];
+    const lines = s.trim().split(/\r?\n/);
+    const keys  = lines[0].split(',');
+    return lines.slice(1).filter(Boolean).map(line => {
+      const vals = line.split(',');
+      return Object.fromEntries(keys.map((k, i) => [k, vals[i]]));
+    });
+  }
+  return { latest: parseSection(parts[0] || ''), history: parseSection(parts[1] || '') };
+}
+
+/* ── Per-product fetch with in-memory cache ────────────────────── */
+const cache = {};
+async function loadProduct(pid) {
+  if (cache[pid]) return cache[pid];
+  const res = await fetch(`data/products/${pid}.csv`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  cache[pid] = parseCSV(await res.text());
+  return cache[pid];
+}
+
+/* ── Chart helpers ─────────────────────────────────────────────── */
+function fmtDate(d) {
+  if (!d) return d;
+  const p = d.split(' ');
+  return p.length === 2 ? p[0].split('.').slice(0,2).join('.') + ' ' + p[1] : d;
+}
+
+let latestChart = null, trendChart = null;
+
+function renderProduct(pid, name, data) {
+  const { latest, history } = data;
+
+  // Update titles
+  document.getElementById('latestTitle').textContent = name + ' — prețuri pe rețea';
+  document.getElementById('trendTitle').textContent  = name + ' — evoluție';
+  document.getElementById('tableTitle').textContent  = name + ' — detalii pe rețea';
+
+  /* Bar chart — latest prices (already sorted cheapest-first by server) */
+  if (latestChart) latestChart.destroy();
+  latestChart = new Chart(document.getElementById('latestChart'), {
+    type: 'bar',
+    data: {
+      labels: latest.map(r => r.network),
+      datasets: [{
+        label: 'Preț mediu (RON)',
+        data: latest.map(r => +r.avg_price),
+        backgroundColor: latest.map(r => netColors[r.network] || '#94a3b8'),
+        borderRadius: 4, barPercentage: 0.7,
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ' ' + c.parsed.x.toFixed(2) + ' RON' } }
+      },
+      scales: {
+        x: { grid: { color: '#f1f5f9' }, ticks: { callback: v => v.toFixed(2) } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+
+  /* Line chart — history */
+  const allD  = [...new Set(history.map(r => r.price_date))].sort();
+  const nets  = [...new Set(history.map(r => r.network))];
+  const trendBox    = document.getElementById('trendBox');
+  const trendCanvas = document.getElementById('trendChart');
+  let noMsg = trendBox.querySelector('.no-trend');
+
+  if (allD.length < 2) {
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    trendCanvas.style.display = 'none';
+    if (!noMsg) {
+      noMsg = document.createElement('div');
+      noMsg.className = 'no-trend';
+      noMsg.style.cssText = 'display:flex;align-items:center;justify-content:center;' +
+        'height:100%;color:var(--muted);font-size:13px;text-align:center;padding:16px';
+      trendBox.appendChild(noMsg);
+    }
+    noMsg.textContent = 'Date insuficiente pentru tendință. Revino în câteva zile.';
+  } else {
+    trendCanvas.style.display = '';
+    if (noMsg) noMsg.remove();
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(trendCanvas, {
+      type: 'line',
+      data: {
+        labels: allD.map(fmtDate),
+        datasets: nets.map(net => {
+          const vals = allD.map(d => {
+            const r = history.find(r => r.network === net && r.price_date === d);
+            return r ? +r.avg_price : null;
+          });
+          return {
+            label: net, data: vals,
+            borderColor: netColors[net] || '#94a3b8',
+            backgroundColor: (netColors[net] || '#94a3b8') + '20',
+            tension: 0.3, spanGaps: true, pointRadius: 4, borderWidth: 2,
+          };
+        })
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { callbacks: {
+            label: c => ` ${c.dataset.label}: ${c.parsed.y?.toFixed(2)} RON`
+          } }
+        },
+        scales: {
+          x: { grid: { color: '#f1f5f9' } },
+          y: {
+            grid: { color: '#f1f5f9' },
+            ticks: { callback: v => v.toFixed(2) },
+            title: { display: true, text: 'RON' }
+          }
+        }
+      }
+    });
+  }
+
+  /* Table */
+  document.querySelector('#compareTable tbody').innerHTML = latest.map((r, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td style="font-weight:${i===0?700:400};color:${i===0?'var(--success)':''}">
+        ${r.network}</td>
+      <td style="font-weight:${i===0?700:400};color:${i===0?'var(--success)':''}">
+        ${(+r.avg_price).toFixed(2)} RON</td>
+      <td>${(+r.min_price).toFixed(2)}</td>
+      <td>${(+r.max_price).toFixed(2)}</td>
+      <td>${r.stores}</td>
+    </tr>`).join('');
+}
+
+/* ── Dropdown handler ──────────────────────────────────────────── */
+const sel     = document.getElementById('productSelect');
+const loadMsg = document.getElementById('loadingMsg');
+const errMsg  = document.getElementById('errMsg');
+
+async function onSelect() {
+  const pid  = sel.value;
+  const name = sel.options[sel.selectedIndex]?.text || '';
+  loadMsg.style.display = '';
+  errMsg.style.display  = 'none';
+  sel.disabled = true;
+  try {
+    const data = await loadProduct(pid);
+    renderProduct(pid, name, data);
+  } catch(e) {
+    errMsg.textContent = 'Eroare la încărcare: ' + e.message;
+    errMsg.style.display = '';
+  } finally {
+    loadMsg.style.display = 'none';
+    sel.disabled = false;
+  }
+}
+
+sel.addEventListener('change', onSelect);
+if (sel.value) onSelect();
+</script>
+</body>
+</html>
