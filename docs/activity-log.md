@@ -4,6 +4,25 @@
 
 ## General
 
+### 2026-09-28 — Fixed weekly-tier store starvation (store_freshness ~72% RED) and a product-tier rule that dropped 99% of the catalogue
+
+**Why:** `/pipeline-check` showed store_freshness RED at 72% "starved": ~2,940 weekly-tier stores (all of PROFI/MEGA/CARREFOUR/AUCHAN/SUPECO/SELGROS weekly) had a fresh `last_checked_at` but zero price rows in 7d. Root cause in `fetch_prices.py`, four compounding bugs:
+
+1. **Full scan fired daily, then flipped off.** `full_scan = cp.iso_week != today`, but the daily reset sets `cp = None`, so every night's first slice was a "full scan" (all products × all stores ≈ 438k batches — days of work; it got through ~3 anchors before `--max-runtime 1700`). Slice 2 resumed with `iso_week == today` → not a full scan → tiering back on, and the batch list changed under the done-keys.
+2. **Weekly-tier stores were only fetched in that full scan** → never. And since the tier is "no change in 7d", not fetching them kept them weekly forever.
+3. **Tier-skip bumped `last_checked_at`** without an API call, so never-fetched stores looked polled (and `--order stale` never prioritised them).
+4. **Product tier used "any row older than 30d"** (`DISTINCT … WHERE`) instead of `MAX(last_changed_at)`: stale rows from the never-fetched stores tiered out 74,903/75,777 products. The daily run was fetching ~870 real products plus ~11.2k ghosts (ghost filter was also off every day, per bug 1).
+
+**Changes (`fetch_prices.py`):**
+- `_decide_full_scan()` / `_iso_week_key()`: full scan decided once per session and persisted in the checkpoint (`full_scan`, `full_scan_week`); `full_scan_week` is carried across the daily reset and `--fresh`, so it fires once per ISO week. Full scan now only disables ghost filter + sentinel + canary — **not** product/store tiering (infeasible volume; that is why it never completed).
+- `_weekly_rotation_skip()`: weekly-tier stores rotate, `store_id % 7 == day_ordinal % 7` is due today (fetched with the daily product set). The `weekly_store_ids` checkpoint key now holds the *not-due* set.
+- Tier-skip no longer calls `propagate_last_checked`.
+- `_build_weekly_product_tier`: `GROUP BY product_id HAVING MAX(last_changed_at) < now-30d` (57,296 products instead of 74,903).
+- Also fixed: `anchor_failures` skiplist was lost on every daily reset (only carried on `--fresh`, contrary to its comment).
+- Tests: `tests/test_fetch_tiering.py` (7 tests). Smoke-tested against a 40-store scratch DB built from prod PROFI stores with real API calls: first-of-week run → full scan + rotation (5/40 due, 23 anchors tier-skipped); next-day run → no full scan, ghost filter on; resumed slice → mode preserved.
+
+**Expected effect / capacity:** the first run after deploy (no `full_scan_week` in the prod checkpoint yet) will be a full scan. The daily product set grows from ~12k (mostly ghosts) to ~18.5k real products, and weekly stores that start changing drift back to the daily tier, so the nightly run will get longer (est. 1.5–2.5×). Watch that it still completes before the 06:02 audit. store_freshness should fall over ~7–10 days as the rotation cycles.
+
 ### 2026-09-27 — Root-caused the LIDL/SUPECO frozen `price_date` bug; hardened sentinel propagation
 
 **Why:** `/pipeline-check` flagged `frozen_price_dates` and `coverage_gaps` RED for LIDL/SUPECO (backlog item filed 2026-09-03, root cause then unknown). Traced it: LIDL's 3 sentinel stores (11708, 3218, 7974) have had a fresh `last_checked_at` every day but a `price_date` frozen at 2026-07-16 for 73+ days; `propagate_network_prices()` copies that frozen date to all ~400 non-sentinel LIDL stores verbatim, which is invisible to every check that only looks at network-level `MAX()`. SUPECO's 3 sentinels froze the same week (2026-07-12/13), independently.

@@ -273,8 +273,12 @@ def _load_checkpoint(path):
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
                      anchor_batch_counts=None, canary_seen=None, canary_changed=None,
                      weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None,
-                     inflight_prod_ids=None):
+                     inflight_prod_ids=None, full_scan=None, full_scan_week=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
+    if full_scan is not None:
+        data["full_scan"] = full_scan
+    if full_scan_week is not None:
+        data["full_scan_week"] = full_scan_week
     if product_ids is not None:
         data["product_ids"] = product_ids
     if iso_week is not None:
@@ -299,8 +303,12 @@ def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
 def _finish_checkpoint(path, fetched_at, done, iso_week=None, anchor_batch_counts=None,
                        product_ids=None, canary_seen=None, canary_changed=None,
                        weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None,
-                       inflight_prod_ids=None):
+                       inflight_prod_ids=None, full_scan=None, full_scan_week=None):
     data = {"fetched_at": fetched_at, "status": "completed", "done": sorted(done)}
+    if full_scan is not None:
+        data["full_scan"] = full_scan
+    if full_scan_week is not None:
+        data["full_scan_week"] = full_scan_week
     if iso_week is not None:
         data["iso_week"] = iso_week
     if anchor_batch_counts is not None:
@@ -351,24 +359,55 @@ def _order_products(conn, prod_ids, mode):
     return ordered
 
 
-def _ghost_filter(conn, prod_ids, cp):
-    """Remove products never seen in prices_current; skip on first run of ISO week.
+def _ghost_filter(conn, prod_ids, full_scan):
+    """Remove products never seen in prices_current; skip on the weekly full scan.
 
-    First run of each ISO week uses the full product list so newly added
-    products are discovered.  All other runs skip ghost products (never
-    returned a price) — ~17 % of the catalogue currently — cutting batch
-    count proportionally.
+    The full-scan run uses the full product list so newly added products are
+    discovered.  All other runs skip ghost products (never returned a price),
+    cutting batch count proportionally.
     """
-    today_week = datetime.now(timezone.utc).isocalendar()[1]
-    cp_week = cp.get("iso_week") if cp else None
-    if cp_week != today_week:
-        tqdm.write(f"Ghost filter: new ISO week {today_week} — scanning all {len(prod_ids)} products.")
-        return prod_ids, today_week
+    if full_scan:
+        tqdm.write(f"Ghost filter: full-scan run — scanning all {len(prod_ids)} products.")
+        return prod_ids
     seen = {r[0] for r in conn.execute("SELECT DISTINCT product_id FROM prices_current")}
     filtered = [pid for pid in prod_ids if pid in seen]
     tqdm.write(f"Ghost filter: removed {len(prod_ids) - len(filtered)} ghost products, "
                f"{len(filtered)} remain.")
-    return filtered, today_week
+    return filtered
+
+
+def _iso_week_key(d):
+    """'2026-W40' — year-qualified so the key never collides across a year boundary."""
+    year, week, _ = d.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def _decide_full_scan(cp, prev_full_scan_week, this_week):
+    """Return whether this run is the weekly full scan.
+
+    A resumed session keeps the mode it started with — recomputing it per slice made the
+    first slice of every day a full scan and every later slice not one, so the batch list
+    changed under the done-keys and the full scan never got past ~3 anchors. A new session
+    is a full scan only if no full scan has started yet this ISO week (`prev_full_scan_week`
+    is carried across the daily checkpoint reset, so this fires once per week, not daily).
+    """
+    if cp and "full_scan" in cp:
+        return bool(cp["full_scan"])
+    return prev_full_scan_week != this_week
+
+
+WEEKLY_ROTATION_DAYS = 7
+
+
+def _weekly_rotation_skip(weekly_store_ids, day_ordinal, period=WEEKLY_ROTATION_DAYS):
+    """Weekly-tier stores NOT due today: each store is due one day in `period`.
+
+    Without rotation, weekly-tier stores were only fetched on a full scan that never
+    completed — ~2,900 stores (all of PROFI/MEGA/CARREFOUR weekly) went unfetched for weeks,
+    and since the tier is "no change in 7d", never fetching them kept them weekly forever.
+    """
+    due = day_ordinal % period
+    return {s for s in weekly_store_ids if s % period != due}
 
 
 def _products_for_anchor(conn, store_ids, fallback):
@@ -412,9 +451,12 @@ def _build_weekly_product_tier(conn):
     Cold-start: returns empty set until last_changed_at data accumulates (~30d).
     These products are excluded from daily batches and only fetched on ISO-week-start.
     """
+    # MAX, not "any row": with DISTINCT … WHERE, one stale row at any store (e.g. a store
+    # that is never fetched) tiered the product out everywhere — 99% of the catalogue on
+    # 2026-09-28, leaving the daily run fetching ~870 real products.
     rows = conn.execute(
-        "SELECT DISTINCT product_id FROM prices_current "
-        "WHERE last_changed_at < date('now', '-30 days')"
+        "SELECT product_id FROM prices_current GROUP BY product_id "
+        "HAVING MAX(last_changed_at) < date('now', '-30 days')"
     ).fetchall()
     return {r[0] for r in rows}
 
@@ -502,17 +544,14 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         tqdm.write(f"Store tiers: {weekly_count}/{total_active} on weekly tier "
                    f"({100 * weekly_count // total_active}%).")
 
-    # Carry anchor_failures across --fresh so the skiplist survives a daily reset.
-    _old_anchor_failures = {}
-    if fresh and os.path.exists(checkpoint_path):
-        try:
-            with open(checkpoint_path) as _f:
-                _old_cp = json.load(_f)
-            _old_anchor_failures = _old_cp.get("anchor_failures", {})
-        except Exception:
-            pass
+    # Cross-session state carried over both --fresh and the daily reset below (which drops
+    # cp): the skiplist, and the week of the last full scan — without the latter every new
+    # day looked like a new ISO week and started a (never-finishing) full scan.
+    _prev_cp = _load_checkpoint(checkpoint_path) or {}
+    _old_anchor_failures = _prev_cp.get("anchor_failures", {})
+    prev_full_scan_week = _prev_cp.get("full_scan_week")
 
-    cp = None if fresh else _load_checkpoint(checkpoint_path)
+    cp = None if fresh else (_prev_cp or None)
     if cp:
         today = datetime.now(timezone.utc).date()
         cp_date = datetime.fromisoformat(cp["fetched_at"]).date()
@@ -605,71 +644,74 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             f"{split_anchors} sub-anchors from adaptive split)"
         )
 
+    # Weekly full scan: decided once per session and persisted, so resumed slices agree.
+    # Disables the ghost filter, sentinel mode and canary skipping (cheap drift/discovery
+    # correction). It does NOT disable product or store tiering: all products × all stores is
+    # ~438k batches (days of wall time) — that is why the old full scan never completed.
+    this_week = _iso_week_key(datetime.now(timezone.utc).date())
+    full_scan = _decide_full_scan(cp, prev_full_scan_week, this_week)
+    full_scan_week = this_week if full_scan else prev_full_scan_week
+    iso_week = datetime.now(timezone.utc).isocalendar()[1]  # informational only
+    tqdm.write(f"Full scan: {'YES' if full_scan else 'no'} "
+               f"(week {this_week}, last full scan {prev_full_scan_week or 'never'})")
+
     if product_ids_file:
         allowed_prods = set(_load_ids_file(product_ids_file))
         prod_ids = [p for p in prod_ids if p in allowed_prods]
-        iso_week = datetime.now(timezone.utc).isocalendar()[1]
         tqdm.write(f"Product filter: {len(prod_ids)} products from {product_ids_file}")
     elif cp and cp.get("product_ids"):
         # Resuming mid-run: restore saved product list so batch indices stay stable
         prod_ids = cp["product_ids"]
-        iso_week = cp.get("iso_week")
         if limit_products:
             prod_ids = prod_ids[:limit_products]
         tqdm.write(f"Products: restored {len(prod_ids)} from checkpoint.")
     else:
-        prod_ids, iso_week = _ghost_filter(conn, prod_ids, cp)
+        prod_ids = _ghost_filter(conn, prod_ids, full_scan)
         if products_order == "stale":
             prod_ids = _order_products(conn, prod_ids, "stale")
         if limit_products:
             prod_ids = prod_ids[:limit_products]
 
-    # full_scan=True on first run of a new ISO week (same trigger as ghost filter).
-    # Disables canary skipping and product tiering so nothing is missed for >7d.
-    today_week = datetime.now(timezone.utc).isocalendar()[1]
-    cp_week = cp.get("iso_week") if cp else None
-    full_scan = (cp_week is None or cp_week != today_week)
-
     # ------------------------------------------------------------------
-    # Product-level tiering (skip daily; disabled on full-scan week)
+    # Product-level tiering: products unchanged >30d are skipped
     # ------------------------------------------------------------------
-    weekly_tier: set = set()
-    if not full_scan:
-        if cp and cp.get("weekly_tier_ids"):
-            weekly_tier = set(cp["weekly_tier_ids"])
-            tqdm.write(f"Product tier: restored {len(weekly_tier)} weekly-tier IDs from checkpoint.")
-        else:
-            weekly_tier = _build_weekly_product_tier(conn)
-            if weekly_tier:
-                tqdm.write(f"Product tier: computed {len(weekly_tier)} products unchanged >30d.")
+    # TODO: weekly-tier products (~75k) are now never re-checked; the old full scan only ever
+    # reached ~3 anchors/day for them. Rotate them like stores (see backlog) if needed.
+    if cp and cp.get("weekly_tier_ids"):
+        weekly_tier = set(cp["weekly_tier_ids"])
+        tqdm.write(f"Product tier: restored {len(weekly_tier)} weekly-tier IDs from checkpoint.")
+    else:
+        weekly_tier = _build_weekly_product_tier(conn)
         if weekly_tier:
-            before = len(prod_ids)
-            prod_ids = [p for p in prod_ids if p not in weekly_tier]
-            tqdm.write(f"Product tier: removed {before - len(prod_ids)} weekly-tier products, "
-                       f"{len(prod_ids)} remain for daily run.")
-    else:
-        tqdm.write("Product tier: full-scan week — using complete product set.")
+            tqdm.write(f"Product tier: computed {len(weekly_tier)} products unchanged >30d.")
+    if weekly_tier:
+        before = len(prod_ids)
+        prod_ids = [p for p in prod_ids if p not in weekly_tier]
+        tqdm.write(f"Product tier: removed {before - len(prod_ids)} weekly-tier products, "
+                   f"{len(prod_ids)} remain for daily run.")
 
     # ------------------------------------------------------------------
-    # Store-level tiering: skip anchors whose entire cluster is on weekly tier
+    # Store-level tiering: weekly-tier stores rotate — each is due one day in
+    # WEEKLY_ROTATION_DAYS. weekly_store_tier holds the stores NOT due today; anchors
+    # whose entire cluster is in it are skipped.
     # ------------------------------------------------------------------
-    weekly_store_tier: set = set()
-    if not full_scan:
-        if cp and cp.get("weekly_store_ids"):
-            weekly_store_tier = set(cp["weekly_store_ids"])
-            tqdm.write(f"Store tier: restored {len(weekly_store_tier)} weekly-tier stores from checkpoint.")
-        else:
-            weekly_store_tier = {
-                row[0] for row in conn.execute(
-                    "SELECT id FROM stores WHERE fetch_tier = 'weekly' "
-                    "AND (is_active IS NULL OR is_active = 1)"
-                )
-            }
-            if weekly_store_tier:
-                tqdm.write(f"Store tier: {len(weekly_store_tier)} stores on weekly tier — "
-                           "pure-weekly anchors will be skipped.")
+    if cp and cp.get("weekly_store_ids") is not None:
+        weekly_store_tier = set(cp["weekly_store_ids"])
+        tqdm.write(f"Store tier: restored {len(weekly_store_tier)} not-due weekly stores from checkpoint.")
     else:
-        tqdm.write("Store tier: full-scan week — weekly tier disabled.")
+        _weekly_all = {
+            row[0] for row in conn.execute(
+                "SELECT id FROM stores WHERE fetch_tier = 'weekly' "
+                "AND (is_active IS NULL OR is_active = 1)"
+            )
+        }
+        _day = datetime.fromisoformat(fetched_at).date().toordinal()
+        weekly_store_tier = _weekly_rotation_skip(_weekly_all, _day)
+        if _weekly_all:
+            tqdm.write(f"Store tier: {len(_weekly_all)} stores on weekly tier — "
+                       f"{len(_weekly_all) - len(weekly_store_tier)} due today "
+                       f"(rotation slot {_day % WEEKLY_ROTATION_DAYS}/{WEEKLY_ROTATION_DAYS}), "
+                       f"{len(weekly_store_tier)} skipped.")
 
     # ------------------------------------------------------------------
     # Sentinel mode: load sentinel_stores.json (generated by analyze_price_similarity.py
@@ -792,7 +834,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                          anchor_batch_counts=anchor_batch_counts,
                          canary_seen=canary_seen, canary_changed=canary_changed,
                          weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
-                         anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids)
+                         anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids,
+                         full_scan=full_scan, full_scan_week=full_scan_week)
 
     run_id = start_run(conn, "fetch_prices", fetched_at)
     total_prices = 0
@@ -871,9 +914,10 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     save_cp()
                     continue
 
-                # Store-level tier skip: all covered stores on weekly tier → no API call
+                # Store-level tier skip: all covered stores are weekly-tier and not due today
+                # → no API call. Deliberately NOT bumping last_checked_at: nothing was checked,
+                # and a bump here made never-fetched stores look polled (audit: "starved").
                 if weekly_store_tier and all(s in weekly_store_tier for s in anchor_store_ids):
-                    propagate_last_checked(conn, anchor_store_ids, fetched_at)
                     n_skip = anchor_batch_counts.get(store_id, n_batches)
                     for i in range(n_skip or n_batches):
                         done.add(f"{store_id}:{i}")
@@ -1074,7 +1118,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 total_prices += store_prices
                 # Freshen last_checked_at for all covered stores, including those that
                 # returned 0 prices (weekly-tier products excluded → no upserts fired).
-                # Mirrors the tier-skip and sentinel-skip paths which already do this.
+                # (The sentinel-skip path does this too; the tier-skip path deliberately doesn't.)
                 propagate_last_checked(conn, anchor_store_ids, fetched_at)
                 stores_done += 1
                 store_bar.set_postfix(total_prices=total_prices)
@@ -1086,7 +1130,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                            anchor_batch_counts=anchor_batch_counts, product_ids=prod_ids,
                            canary_seen=canary_seen, canary_changed=canary_changed,
                            weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
-                           anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids)
+                           anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids,
+                           full_scan=full_scan, full_scan_week=full_scan_week)
         finish_run(conn, run_id, "completed", stores_done, total_prices)
         elapsed = int(time.monotonic() - t_start)
         tqdm.write(f"\nDone. {total_prices} price records inserted.")
