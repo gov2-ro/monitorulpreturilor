@@ -44,6 +44,15 @@ SHELL=/bin/bash
 # Reference refresh — Monday 03:00
 0 3 * * 1 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh 09407697-7ace-4ebb-ad25-ef2e48c02c21 bash -c 'source venv/bin/activate && python fetch_reference.py >> data/logs/fetch-reference.log 2>&1 && python fetch_gas_reference.py >> data/logs/fetch-gas-reference.log 2>&1'
 
+# Sentinel refresh — Sunday 04:00. Re-picks Tier-A sentinel stores from the last 30 days
+# of data (data/sentinel_stores.json). This was a manual step nobody re-ran after
+# 2026-06-23, which let two of the four sentinel sets (LIDL, SUPECO) sit on stores whose
+# upstream price_date had silently frozen for months (see docs/backlog.md, frozen_price_dates
+# audit check). fetch_prices.py's SENTINEL_FROZEN_DATE_DAYS guard now refuses to propagate a
+# frozen sentinel regardless, but a fresher sentinel avoids losing that network's Tier-A
+# fetch savings. Create a HC.io check (period=7d, grace=1h) and paste its UUID below.
+0 4 * * 0 cd /home/pax/g2-dev/monitorulpreturilor && scripts/hc_run.sh REPLACE_WITH_SENTINEL_REFRESH_HC_UUID bash -c 'source venv/bin/activate && python analyze_price_similarity.py --days 30 --export-sentinels data/sentinel_stores.json >> data/logs/sentinel-refresh.log 2>&1'
+
 # DB backup — Sunday 10:00 (after the daily retail pass completes ~08:41). Compressed,
 # lock-safe (sqlite3 .dump | gzip), keeps last 2. Restore + off-box notes in the script.
 0 10 * * 0 cd /home/pax/g2-dev/monitorulpreturilor && scripts/backup_db.sh >> data/logs/backup.log 2>&1

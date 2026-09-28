@@ -57,6 +57,13 @@ BUFFER_M = 5000
 MIN_CLUSTER_RADIUS_M = 1250
 MAX_STORES_PER_CLUSTER = 50
 
+# Sentinel propagation guard: if the sentinel's own price_date hasn't advanced within this
+# window, its data is not "current" — copying it to the rest of the network would fan out a
+# frozen date network-wide (this is what happened to LIDL from 2026-07-16, undetected for
+# months because prices_current.last_checked_at kept looking fresh). Keep in sync with
+# FROZEN_DATE_DAYS in generate_pipeline_report.py.
+SENTINEL_FROZEN_DATE_DAYS = 14
+
 # Canary networks: skip pure-uniform anchors once we've confirmed ≥ threshold stores
 # unchanged this run. Threshold ≈ 20% of each chain's store count.
 # network_id values match stores.network_id in the DB.
@@ -1023,6 +1030,24 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     for _sid in set(anchor_store_ids) & sentinel_store_ids:
                         _net = store_network_map.get(_sid)
                         if _net in non_sentinel_by_network and _net not in propagated_networks:
+                            _sentinel_max_date = conn.execute(
+                                "SELECT MAX(price_date) FROM prices_current WHERE store_id = ?",
+                                (_sid,),
+                            ).fetchone()[0]
+                            _price_date_age = (
+                                (datetime.fromisoformat(fetched_at).date()
+                                 - date.fromisoformat(_sentinel_max_date[:10])).days
+                                if _sentinel_max_date else 9999
+                            )
+                            if _price_date_age > SENTINEL_FROZEN_DATE_DAYS:
+                                propagated_networks.add(_net)  # don't retry every anchor this run
+                                tqdm.write(
+                                    f"  Sentinel FROZEN: {_net} store {_sid} price_date is "
+                                    f"{_price_date_age}d old (>{SENTINEL_FROZEN_DATE_DAYS}d) — "
+                                    f"skipping propagation to {len(non_sentinel_by_network[_net])} "
+                                    f"target stores"
+                                )
+                                continue
                             _targets = non_sentinel_by_network[_net]
                             _n = propagate_network_prices(conn, _sid, _targets, fetched_at)
                             propagated_networks.add(_net)

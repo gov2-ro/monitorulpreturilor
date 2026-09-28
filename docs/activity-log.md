@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-09-27 — Root-caused the LIDL/SUPECO frozen `price_date` bug; hardened sentinel propagation
+
+**Why:** `/pipeline-check` flagged `frozen_price_dates` and `coverage_gaps` RED for LIDL/SUPECO (backlog item filed 2026-09-03, root cause then unknown). Traced it: LIDL's 3 sentinel stores (11708, 3218, 7974) have had a fresh `last_checked_at` every day but a `price_date` frozen at 2026-07-16 for 73+ days; `propagate_network_prices()` copies that frozen date to all ~400 non-sentinel LIDL stores verbatim, which is invisible to every check that only looks at network-level `MAX()`. SUPECO's 3 sentinels froze the same week (2026-07-12/13), independently.
+
+- **Regenerated `data/sentinel_stores.json`** via `analyze_price_similarity.py --days 30 --export-sentinels` — last run was 2026-06-23, three months stale, despite CLAUDE.md documenting a weekly cadence nobody had automated. New sentinel IDs are fully different from the old set. Verified after: KAUFLAND and PENNY's new sentinels are fresh (≤3d); SUPECO's are ~20d old (matches the coverage_gaps age, likely a genuine slow-moving catalog rather than a bug); **2 of LIDL's 3 new sentinels (11895, 11906) are still frozen at the exact same 2026-07-16 date** — the candidate pool (`fetch_sentinel_stores`, ranked by `products_covered` in the `prices` table) is itself contaminated, because propagation had been writing rows into `prices` for non-sentinel stores too, so "high coverage" no longer implies "actually fetched recently." This means the freeze is broader than 3 unlucky store IDs — worth a follow-up look at whether it's an upstream LIDL API issue or a parsing gap on our side.
+- **Hardened `fetch_prices.py`** (`SENTINEL_FROZEN_DATE_DAYS = 14`, propagation call site ~line 1022): before propagating a sentinel's prices, check the sentinel's own `MAX(price_date)` age; skip propagation and log `Sentinel FROZEN: ...` instead of fanning out a stale date if it's beyond the threshold. This fails safe regardless of whether sentinel regeneration picks a good store — a still-frozen sentinel now produces `starved` (honest, no new data) instead of `frozen_dates` (fresh-looking but wrong) for its network's stores.
+- **Added a weekly sentinel-refresh cron line to `scripts/crontab.template`** (Sunday 04:00, `analyze_price_similarity.py --export-sentinels`) so this doesn't silently go stale again. Not yet installed into the live crontab — needs a healthchecks.io UUID and an operator decision, left as `REPLACE_WITH_SENTINEL_REFRESH_HC_UUID`.
+- Left `docs/backlog.md`'s LIDL/SUPECO item open (not resolved) — the guard stops the silent corruption, but the underlying upstream freeze for LIDL is still there and will now surface as `store_freshness` starvation instead.
+
 ### 2026-09-04 — Site published to gh-pages; `idx_prices_date` added; build profiled
 
 **Why:** finishing Phase 0 (the site had to actually reach the internet) and answering the open question of why a full build took over an hour.
