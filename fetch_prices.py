@@ -227,6 +227,17 @@ def _stale_age(anchor_id, anchor_covers, stale_map):
     return max(stale_map.get(sid, 9999) for sid in covered)
 
 
+def _order_by_saved(stores, saved_order):
+    """Re-apply the anchor order persisted at run start (resumed slices).
+
+    Avoids recomputing the stale map — a whole-table aggregate over prices_current, ~4.5 min
+    per slice. Anchors absent from the saved order (stores added since) sort first, like
+    never-fetched stores do in the stale-first order.
+    """
+    rank = {sid: i for i, sid in enumerate(saved_order)}
+    return sorted(stores, key=lambda s: rank.get(s[0], -1))
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint
 # ---------------------------------------------------------------------------
@@ -273,8 +284,11 @@ def _load_checkpoint(path):
 def _save_checkpoint(path, fetched_at, done, product_ids=None, iso_week=None,
                      anchor_batch_counts=None, canary_seen=None, canary_changed=None,
                      weekly_tier_ids=None, weekly_store_ids=None, anchor_failures=None,
-                     inflight_prod_ids=None, full_scan=None, full_scan_week=None):
+                     inflight_prod_ids=None, full_scan=None, full_scan_week=None,
+                     anchor_order=None):
     data = {"fetched_at": fetched_at, "status": "in_progress", "done": sorted(done)}
+    if anchor_order is not None:
+        data["anchor_order"] = anchor_order
     if full_scan is not None:
         data["full_scan"] = full_scan
     if full_scan_week is not None:
@@ -511,15 +525,12 @@ def main(db_path="data/prices.db", order="stale", limit_stores=None,
 def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                limit_products, store_ids_file, product_ids_file, fresh,
                resume, max_runtime, no_cluster, products_order, reset_skiplist=False):
+    t_setup = time.monotonic()
     conn = init_db(db_path)
 
     n_abandoned = abandon_stale_runs(conn, "fetch_prices")
     if n_abandoned:
         tqdm.write(f"Marked {n_abandoned} stale 'running' run(s) as 'abandoned'.")
-
-    n_deactivated = deactivate_stale_stores(conn)
-    if n_deactivated:
-        tqdm.write(f"Dead-store pruning: marked {n_deactivated} store(s) as inactive (no activity >21d).")
 
     net_backfill = backfill_store_network_ids(conn)
     if net_backfill:
@@ -538,11 +549,6 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
             tqdm.write(f"  store {c['store_id']} ({c['store_name']}): db={c['db_network_id']} vs logo→{c['logo_network_id']} ({c['logo_network_name']})")
         if len(conflicts) > 10:
             tqdm.write(f"  … and {len(conflicts) - 10} more.")
-
-    weekly_count, total_active = update_store_tiers(conn)
-    if total_active:
-        tqdm.write(f"Store tiers: {weekly_count}/{total_active} on weekly tier "
-                   f"({100 * weekly_count // total_active}%).")
 
     # Cross-session state carried over both --fresh and the daily reset below (which drops
     # cp): the skiplist, and the week of the last full scan — without the latter every new
@@ -594,6 +600,19 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         fetched_at = datetime.now(timezone.utc).isoformat()
         done = set()
 
+    # Whole-table passes over prices_current (~4.5 min each at 17M rows) run once per run, not
+    # per slice: they overran the 30-min cron interval and halved the slice rate. A resumed
+    # slice restores the tier sets from the checkpoint, and keeping the active-store set fixed
+    # keeps its anchors stable across slices.
+    if cp is None:
+        n_deactivated = deactivate_stale_stores(conn)
+        if n_deactivated:
+            tqdm.write(f"Dead-store pruning: marked {n_deactivated} store(s) as inactive (no activity >21d).")
+        weekly_count, total_active = update_store_tiers(conn)
+        if total_active:
+            tqdm.write(f"Store tiers: {weekly_count}/{total_active} on weekly tier "
+                       f"({100 * weekly_count // total_active}%).")
+
     stores_raw = conn.execute(
         "SELECT id, name, lat, lon, surrounding_population FROM stores "
         "WHERE lat IS NOT NULL AND lon IS NOT NULL "
@@ -624,6 +643,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
     # ≤ MAX_STORES_PER_CLUSTER members (or MIN_CLUSTER_RADIUS_M floor).
     anchor_covers = {}   # anchor store_id → list of covered store_ids
     anchor_radius = {}   # anchor store_id → effective radius (m) for URL builder
+    anchor_order = None  # stale-first anchor ids, fixed at run start and persisted in the checkpoint
     if not no_cluster and not store_ids_file:
         n_before = len(stores)
         tqdm.write(f"Clustering {n_before} stores (radius={BUFFER_M}m, "
@@ -631,10 +651,15 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                    f"min_radius={MIN_CLUSTER_RADIUS_M}m)...")
         stores, anchor_covers, anchor_radius = _cluster_anchors(stores, radius_m=BUFFER_M)
         if order == "stale":
-            all_sids = list({s[0] for s in stores} | {sid for v in anchor_covers.values() for sid in v})
-            stale_map = _load_stale_map(conn, all_sids)
-            stores = sorted(stores, key=lambda s: (-_stale_age(s[0], anchor_covers, stale_map), -(s[4] or 0)))
-            tqdm.write(f"Anchors ordered by staleness (stale-first); tiebreak: population.")
+            if cp and cp.get("anchor_order"):
+                stores = _order_by_saved(stores, cp["anchor_order"])
+                tqdm.write("Anchors ordered from checkpoint (stale-first order fixed at run start).")
+            else:
+                all_sids = list({s[0] for s in stores} | {sid for v in anchor_covers.values() for sid in v})
+                stale_map = _load_stale_map(conn, all_sids)
+                stores = sorted(stores, key=lambda s: (-_stale_age(s[0], anchor_covers, stale_map), -(s[4] or 0)))
+                tqdm.write(f"Anchors ordered by staleness (stale-first); tiebreak: population.")
+            anchor_order = [s[0] for s in stores]
         else:
             stores = _order_stores(stores, order)
         split_anchors = sum(1 for r in anchor_radius.values() if r < BUFFER_M)
@@ -817,6 +842,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
         if n_skipped:
             tqdm.write(f"Skipping {n_skipped} fully-done anchors from checkpoint.")
 
+    tqdm.write(f"Setup: {time.monotonic() - t_setup:.0f}s "
+               f"({'new run' if cp is None else 'resumed slice'})")
     tqdm.write(
         f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Fetching prices: "
         f"{len(stores)} anchors × ~{len(prod_ids)} products "
@@ -835,7 +862,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                          canary_seen=canary_seen, canary_changed=canary_changed,
                          weekly_tier_ids=weekly_tier, weekly_store_ids=weekly_store_tier,
                          anchor_failures=anchor_failures, inflight_prod_ids=inflight_prod_ids,
-                         full_scan=full_scan, full_scan_week=full_scan_week)
+                         full_scan=full_scan, full_scan_week=full_scan_week,
+                         anchor_order=anchor_order)
 
     run_id = start_run(conn, "fetch_prices", fetched_at)
     total_prices = 0

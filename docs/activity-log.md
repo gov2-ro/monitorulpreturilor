@@ -4,6 +4,20 @@
 
 ## General
 
+### 2026-10-07 — Halved retail throughput loss: whole-table setup passes now run once per run, not per slice
+
+**Why:** `/pipeline-check` was RED (store_freshness 22%, unpolled 1 → 498 overnight). Root cause of the slow catch-up: the `*/30` cron produced only ~24 slices/day (fetcher busy ~47% of the time). Every slice — resumed ones too — ran four whole-table aggregates over `prices_current` (17M rows) before fetching: `deactivate_stale_stores`, `update_store_tiers` (2 UPDATEs) and `_load_stale_map`. One pass timed at 272 s; the 21:00 slice printed its first `Fetching prices:` header at 21:16. Setup + the 1700 s work window overran 30 min, so every other cron tick hit the lock and was skipped.
+
+**Change (`fetch_prices.py`):**
+- `deactivate_stale_stores` + `update_store_tiers` moved below the checkpoint resolution and gated on `cp is None` (new run). A resumed slice already restored the tier sets from the checkpoint; not re-pruning also keeps the active-store set, and therefore the anchors, stable across slices.
+- The stale-first anchor order is computed once at run start and persisted as `anchor_order` in the checkpoint; resumed slices re-apply it via `_order_by_saved` (stores added since sort first). A legacy checkpoint without it computes the order once, then persists it.
+- New `Setup: Ns (new run|resumed slice)` log line before the `Fetching prices:` header.
+- Side effect: "Already completed today — nothing to do" ticks no longer pay the maintenance passes either.
+
+**Tests:** `tests/test_fetch_setup_cost.py` drives `main()` on a temp DB (`max_runtime=1e-9` exits at the first anchor, no network) and counts the three passes for new run / resumed / legacy-checkpoint cases. Full suite: 39 pass, 8 fail — the same 8 `test_audit_pipeline.py` failures as before the change (see backlog).
+
+**Not changed:** today's RED is mostly the W41 weekly full scan (998 anchors × 35,195 products, sentinel off, ~36 h left at the old rate) — design question logged in the backlog. Publish/sentinel cron lines remain uninstalled until healthchecks.io UUIDs exist (backlog).
+
 ### 2026-09-28 — Fixed weekly-tier store starvation (store_freshness ~72% RED) and a product-tier rule that dropped 99% of the catalogue
 
 **Why:** `/pipeline-check` showed store_freshness RED at 72% "starved": ~2,940 weekly-tier stores (all of PROFI/MEGA/CARREFOUR/AUCHAN/SUPECO/SELGROS weekly) had a fresh `last_checked_at` but zero price rows in 7d. Root cause in `fetch_prices.py`, four compounding bugs:
