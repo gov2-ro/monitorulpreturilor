@@ -75,6 +75,10 @@ CANARY_THRESHOLDS = {
 
 DEAD_ANCHOR_THRESHOLD = 3   # consecutive all-fail runs before skiplist
 DEAD_ANCHOR_SKIP_DAYS = 7   # days to keep on skiplist before retry
+# Split-on-5xx floor. The API 500s after ~30s server-side when a dense anchor × large
+# batch is too slow (central Bucharest: 200 IDs → 500 @30.7s, 50 IDs → 200 @16s;
+# probed 2026-10-19). Batches above this are halved on 5xx/timeout instead of retried.
+MIN_SPLIT_BATCH = 50
 
 # Romania bounding box for geographic ordering
 _RO_LAT_MIN, _RO_LAT_MAX = 43.6, 48.3
@@ -89,6 +93,30 @@ _GRID_DEG = 0.45   # ~50 km per cell
 def _batches(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i: i + n]
+
+
+def _fetch_batch(lat, lon, buf, batch, fetched_at):
+    """Fetch one product batch for an anchor → (stores, prices).
+
+    Above MIN_SPLIT_BATCH: one attempt; on 5xx/timeout halve and recurse (retrying an
+    identical request that hit the server's ~30s limit is futile). At the floor: normal
+    fetch_xml retries. Raises if any leaf fails, so callers' failure accounting holds.
+    """
+    url = (f"{BASE}/GetStoresForProductsByLatLon?lat={lat}&lon={lon}&buffer={buf}"
+           f"&csvprodids={','.join(str(p) for p in batch)}&OrderBy=price")
+    if len(batch) <= MIN_SPLIT_BATCH:
+        return parse_stores_and_prices(fetch_xml(url), fetched_at)
+    try:
+        return parse_stores_and_prices(fetch_xml(url, retries=1), fetched_at)
+    except (requests.exceptions.HTTPError, requests.exceptions.Timeout) as exc:
+        resp = getattr(exc, "response", None)
+        if resp is not None and resp.status_code < 500:
+            raise
+        mid = len(batch) // 2
+        tqdm.write(f"    split batch {len(batch)} → {mid}+{len(batch) - mid} ({type(exc).__name__})")
+        s1, p1 = _fetch_batch(lat, lon, buf, batch[:mid], fetched_at)
+        s2, p2 = _fetch_batch(lat, lon, buf, batch[mid:], fetched_at)
+        return list({s["id"]: s for s in s1 + s2}.values()), p1 + p2
 
 
 def _haversine_m(lat1, lon1, lat2, lon2):
@@ -1005,24 +1033,22 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                             batch_bar.set_postfix(status="resumed")
                             continue
 
-                        csv_ids = ",".join(str(p) for p in batch)
                         buf = anchor_radius.get(store_id, BUFFER_M)
-                        url = (
-                            f"{BASE}/GetStoresForProductsByLatLon"
-                            f"?lat={lat}&lon={lon}&buffer={buf}"
-                            f"&csvprodids={csv_ids}&OrderBy=price"
-                        )
                         try:
-                            root = fetch_xml(url)
+                            result_stores, prices = _fetch_batch(lat, lon, buf, batch, fetched_at)
                         except (requests.exceptions.RequestException,
                                 ET.ParseError, ValueError) as exc:
                             tqdm.write(
                                 f"  WARN: skipping {name} batch {i} after all retries failed: {exc}"
                             )
                             batch_failures += 1
+                            # Mark attempted: otherwise a slice that times out mid-anchor
+                            # re-tries the same failing batches next slice, forever
+                            # (2026-10-18: one anchor livelocked ~15 slices, 0 prices/day).
+                            # Tomorrow's run retries it.
+                            done.add(key)
                             time.sleep(SLEEP_BETWEEN)
                             continue
-                        result_stores, prices = parse_stores_and_prices(root, fetched_at)
                         # API caps at 50 stores per response. If we see 50 returned
                         # while our local cluster has >50 members, the response
                         # truncated — flag it (after adaptive split, this should
@@ -1081,6 +1107,8 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                     return
 
                 # Dead anchor detection: all non-skipped batches failed → track failure
+                # TODO: batch_failures/batch_total are per-slice; an anchor spanning slices
+                # (resumed batches skipped) never satisfies the all-fail test.
                 if store_prices > 0:
                     anchor_failures.pop(str(store_id), None)
                 elif batch_total > 0 and batch_failures == batch_total:

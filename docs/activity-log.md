@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-10-19 — Retail fetch: split batches on 5xx, stop the failed-batch livelock
+
+**Why:** `/pipeline-check` RED (store_freshness 4.7% → 40.7%). 2026-10-18 ran 47 slices and wrote **0 prices**: 5,787 batches failed with HTTP 500, and one anchor (Market Valea Lupului, Iași) was re-tried for ~15 consecutive slices. Live probe: the API 500s after ~30s server-side when a dense anchor × 200-ID batch is too slow (central Bucharest: 200 IDs → 500 @30.7s, 100 → borderline, 50 → OK @16s; rural 200 → OK @6s). Retrying the identical request (3× in `fetch_xml`, ~93s) is futile.
+
+**Change (`fetch_prices.py`):**
+- New `_fetch_batch()`: batches > `MIN_SPLIT_BATCH` (50) get one attempt; on 5xx/timeout they are halved and recursed; the floor gets the normal 3 retries. 4xx and parse errors are not split. Stores deduped across halves. Batch index / `done` key unchanged. Live: a previously always-failing 200-ID Bucharest batch now returns all 200 products (7,813 prices) in 121s.
+- Failed batches are now added to `done` (consistent with sentinel/canary/tier skips, which already do). Previously a slice that hit its timelimit mid-anchor resumed and retried the same failing batches from batch 0, never finishing the anchor, so dead-anchor detection never fired. Failed batches are retried in the next day's run.
+- Tests: `tests/test_fetch_split.py`. Global `BATCH_SIZE` deliberately not lowered: rural anchors handle 200 fine and a global cut multiplies calls. Follow-ups in backlog (per-anchor batch size memory, per-slice dead-anchor detection).
+
 ### 2026-10-07 — Halved retail throughput loss: whole-table setup passes now run once per run, not per slice
 
 **Why:** `/pipeline-check` was RED (store_freshness 22%, unpolled 1 → 498 overnight). Root cause of the slow catch-up: the `*/30` cron produced only ~24 slices/day (fetcher busy ~47% of the time). Every slice — resumed ones too — ran four whole-table aggregates over `prices_current` (17M rows) before fetching: `deactivate_stale_stores`, `update_store_tiers` (2 UPDATEs) and `_load_stale_map`. One pass timed at 272 s; the 21:00 slice printed its first `Fetching prices:` header at 21:16. Setup + the 1700 s work window overran 30 min, so every other cron tick hit the lock and was skipped.
