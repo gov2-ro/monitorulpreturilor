@@ -20,6 +20,7 @@ Exit codes:
 
 import argparse
 import json
+import shutil
 import sqlite3
 import statistics
 import sys
@@ -42,6 +43,7 @@ RUN_RECOVERY_WINDOW_MINUTES = 60  # a completed run of the same script starting 
                                    # window after a bad run's finished_at counts as recovered
 COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
+DISK_RED_PCT = 90.0      # DB partition > N% used → red (a full disk crashed the audit 2026-10-26..29)
 
 
 def check_store_freshness(conn, rows=None):
@@ -261,6 +263,30 @@ def check_outliers(conn):
     }
 
 
+def check_disk_space(db_path):
+    """Partition holding the DB: SQLite writes fail at 100%, so alert well before that."""
+    path = Path(db_path).resolve()
+    u = shutil.disk_usage(path.parent)
+    pct = round(100 * u.used / u.total, 1)
+    return {
+        "name": "disk_space",
+        "red": pct >= DISK_RED_PCT,
+        "summary": (f"{pct}% of {u.total / 1e9:.0f} GB used, {u.free / 1e9:.1f} GB free "
+                    f"(DB {path.stat().st_size / 1e9:.1f} GB; red at {DISK_RED_PCT:.0f}%)"),
+        "used_pct": pct,
+    }
+
+
+def _safe(fn, *args, **kwargs):
+    """Run one check; a crash becomes a RED check instead of aborting the whole audit
+    (no audit file used to be written on a crash, which alert_red.py read as 'OK')."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:  # noqa: BLE001 — any failure must surface as RED
+        return {"name": fn.__name__.removeprefix("check_"), "red": True,
+                "summary": f"check crashed: {type(e).__name__}: {e}"}
+
+
 def run_audit(db_path, include_outliers=False):
     # Read-only connection so we don't block / aren't blocked by the live fetch's
     # write lock during the daily 06:00 audit window.
@@ -268,16 +294,20 @@ def run_audit(db_path, include_outliers=False):
     try:
         # One pass over prices_current feeds both freshness checks: the per-store GROUP BY
         # scans ~16M rows and takes minutes, so it must not be run twice.
-        freshness_rows = load_store_freshness(conn)
+        try:
+            freshness_rows = load_store_freshness(conn)
+        except Exception:  # noqa: BLE001 — the checks below retry the load and report RED
+            freshness_rows = None
         checks = [
-            check_store_freshness(conn, rows=freshness_rows),
-            check_frozen_price_dates(conn, rows=freshness_rows),
-            check_run_history(conn),
-            check_coverage_gaps(conn),
-            check_anomaly_drift(conn),
+            _safe(check_store_freshness, conn, rows=freshness_rows),
+            _safe(check_frozen_price_dates, conn, rows=freshness_rows),
+            _safe(check_run_history, conn),
+            _safe(check_coverage_gaps, conn),
+            _safe(check_anomaly_drift, conn),
+            _safe(check_disk_space, db_path),
         ]
         if include_outliers:
-            checks.append(check_outliers(conn))
+            checks.append(_safe(check_outliers, conn))
     finally:
         conn.close()
 
