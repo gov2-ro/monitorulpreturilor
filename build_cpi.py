@@ -19,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+from db import init_db  # noqa: E402
 from networks import is_b2b  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "prices.db"
@@ -39,9 +40,29 @@ def _median(xs):
     return None if n == 0 else (s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2]))
 
 
+def refresh_rollup(conn, product_ids):
+    """Upsert price_daily_min from raw `prices` for dates >= the last rolled-up date.
+
+    The rollup outlives the raw-`prices` retention window, so history older than
+    the window is read from here only. Re-doing the last date picks up late rows.
+    """
+    last = conn.execute("SELECT MAX(price_date) FROM price_daily_min").fetchone()[0]
+    ph = ",".join("?" * len(product_ids))
+    cur = conn.execute(f"""
+        INSERT OR REPLACE INTO price_daily_min
+        SELECT pr.price_date, pr.product_id, s.network_id, MIN(pr.price)
+        FROM prices pr JOIN stores s ON pr.store_id = s.id
+        WHERE pr.product_id IN ({ph}) AND s.network_id IS NOT NULL AND pr.price > 0
+          AND (? IS NULL OR pr.price_date >= ?)
+        GROUP BY pr.price_date, pr.product_id, s.network_id
+    """, (*product_ids, last, last))
+    conn.commit()
+    print(f"price_daily_min: upserted {cur.rowcount} rows (from {last or 'start'})")
+
+
 def fetch_dates(conn):
     return [r[0] for r in conn.execute(
-        "SELECT DISTINCT price_date FROM prices ORDER BY price_date"
+        "SELECT DISTINCT price_date FROM price_daily_min ORDER BY price_date"
     )]
 
 
@@ -51,11 +72,9 @@ def fetch_national_min(conn, price_date, product_ids):
         return {}
     placeholders = ",".join("?" * len(product_ids))
     rows = conn.execute(f"""
-        SELECT pr.product_id, s.network_id, MIN(pr.price)
-        FROM prices pr JOIN stores s ON pr.store_id = s.id
-        WHERE pr.price_date = ? AND pr.product_id IN ({placeholders})
-          AND s.network_id IS NOT NULL AND pr.price > 0
-        GROUP BY pr.product_id, s.network_id
+        SELECT product_id, network_id, min_price
+        FROM price_daily_min
+        WHERE price_date = ? AND product_id IN ({placeholders})
     """, (price_date, *product_ids)).fetchall()
 
     by_pid = {}
@@ -193,17 +212,16 @@ def build():
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     args = ap.parse_args()
 
-    conn = sqlite3.connect(args.db)
+    conn = init_db(args.db)
     baskets = json.load(open(BASKETS_CFG, encoding="utf-8"))["baskets"]
 
+    all_pids = sorted({pid for b in baskets for it in b["items"] for pid in it["product_ids"]})
+    refresh_rollup(conn, all_pids)
     dates = fetch_dates(conn)
     if not dates:
         print("No price dates found.")
         return
     print(f"Building CPI over {len(dates)} dates: {dates[0]} → {dates[-1]}")
-
-    # Collect all product IDs across all baskets
-    all_pids = sorted({pid for b in baskets for it in b["items"] for pid in it["product_ids"]})
 
     # Build time series per basket
     series = {b["id"]: [] for b in baskets}

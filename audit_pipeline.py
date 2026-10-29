@@ -27,63 +27,135 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from generate_pipeline_report import (
-    STALE_DAYS,
+    FROZEN_DATE_DAYS,
+    STALE_DAYS_DAILY,
+    STALE_DAYS_WEEKLY,
     compute_outlier_summary,
+    freshness_breakdown,
     load_store_freshness,
 )
 
 # Red thresholds — when breached, audit fails and triggers /fail ping.
 STALE_PCT_RED = 10.0     # >10% of stores stale → red
 ABANDONED_DAYS = 7       # any abandoned/error run in last N days → red
+RUN_RECOVERY_WINDOW_MINUTES = 60  # a completed run of the same script starting within this
+                                   # window after a bad run's finished_at counts as recovered
 COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
 
 
-def check_store_freshness(conn):
-    rows = load_store_freshness(conn, stale_days=STALE_DAYS)
+def check_store_freshness(conn, rows=None):
+    """Stores that are not yielding new data, split by failure mode.
+
+    Budgets come from the store's fetch_tier (daily 3d / weekly 10d) and are measured from
+    `last_changed_at`, not `last_checked_at` — see load_store_freshness for why the old
+    column reported 0% stale while whole networks were frozen.
+    """
+    if rows is None:
+        rows = load_store_freshness(conn)
     total = len(rows)
+    counts, worst = freshness_breakdown(rows)
     stale = sum(1 for r in rows if r["stale"])
     pct = round(100 * stale / total, 2) if total else 0.0
     red = pct > STALE_PCT_RED
+    detail = ", ".join(f"{k}={n}" for k, n in sorted(counts.items()) if k != "ok")
     return {
         "name": "store_freshness",
         "red": red,
-        "summary": f"{stale}/{total} stores stale (>{STALE_DAYS}d): {pct}%",
+        "summary": (f"{stale}/{total} stores not yielding new data "
+                    f"({STALE_DAYS_DAILY}d daily / {STALE_DAYS_WEEKLY}d weekly budget): "
+                    f"{pct}%" + (f" — {detail}" if detail else "")),
         "stale_pct": pct,
         "stale_count": stale,
         "total_stores": total,
+        "by_status": counts,
+        "worst_networks": [{"network": n, **c} for n, c in worst[:8]],
         "threshold_pct": STALE_PCT_RED,
+        "budget_days": {"daily": STALE_DAYS_DAILY, "weekly": STALE_DAYS_WEEKLY},
+    }
+
+
+def check_frozen_price_dates(conn, rows=None):
+    """Stores where writes keep landing but the retailer's price_date never advances.
+
+    Invisible to every other check: the rows are fresh, the polling is fresh, only the
+    embedded Pricedate is ancient. LIDL has been in this state since 2026-07-16, and
+    propagation copies the sentinel's frozen date to every store in the network — so a
+    network-wide MAX(price_date) hides it too. Must be evaluated per store.
+    """
+    if rows is None:
+        rows = load_store_freshness(conn)
+    frozen = [r for r in rows if r["status"] == "frozen_dates"]
+    by_net = {}
+    for r in frozen:
+        by_net.setdefault(r["network"], []).append(r["days_price_date"])
+    nets = sorted(((n, len(v), max(v)) for n, v in by_net.items()), key=lambda t: -t[1])
+    return {
+        "name": "frozen_price_dates",
+        "red": len(frozen) > 0,
+        "summary": (f"{len(frozen)} store(s) receiving writes with price_date "
+                    f">{FROZEN_DATE_DAYS}d old"
+                    + (f" — {', '.join(f'{n}: {c} stores, up to {a}d' for n, c, a in nets[:3])}"
+                       if nets else "")),
+        "frozen_count": len(frozen),
+        "networks": [{"network": n, "stores": c, "max_age_days": a} for n, c, a in nets],
+        "threshold_days": FROZEN_DATE_DAYS,
     }
 
 
 def check_run_history(conn):
-    # `started_at` doubles as a session id: fetch_prices reuses the original
-    # fetched_at across cron firings, so all rows for one logical session share
-    # it. If any row in that session reached 'completed', the abandoned/error
-    # siblings are normal mid-session cleanup, not failures — ignore them.
-    rows = conn.execute(f"""
+    # A bad run (abandoned/error) is excluded from the count if the same script has a
+    # completed run that either (a) shares its exact started_at — fetch_prices reuses
+    # started_at as a session id across resumed cron ticks, so a completed sibling means
+    # the abandoned/error rows are normal mid-session cleanup — or (b) started within
+    # RUN_RECOVERY_WINDOW_MINUTES after the bad run's finished_at, which covers scripts
+    # like fetch_gas_prices that don't share a session id: a hung run gets reaped by
+    # abandon_stale_runs() and immediately replaced by a fresh completed run.
+    candidates = conn.execute(f"""
         SELECT id, script, status, started_at, finished_at, notes, acknowledged_at
-        FROM runs r
+        FROM runs
         WHERE status IN ('abandoned', 'error')
           AND (finished_at IS NULL OR finished_at >= datetime('now', '-{ABANDONED_DAYS} days'))
           AND acknowledged_at IS NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM runs r2
-              WHERE r2.script     = r.script
-                AND r2.started_at = r.started_at
-                AND r2.status     = 'completed'
-          )
         ORDER BY id DESC
     """).fetchall()
-    red = len(rows) > 0
+
+    bad, suppressed = [], []
+    for r in candidates:
+        run_id, script, status, started_at, finished_at, _, _ = r
+        recovered = conn.execute("""
+            SELECT id FROM runs
+            WHERE script = ?
+              AND status = 'completed'
+              AND (
+                  started_at = ?
+                  OR (
+                      ? IS NOT NULL
+                      AND datetime(started_at) BETWEEN datetime(?) AND datetime(?, ?)
+                  )
+              )
+            ORDER BY id ASC
+            LIMIT 1
+        """, (script, started_at,
+              finished_at, finished_at, finished_at,
+              f'+{RUN_RECOVERY_WINDOW_MINUTES} minutes')).fetchone()
+        if recovered:
+            suppressed.append({"id": run_id, "script": script, "status": status,
+                                "recovered_by": recovered[0]})
+        else:
+            bad.append(r)
+
+    red = len(bad) > 0
     samples = [{"id": r[0], "script": r[1], "status": r[2], "notes": r[5],
-                "acknowledged": r[6] is not None} for r in rows[:5]]
+                "acknowledged": r[6] is not None} for r in bad[:5]]
     return {
         "name": "run_history",
         "red": red,
-        "summary": f"{len(rows)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d",
-        "bad_run_count": len(rows),
+        "summary": (f"{len(bad)} unrecovered abandoned/error run(s) in last {ABANDONED_DAYS}d"
+                    + (f" ({len(suppressed)} auto-suppressed)" if suppressed else "")),
+        "bad_run_count": len(bad),
         "samples": samples,
+        "suppressed": suppressed,
         "window_days": ABANDONED_DAYS,
     }
 
@@ -92,12 +164,14 @@ def check_coverage_gaps(conn):
     rows = conn.execute(f"""
         SELECT n.id, n.name,
                COUNT(DISTINCT s.id) AS stores,
-               MAX(pc.last_checked_at) AS latest
+               MAX(pc.last_changed_at) AS latest
         FROM retail_networks n
         LEFT JOIN stores s ON s.network_id = n.id
         LEFT JOIN prices_current pc ON pc.store_id = s.id
         GROUP BY n.id, n.name
     """).fetchall()
+    # NOTE: keyed on last_changed_at, not last_checked_at — the latter is bumped on every
+    # visit even when the API returns nothing, so it can never detect a coverage gap.
 
     gaps = []
     cutoff = datetime.now(timezone.utc).timestamp() - COVERAGE_GAP_DAYS * 86400
@@ -192,8 +266,12 @@ def run_audit(db_path, include_outliers=False):
     # write lock during the daily 06:00 audit window.
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
+        # One pass over prices_current feeds both freshness checks: the per-store GROUP BY
+        # scans ~16M rows and takes minutes, so it must not be run twice.
+        freshness_rows = load_store_freshness(conn)
         checks = [
-            check_store_freshness(conn),
+            check_store_freshness(conn, rows=freshness_rows),
+            check_frozen_price_dates(conn, rows=freshness_rows),
             check_run_history(conn),
             check_coverage_gaps(conn),
             check_anomaly_drift(conn),

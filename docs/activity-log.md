@@ -13,6 +13,123 @@
 - **Non-obvious:** a `DELETE` of 36.6M rows on the spinning backup disk ran ~7 h at ~100 IOPS without finishing — abandoned. Copying only the wanted rows into a fresh DB (`INSERT … SELECT … FROM src.prices NOT INDEXED WHERE price_date >= cutoff`) took ~30 min. For big trims, rebuild by copy, never `DELETE`. Open local DBs with `?immutable=1` (`mode=ro` fails on a WAL DB with no `-wal`/`-shm`). Do not `pgrep -f` over SSH without the `[x]` pattern trick: it matches its own remote command line.
 - Cost: ~13 h fetch gap (no `fetch_prices` between 2026-10-28 23:29 UTC and the cron re-enable at ~10:50 UTC the next day); the 2026-10-29 04:00 pass is missing.
 
+### 2026-10-19 — Retail fetch: split batches on 5xx, stop the failed-batch livelock
+
+**Why:** `/pipeline-check` RED (store_freshness 4.7% → 40.7%). 2026-10-18 ran 47 slices and wrote **0 prices**: 5,787 batches failed with HTTP 500, and one anchor (Market Valea Lupului, Iași) was re-tried for ~15 consecutive slices. Live probe: the API 500s after ~30s server-side when a dense anchor × 200-ID batch is too slow (central Bucharest: 200 IDs → 500 @30.7s, 100 → borderline, 50 → OK @16s; rural 200 → OK @6s). Retrying the identical request (3× in `fetch_xml`, ~93s) is futile.
+
+**Change (`fetch_prices.py`):**
+- New `_fetch_batch()`: batches > `MIN_SPLIT_BATCH` (50) get one attempt; on 5xx/timeout they are halved and recursed; the floor gets the normal 3 retries. 4xx and parse errors are not split. Stores deduped across halves. Batch index / `done` key unchanged. Live: a previously always-failing 200-ID Bucharest batch now returns all 200 products (7,813 prices) in 121s.
+- Failed batches are now added to `done` (consistent with sentinel/canary/tier skips, which already do). Previously a slice that hit its timelimit mid-anchor resumed and retried the same failing batches from batch 0, never finishing the anchor, so dead-anchor detection never fired. Failed batches are retried in the next day's run.
+- Tests: `tests/test_fetch_split.py`. Global `BATCH_SIZE` deliberately not lowered: rural anchors handle 200 fine and a global cut multiplies calls. Follow-ups in backlog (per-anchor batch size memory, per-slice dead-anchor detection).
+
+### 2026-10-07 — Halved retail throughput loss: whole-table setup passes now run once per run, not per slice
+
+**Why:** `/pipeline-check` was RED (store_freshness 22%, unpolled 1 → 498 overnight). Root cause of the slow catch-up: the `*/30` cron produced only ~24 slices/day (fetcher busy ~47% of the time). Every slice — resumed ones too — ran four whole-table aggregates over `prices_current` (17M rows) before fetching: `deactivate_stale_stores`, `update_store_tiers` (2 UPDATEs) and `_load_stale_map`. One pass timed at 272 s; the 21:00 slice printed its first `Fetching prices:` header at 21:16. Setup + the 1700 s work window overran 30 min, so every other cron tick hit the lock and was skipped.
+
+**Change (`fetch_prices.py`):**
+- `deactivate_stale_stores` + `update_store_tiers` moved below the checkpoint resolution and gated on `cp is None` (new run). A resumed slice already restored the tier sets from the checkpoint; not re-pruning also keeps the active-store set, and therefore the anchors, stable across slices.
+- The stale-first anchor order is computed once at run start and persisted as `anchor_order` in the checkpoint; resumed slices re-apply it via `_order_by_saved` (stores added since sort first). A legacy checkpoint without it computes the order once, then persists it.
+- New `Setup: Ns (new run|resumed slice)` log line before the `Fetching prices:` header.
+- Side effect: "Already completed today — nothing to do" ticks no longer pay the maintenance passes either.
+
+**Tests:** `tests/test_fetch_setup_cost.py` drives `main()` on a temp DB (`max_runtime=1e-9` exits at the first anchor, no network) and counts the three passes for new run / resumed / legacy-checkpoint cases. Full suite: 39 pass, 8 fail — the same 8 `test_audit_pipeline.py` failures as before the change (see backlog).
+
+**Not changed:** today's RED is mostly the W41 weekly full scan (998 anchors × 35,195 products, sentinel off, ~36 h left at the old rate) — design question logged in the backlog. Publish/sentinel cron lines remain uninstalled until healthchecks.io UUIDs exist (backlog).
+
+### 2026-09-28 — Fixed weekly-tier store starvation (store_freshness ~72% RED) and a product-tier rule that dropped 99% of the catalogue
+
+**Why:** `/pipeline-check` showed store_freshness RED at 72% "starved": ~2,940 weekly-tier stores (all of PROFI/MEGA/CARREFOUR/AUCHAN/SUPECO/SELGROS weekly) had a fresh `last_checked_at` but zero price rows in 7d. Root cause in `fetch_prices.py`, four compounding bugs:
+
+1. **Full scan fired daily, then flipped off.** `full_scan = cp.iso_week != today`, but the daily reset sets `cp = None`, so every night's first slice was a "full scan" (all products × all stores ≈ 438k batches — days of work; it got through ~3 anchors before `--max-runtime 1700`). Slice 2 resumed with `iso_week == today` → not a full scan → tiering back on, and the batch list changed under the done-keys.
+2. **Weekly-tier stores were only fetched in that full scan** → never. And since the tier is "no change in 7d", not fetching them kept them weekly forever.
+3. **Tier-skip bumped `last_checked_at`** without an API call, so never-fetched stores looked polled (and `--order stale` never prioritised them).
+4. **Product tier used "any row older than 30d"** (`DISTINCT … WHERE`) instead of `MAX(last_changed_at)`: stale rows from the never-fetched stores tiered out 74,903/75,777 products. The daily run was fetching ~870 real products plus ~11.2k ghosts (ghost filter was also off every day, per bug 1).
+
+**Changes (`fetch_prices.py`):**
+- `_decide_full_scan()` / `_iso_week_key()`: full scan decided once per session and persisted in the checkpoint (`full_scan`, `full_scan_week`); `full_scan_week` is carried across the daily reset and `--fresh`, so it fires once per ISO week. Full scan now only disables ghost filter + sentinel + canary — **not** product/store tiering (infeasible volume; that is why it never completed).
+- `_weekly_rotation_skip()`: weekly-tier stores rotate, `store_id % 7 == day_ordinal % 7` is due today (fetched with the daily product set). The `weekly_store_ids` checkpoint key now holds the *not-due* set.
+- Tier-skip no longer calls `propagate_last_checked`.
+- `_build_weekly_product_tier`: `GROUP BY product_id HAVING MAX(last_changed_at) < now-30d` (57,296 products instead of 74,903).
+- Also fixed: `anchor_failures` skiplist was lost on every daily reset (only carried on `--fresh`, contrary to its comment).
+- Tests: `tests/test_fetch_tiering.py` (7 tests). Smoke-tested against a 40-store scratch DB built from prod PROFI stores with real API calls: first-of-week run → full scan + rotation (5/40 due, 23 anchors tier-skipped); next-day run → no full scan, ghost filter on; resumed slice → mode preserved.
+
+**Expected effect / capacity:** the first run after deploy (no `full_scan_week` in the prod checkpoint yet) will be a full scan. The daily product set grows from ~12k (mostly ghosts) to ~18.5k real products, and weekly stores that start changing drift back to the daily tier, so the nightly run will get longer (est. 1.5–2.5×). Watch that it still completes before the 06:02 audit. store_freshness should fall over ~7–10 days as the rotation cycles.
+
+### 2026-09-27 — Root-caused the LIDL/SUPECO frozen `price_date` bug; hardened sentinel propagation
+
+**Why:** `/pipeline-check` flagged `frozen_price_dates` and `coverage_gaps` RED for LIDL/SUPECO (backlog item filed 2026-09-03, root cause then unknown). Traced it: LIDL's 3 sentinel stores (11708, 3218, 7974) have had a fresh `last_checked_at` every day but a `price_date` frozen at 2026-07-16 for 73+ days; `propagate_network_prices()` copies that frozen date to all ~400 non-sentinel LIDL stores verbatim, which is invisible to every check that only looks at network-level `MAX()`. SUPECO's 3 sentinels froze the same week (2026-07-12/13), independently.
+
+- **Regenerated `data/sentinel_stores.json`** via `analyze_price_similarity.py --days 30 --export-sentinels` — last run was 2026-06-23, three months stale, despite CLAUDE.md documenting a weekly cadence nobody had automated. New sentinel IDs are fully different from the old set. Verified after: KAUFLAND and PENNY's new sentinels are fresh (≤3d); SUPECO's are ~20d old (matches the coverage_gaps age, likely a genuine slow-moving catalog rather than a bug); **2 of LIDL's 3 new sentinels (11895, 11906) are still frozen at the exact same 2026-07-16 date** — the candidate pool (`fetch_sentinel_stores`, ranked by `products_covered` in the `prices` table) is itself contaminated, because propagation had been writing rows into `prices` for non-sentinel stores too, so "high coverage" no longer implies "actually fetched recently." This means the freeze is broader than 3 unlucky store IDs — worth a follow-up look at whether it's an upstream LIDL API issue or a parsing gap on our side.
+- **Hardened `fetch_prices.py`** (`SENTINEL_FROZEN_DATE_DAYS = 14`, propagation call site ~line 1022): before propagating a sentinel's prices, check the sentinel's own `MAX(price_date)` age; skip propagation and log `Sentinel FROZEN: ...` instead of fanning out a stale date if it's beyond the threshold. This fails safe regardless of whether sentinel regeneration picks a good store — a still-frozen sentinel now produces `starved` (honest, no new data) instead of `frozen_dates` (fresh-looking but wrong) for its network's stores.
+- **Added a weekly sentinel-refresh cron line to `scripts/crontab.template`** (Sunday 04:00, `analyze_price_similarity.py --export-sentinels`) so this doesn't silently go stale again. Not yet installed into the live crontab — needs a healthchecks.io UUID and an operator decision, left as `REPLACE_WITH_SENTINEL_REFRESH_HC_UUID`.
+- Left `docs/backlog.md`'s LIDL/SUPECO item open (not resolved) — the guard stops the silent corruption, but the underlying upstream freeze for LIDL is still there and will now surface as `store_freshness` starvation instead.
+
+### 2026-09-04 — Site published to gh-pages; `idx_prices_date` added; build profiled
+
+**Why:** finishing Phase 0 (the site had to actually reach the internet) and answering the open question of why a full build took over an hour.
+
+- **Published.** `scripts/publish_site.sh` now force-pushes 146 files to `origin/gh-pages`. Two problems surfaced on the first real run:
+  - *Push denied.* `~/.ssh/config` names `IdentityFile ~/.ssh/id_monitpret` for the `github.com-monitpret` alias, but without `IdentitiesOnly` ssh-agent offered `id_ed25519_fb-fomo-gobbler` first; GitHub authenticated that key (a deploy key for a different repo) and refused. The deploy key itself is fine — a forced-identity dry-run pushed cleanly. Fixed repo-locally with `git config core.sshCommand 'ssh -i ~/.ssh/id_monitpret -o IdentitiesOnly=yes'`, which fixes every git operation from this box, not just the publish.
+  - *Silent skip.* The script's "no changes to publish" short-circuit compared the staged tree against the **local** `gh-pages` branch, so after the failed push it saw a matching local commit and exited 0 without ever pushing. Now it also compares against `git ls-remote origin gh-pages` and republishes when the remote is missing or behind.
+- **`CREATE INDEX idx_prices_date ON prices(price_date)`** — built in 1m35s, exit 0, ~770 MB. `MAX(price_date)` went from a ~2m24s full scan to **6 ms**, and both hot query shapes now report `SEARCH prices USING COVERING INDEX`. Full build: **1:10:48 → 53:30**.
+- **`generate_site.py --debug`** — new per-stage timer (`_timed`). The build is I/O-bound and takes tens of minutes, so per-stage timing was the only practical way to find the hot spot rather than guessing. First profile:
+
+  | Stage | Time |
+  |---|---:|
+  | `load_analytics_data` | 1146.6 s |
+  | `load_price_index` | 916.9 s |
+  | `load_price_index_by_category` | 671.7 s |
+  | `load_network_trends` | 244.8 s |
+  | `load_category_trends` | 151.2 s |
+  | `build_compare_data_files` | 134.8 s |
+  | `load_popular_products` | 88.9 s |
+  | `load_metodologie_stats` | 62.0 s |
+  | everything else (13 stages) | < 12 s combined |
+  | **page rendering + write** | **0.1 s** |
+
+  The cost is entirely data loading; rendering is free.
+
+- **The important finding is a correctness bug, not a performance one.** `load_price_index` and `load_price_index_by_category` average `prices` with **no `price_date` filter** — so the network price index leading the homepage is a mean over all 183 collected days presented as a current comparison, and because networks entered the panel at different dates (the 2026-06-21 attribution fix moved 996 stores) the per-network means aren't even over comparable windows. That is the number the headline quotes, so correcting it moves a public figure and needs a `metodologie.html` note; filed to `docs/backlog.md` rather than changed here. The planned `mart_spread` table is the intended replacement.
+- Refreshed `official_cpi` from Eurostat — now current through **2026-07** (August isn't published yet). `config/ins_ipc.json` is human-maintained and still at 2026-05.
+
+**Still manual:** GitHub → Settings → Pages → source `gh-pages`, folder `/ (root)`, then re-add the custom domain.
+
+### 2026-09-03 — Phase 0/0.5: restored the dead site's publishing path, and fixed the freshness check that was reporting GREEN over a starving pipeline
+
+**Why:** five months of collection had produced 36.5M price rows that nobody could see. `monitorulpreturilor.gov2.ro` served GitHub Pages' "Site not found" (HTTP 404, generic `*.github.io` cert), `git ls-files site` returned 0 files, every page on disk was stamped 2026-07-07, and the daily audit reported `0/4066 stores stale — GREEN` throughout. Both problems traced to the same class of error: a check that measures the wrong thing succeeds silently.
+
+**Phase 0 — publishing (the site is buildable and deployable again):**
+
+- Recovered `app.css` (731 lines), `charts.js` and `logo.svg` from `git show 5f5e478:docs/assets/…`; they were deleted by `59f306a` ("delete site from docs") and never re-created under `site/`, so `page_shell`'s `<link href="assets/app.css">` had been dangling for eight weeks. Placed them at repo root `assets/` as tracked **source** rather than build output, so they cannot be lost with the output directory again.
+- `generate_site.py`: added `copy_assets()`, which copies `assets/` into `<out>/assets` and re-emits `CNAME` on every build. It **raises** on a missing required asset rather than warning — a silent miss is precisely how this broke the first time, and an unstyled site is worse than a failed build.
+- `generate_site.py`: added a `use_charts` flag to `page_shell()` and removed the six per-page Chart.js CDN tags. The shell now emits Chart.js followed by `assets/charts.js` in the head. Order is load-bearing: `charts.js` mutates `Chart.defaults`, and those only apply at construction time, so both must run before any page script calls `new Chart()`.
+- `scripts/publish_site.sh` (new): builds the aggregator chain in the order `readme.md` documents, then force-pushes `site/` to an orphan `gh-pages` branch through a git worktree at `.worktrees/gh-pages`. GitHub Pages can only serve a branch root or that branch's `/docs`, never an arbitrary `/site`, so committing the output to `main` cannot work; this keeps `.gitignore`'s `/site` intact and `main` free of build output. Single-commit force-push rather than accumulating history — ~3 MB of derived output daily would add ~1 GB/year of git objects for no audit value, since `main` is the audit trail. Refuses to publish if any of `index.html`, the three assets or `CNAME` is missing, if fewer than 20 files are present, or if the staged file count doesn't match what was copied (a gitignore rule silently eating output would otherwise ship a broken site over a working one).
+- `scripts/crontab.template`: daily rebuild + publish at 06:30, wrapped in `hc_run.sh` like every other job — placed after the 06:00 audit so `pipeline-health.html` carries fresh numbers, and away from the 30-minute `fetch_prices` ticks.
+- **Verified:** clean build emits 19 pages (3,027 KB) plus assets and CNAME; Playwright over a local server confirms `body` background `rgb(250,248,242)`, IBM Plex loaded, `window.MP_PALETTE` present, `Chart.defaults.font.family` already themed at chart-construction time, and zero console errors on `index`, `inflatie` and `tablou`.
+- **Still manual (no `gh` CLI on this box):** set the repo's Pages source to branch `gh-pages`, folder `/ (root)`, and re-add the custom domain.
+
+**Phase 0.5 — the false GREEN:**
+
+- Root cause: both freshness checks measured `MAX(prices_current.last_checked_at)`, which `db.py:420` bumps on **every visit even when the price is unchanged**. It answers "are we polling?", never "are we receiving?" — so a store polled perfectly that has returned nothing for ten weeks reported zero days stale. Measured across the live DB, `last_checked_at` finds **0 stale stores in all 11 networks**.
+- Rewrote `load_store_freshness()` to measure from `last_changed_at`, with budgets taken from the store's `fetch_tier` (daily 3d / weekly 10d), and to classify each store by *failure mode* rather than a single boolean: `unpolled` (not visited), `starved` (visited on schedule, no new data), `frozen_dates` (data flowing, but the retailer's `price_date` is stuck >14d), `ok`. `last_checked_at` is still read — but only to tell `unpolled` apart from `starved`, which is the one question it can actually answer.
+- `audit_pipeline.py`: `check_store_freshness` now reports the per-status and per-network breakdown; new `check_frozen_price_dates` check; `check_coverage_gaps` switched off `last_checked_at` too. Both freshness checks share one `load_store_freshness()` call — the per-store `GROUP BY` over 16.4M rows takes ~6 min and must not run twice.
+- `generate_pipeline_report.py`: the health page gained a "Freshness by network — where the data loss is" table, and the per-store table now shows tier, days since new data, days unpolled and price_date age side by side, so the two failure modes are distinguishable at a glance.
+- Coverage: `tests/test_store_freshness.py`, 9 tests, each built from a state actually observed in the live DB on 2026-09-03 — including the LIDL case (fresh writes, 49-day-old `price_date`, invisible to a `last_changed_at`-only check) and the PROFI case (polled today, 70 days without new data).
+- Also repaired `tests/test_pipeline_report.py`, whose fixture used positional `INSERT`s into `prices_current` and `runs`. Both tables had since gained a column, so **all 7 tests in that file had been erroring at setup** — the freshness tests it contained were not testing anything. Columns are now named explicitly.
+
+**What the fix surfaced (filed to `docs/backlog.md`, not fixed here):** 2,211 weekly-tier stores — 54% of the estate — have produced no new price data for a median of 70 days (PROFI 1,585 stores at p50 70d, AUCHAN 63d, MEGA IMAGE 27d, CARREFOUR 18d), all while reporting fresh `last_checked_at`. There is a feedback loop underneath: `update_store_tiers` demotes a store to weekly based on `last_changed_at`, and `fetch_prices.py` then skips weekly stores except on the ISO-week full scan — so a store that stops returning data gets fetched *less*. The networks that still look healthy (PENNY, KAUFLAND, LIDL, SUPECO) are exactly the four sentinel-propagation networks, where prices are SQL-copied rather than fetched; the suspected root cause is the retail API's 50-stores-per-request cap within a 5 km buffer starving the densest networks. Separately, 401 LIDL stores are receiving fresh writes carrying a `price_date` frozen at 2026-07-16.
+
+**Consequence to expect:** the daily audit will now go RED on `store_freshness` and `frozen_price_dates`, because it is finally measuring something real. That is the correct reading, not a regression — the thermometer was broken, not the patient.
+
+### 2026-08-10 — `/pipeline-check`: root-caused `run_history` RED, designed auto-clear for gas's non-session run pattern
+
+**Why:** today's audit was RED on `run_history` alone (all other checks clean). Rather than just acknowledging the flagged run, traced it to a real gap in the existing auto-suppress logic.
+
+- Root cause: `fetch_gas_prices` run `#1162` started 2026-08-07 03:40 and hung ~24h without reaching a terminal status; the next day's cron reaped it via `abandon_stale_runs()` and, in the same invocation, started + completed `#1166` a fraction of a second later. `check_run_history` (`audit_pipeline.py:59`) already auto-suppresses exactly this shape for `fetch_prices`, which deliberately reuses `started_at` as a session id across resumed cron ticks — but `fetch_gas_prices` gets a fresh `started_at` every invocation, so the existing exact-match `NOT EXISTS` clause never catches gas's version of "reaped and immediately replaced," leaving it flagged for the full 7-day `ABANDONED_DAYS` window.
+- Brainstormed a fix (via `superpowers:brainstorming`, user chose each option): extend the same `NOT EXISTS` exclusion with an OR'd time-window clause — a `completed` run of the same script within a flat 60-minute window after the bad run's `finished_at` also counts as recovered. Kept query-only, no `acknowledged_at` write, so `ack_run.py`'s human-review audit trail stays unambiguous. Also proposed adding a `suppressed` list to the check's JSON output so it's visible *what* got auto-excluded and *why*.
+- **Implementation complete (2026-08-10):** Added constant `RUN_RECOVERY_WINDOW_MINUTES = 60` to thresholds block. Rewrote `check_run_history()` to evaluate both recovery rules (exact-match session-id + time-window), returning a new `suppressed` list showing auto-excluded runs and their `recovered_by` id. Summary field now surfaces suppressed count for observability (`"N unrecovered...(M auto-suppressed)"`). Query-only — no `acknowledged_at` writes. Coverage: 10 tests including boundary conditions, cross-script isolation guard, and NULL `finished_at` robustness; verified against real `data/prices.db` (run #1162 correctly suppressed with `recovered_by: 1166`). Spec written to `docs/superpowers/specs/2026-08-10-run-history-auto-clear-design.md`.
+- Filed the underlying diagnostic gap — `abandon_stale_runs()` never records *why* a run hung — to `docs/backlog.md` (Gas / Bugs).
+
 ### 2026-07-26 — `alert_red.py`: annotate paging with RED-streak length
 
 **Why:** `/pipeline-check` history showed overall verdict RED in 7/10 of the last 10 runs, but `scripts/alert_red.py` pages the same way whether it's a fresh one-day blip or a persistent multi-day failure — on-call has no way to tell from the alert alone whether this is new or already-known-and-ignored.

@@ -18,20 +18,20 @@ def db():
     conn.execute("INSERT INTO products VALUES (1,'Lapte 1L',10)")
     conn.execute("INSERT INTO products VALUES (2,'Unt 200g',10)")
     # Store 1: fresh (last_checked_at = today)
-    conn.execute("INSERT INTO prices_current VALUES (1,1,10.0,'2026-04-30',NULL,NULL,'L',NULL,NULL,'2026-04-25','2026-04-30')")
+    conn.execute("INSERT INTO prices_current (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,first_seen_at,last_checked_at,last_changed_at) VALUES (1,1,10.0,'2026-04-30',NULL,NULL,'L',NULL,NULL,'2026-04-25','2026-04-30','2026-04-30')")
     # Store 2: stale (last_checked_at = 4 days ago)
-    conn.execute("INSERT INTO prices_current VALUES (1,2,10.5,'2026-04-26',NULL,NULL,'L',NULL,NULL,'2026-04-20','2026-04-26')")
+    conn.execute("INSERT INTO prices_current (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,first_seen_at,last_checked_at,last_changed_at) VALUES (1,2,10.5,'2026-04-26',NULL,NULL,'L',NULL,NULL,'2026-04-20','2026-04-26','2026-04-26')")
     # Price history for velocity: product 1, store 1 changed on 2026-04-30
     conn.execute("INSERT INTO prices (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,fetched_at) VALUES (1,1,10.0,'2026-04-30',NULL,NULL,'L',NULL,NULL,'2026-04-30T04:00:00')")
     conn.execute("INSERT INTO prices (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,fetched_at) VALUES (1,1,9.5,'2026-04-29',NULL,NULL,'L',NULL,NULL,'2026-04-29T04:00:00')")
     # Outlier: product 2, store 1 has abnormally high price
-    conn.execute("INSERT INTO prices_current VALUES (2,1,999.0,'2026-04-30',NULL,NULL,'BUC',NULL,NULL,'2026-04-25','2026-04-30')")
-    conn.execute("INSERT INTO prices_current VALUES (2,2,5.0,'2026-04-30',NULL,NULL,'BUC',NULL,NULL,'2026-04-25','2026-04-30')")
+    conn.execute("INSERT INTO prices_current (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,first_seen_at,last_checked_at,last_changed_at) VALUES (2,1,999.0,'2026-04-30',NULL,NULL,'BUC',NULL,NULL,'2026-04-25','2026-04-30','2026-04-30')")
+    conn.execute("INSERT INTO prices_current (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,first_seen_at,last_checked_at,last_changed_at) VALUES (2,2,5.0,'2026-04-30',NULL,NULL,'BUC',NULL,NULL,'2026-04-25','2026-04-30','2026-04-30')")
     # Promo sanity: product 1 store 2 has suspiciously deep promo (0.10 lei for 10 lei product)
-    conn.execute("INSERT INTO prices_current VALUES (1,2,0.10,'2026-04-30','PROMO',NULL,'L',NULL,NULL,'2026-04-25','2026-04-30') ON CONFLICT(product_id,store_id) DO UPDATE SET price=0.10, promo='PROMO'")
+    conn.execute("INSERT INTO prices_current (product_id,store_id,price,price_date,promo,brand,unit,retail_categ_id,retail_categ_name,first_seen_at,last_checked_at,last_changed_at) VALUES (1,2,0.10,'2026-04-30','PROMO',NULL,'L',NULL,NULL,'2026-04-25','2026-04-30','2026-04-30') ON CONFLICT(product_id,store_id) DO UPDATE SET price=0.10, promo='PROMO'")
     # Runs
-    conn.execute("INSERT INTO runs VALUES (1,'fetch_prices.py','2026-04-30T04:00:00','2026-04-30T05:10:00','completed',300,50000,NULL)")
-    conn.execute("INSERT INTO runs VALUES (2,'fetch_prices.py','2026-04-29T04:00:00',NULL,'interrupted',100,15000,NULL)")
+    conn.execute("INSERT INTO runs (id,script,started_at,finished_at,status,uats_processed,records_written,notes) VALUES (1,'fetch_prices.py','2026-04-30T04:00:00','2026-04-30T05:10:00','completed',300,50000,NULL)")
+    conn.execute("INSERT INTO runs (id,script,started_at,finished_at,status,uats_processed,records_written,notes) VALUES (2,'fetch_prices.py','2026-04-29T04:00:00',NULL,'interrupted',100,15000,NULL)")
     conn.commit()
     return conn
 

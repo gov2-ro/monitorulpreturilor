@@ -16,11 +16,16 @@ Usage:
 
 import argparse
 import json
+import shutil
 import sqlite3
+import time
 from pathlib import Path
 
 DB_PATH = Path("data/prices.db")
 OUT_DIR = Path("site")
+ASSETS_DIR = Path("assets")   # tracked source; copied into <out>/assets on every build
+DEBUG = False                 # --debug: per-stage timing
+CNAME = "monitorulpreturilor.gov2.ro"
 
 # ── Network colors ──────────────────────────────────────────────────────
 
@@ -904,8 +909,22 @@ FONTS_HEAD = (
 )
 
 
+CHART_HEAD = (
+    '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>\n'
+    '<script src="assets/charts.js"></script>'
+)
+
+
 def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
-               extra_scripts: str = "") -> str:
+               extra_scripts: str = "", use_charts: bool = False) -> str:
+    """Render a page in the shared chrome.
+
+    use_charts loads Chart.js *and* the editorial theme (assets/charts.js) in the head.
+    Order matters: charts.js mutates Chart.defaults and is a no-op if Chart is absent, and
+    Chart.defaults only apply at construction time — so both must run before any page
+    script calls `new Chart()`. Head scripts execute before body, which guarantees that.
+    """
+    charts = f"\n{CHART_HEAD}" if use_charts else ""
     return f"""<!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -915,7 +934,7 @@ def page_shell(title: str, active_page: str, body: str, extra_head: str = "",
 <meta name="description" content="Monitorul prețurilor din România — date publice, comparații între rețele, analize zilnice."/>
 {FONTS_HEAD}
 <link rel="stylesheet" href="assets/app.css"/>
-<link rel="icon" type="image/svg+xml" href="assets/logo.svg"/>
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg"/>{charts}
 {extra_head}
 </head>
 <body>
@@ -1066,7 +1085,6 @@ def gen_tablou(summary, price_index, fuel_prices, fuel_trends, popular=None):
 </div>"""
 
     scripts = f"""
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const piData = {jdump(price_index)};
 new Chart(document.getElementById('indexChart'), {{
@@ -1162,7 +1180,7 @@ if (fuelTrendRawDash.length) {{
 }}
 </script>"""
 
-    return page_shell("Tablou de bord", "tablou.html", body, extra_scripts=scripts)
+    return page_shell("Tablou de bord", "tablou.html", body, extra_scripts=scripts, use_charts=True)
 
 
 def _popular_index_section(popular: list | None) -> str:
@@ -1441,7 +1459,6 @@ def gen_price_index(price_index, by_category):
 </div>"""
 
     scripts = f"""
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const piData = {jdump(price_index)};
 const byCat = {jdump(by_category)};
@@ -1508,7 +1525,7 @@ document.getElementById('catTabs').addEventListener('click', e => {{
 renderCat(Object.keys(byCat).sort()[0]);
 </script>"""
 
-    return page_shell("Index Prețuri", "price-index.html", body, extra_scripts=scripts)
+    return page_shell("Index Prețuri", "price-index.html", body, extra_scripts=scripts, use_charts=True)
 
 
 def gen_fuel(fuel_prices):
@@ -1544,7 +1561,6 @@ def gen_fuel(fuel_prices):
 </div>"""
 
     scripts = f"""
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const byFuel = {jdump(by_fuel)};
 const fuelTypes = {jdump(fuel_types)};
@@ -1609,7 +1625,7 @@ document.getElementById('fuelTabs').addEventListener('click', e => {{
 renderFuel(fuelTypes[0]);
 </script>"""
 
-    return page_shell("Carburanți", "fuel.html", body, extra_scripts=scripts)
+    return page_shell("Carburanți", "fuel.html", body, extra_scripts=scripts, use_charts=True)
 
 
 def gen_pipeline(runs, coverage, summary):
@@ -1788,7 +1804,6 @@ def gen_trends(network_trends, category_trends, fuel_trends):
     gas_colors_js = {r["network"]: net_color(r["network"], GAS_COLORS) for r in fuel_trends}
 
     scripts = f"""
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const trendDates  = {jdump(display_dates)};
 const allDates    = {jdump(all_dates)};
@@ -1947,7 +1962,7 @@ if (fuelTrendTabsEl && allFuelTypes.length) {{
 }}
 </script>"""
 
-    return page_shell("Tendințe", "trends.html", body, extra_scripts=scripts)
+    return page_shell("Tendințe", "trends.html", body, extra_scripts=scripts, use_charts=True)
 
 
 def gen_compare(compare_index):
@@ -2032,7 +2047,6 @@ def gen_compare(compare_index):
 </style>"""
 
     scripts = f"""
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 const netColors = {jdump(compare_index.get("net_colors", {}))};
 
@@ -2205,7 +2219,7 @@ sel.addEventListener('change', onSelect);
 if (sel.value) onSelect();
 </script>"""
 
-    return page_shell("Comparare", "compare.html", body, extra_scripts=scripts)
+    return page_shell("Comparare", "compare.html", body, extra_scripts=scripts, use_charts=True)
 
 
 def gen_analytics(data):
@@ -2942,7 +2956,6 @@ def gen_inflatie() -> str:
     shallow history; the chart skeleton fills in naturally over time.
     """
     extra_scripts = """
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function(){
   const FMT2 = new Intl.NumberFormat('ro-RO', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -3190,7 +3203,7 @@ def gen_inflatie() -> str:
   </div>
 </div>
 """
-    return page_shell("Indice Inflație Civică", "inflatie.html", body, extra_scripts=extra_scripts)
+    return page_shell("Indice Inflație Civică", "inflatie.html", body, extra_scripts=extra_scripts, use_charts=True)
 
 
 def gen_povesti() -> str:
@@ -4651,11 +4664,59 @@ fetch(DATA_URL).then(r => r.json()).then(data => {
 
 # ── Main ────────────────────────────────────────────────────────────────
 
+def _timed(label, fn, *args, **kwargs):
+    """Run fn, reporting elapsed seconds under --debug.
+
+    The build is I/O-bound on full-history scans, and a whole run takes tens of minutes —
+    per-stage timing is the only practical way to see which loader is responsible.
+    """
+    if not DEBUG:
+        return fn(*args, **kwargs)
+    t0 = time.perf_counter()
+    result = fn(*args, **kwargs)
+    print(f"  [{time.perf_counter() - t0:7.1f}s] {label}", flush=True)
+    return result
+
+
+REQUIRED_ASSETS = ("app.css", "charts.js", "logo.svg")
+
+
+def copy_assets(out_dir: Path, src: Path = ASSETS_DIR) -> None:
+    """Copy the tracked design system into <out>/assets and emit CNAME.
+
+    Raises rather than warns: a missing app.css renders every page unstyled, which is
+    exactly how the site silently broke before (commit 59f306a deleted docs/assets/ and
+    nothing re-created it under site/).
+    """
+    missing = [f for f in REQUIRED_ASSETS if not (src / f).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"Missing required asset(s) in {src}/: {', '.join(missing)}. "
+            f"Recover with: git show 5f5e478:docs/assets/<file> > {src}/<file>"
+        )
+
+    dest = out_dir / "assets"
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in sorted(p for p in src.iterdir() if p.is_file()):
+        shutil.copy2(f, dest / f.name)
+        print(f"  assets/{f.name:<16} {f.stat().st_size / 1024:6.1f} KB")
+
+    # Must be re-emitted on every build or the custom domain drops on each deploy.
+    (out_dir / "CNAME").write_text(CNAME + "\n", encoding="utf-8")
+    print(f"  CNAME                {CNAME}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate static site from prices.db")
     parser.add_argument("--db",  default=str(DB_PATH),  help="Path to prices.db")
     parser.add_argument("--out", default=str(OUT_DIR),   help="Output directory")
+    parser.add_argument("--debug", action="store_true",
+                        help="Print per-stage elapsed time (the build is I/O-bound; this "
+                             "shows which loader dominates)")
     args = parser.parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
 
     db_path = Path(args.db)
     out_dir = Path(args.out)
@@ -4663,29 +4724,33 @@ def main():
 
     conn = sqlite3.connect(db_path)
 
-    print("Loading data...")
-    summary         = load_summary(conn)
-    price_index     = load_price_index(conn)
-    by_category     = load_price_index_by_category(conn)
-    fuel_prices     = load_fuel_prices(conn)
-    runs            = load_runs(conn)
-    coverage        = load_coverage(conn)
-    network_trends  = load_network_trends(conn)
-    category_trends = load_category_trends(conn)
-    fuel_trends     = load_fuel_trends(conn)
-    compare_index   = load_compare_index(conn)
-    analytics_data  = load_analytics_data(conn)
-    popular         = load_popular_products(conn, top=20)
-    stores          = load_stores(conn)
-    gas_stations    = load_gas_map_data(conn)
-    metod_stats     = load_metodologie_stats(conn)
+    print("Loading data...", flush=True)
+    t_load = time.perf_counter()
+    summary         = _timed("load_summary",             load_summary, conn)
+    price_index     = _timed("load_price_index",         load_price_index, conn)
+    by_category     = _timed("load_price_index_by_category", load_price_index_by_category, conn)
+    fuel_prices     = _timed("load_fuel_prices",         load_fuel_prices, conn)
+    runs            = _timed("load_runs",                load_runs, conn)
+    coverage        = _timed("load_coverage",            load_coverage, conn)
+    network_trends  = _timed("load_network_trends",      load_network_trends, conn)
+    category_trends = _timed("load_category_trends",     load_category_trends, conn)
+    fuel_trends     = _timed("load_fuel_trends",         load_fuel_trends, conn)
+    compare_index   = _timed("load_compare_index",       load_compare_index, conn)
+    analytics_data  = _timed("load_analytics_data",      load_analytics_data, conn)
+    popular         = _timed("load_popular_products",    load_popular_products, conn, top=20)
+    stores          = _timed("load_stores",              load_stores, conn)
+    gas_stations    = _timed("load_gas_map_data",        load_gas_map_data, conn)
+    metod_stats     = _timed("load_metodologie_stats",   load_metodologie_stats, conn)
+    if DEBUG:
+        print(f"  [{time.perf_counter() - t_load:7.1f}s] TOTAL loaders", flush=True)
 
-    print("Building compare data files...")
-    n_products = build_compare_data_files(conn, out_dir)
+    print("Building compare data files...", flush=True)
+    n_products = _timed("build_compare_data_files", build_compare_data_files, conn, out_dir)
     print(f"  data/products/   {n_products} CSV files")
 
     conn.close()
 
+    t_render = time.perf_counter()
     pages = {
         "index.html":       gen_index(summary, price_index, fuel_prices, fuel_trends, popular),
         "tablou.html":      gen_tablou(summary, price_index, fuel_prices, fuel_trends, popular),
@@ -4716,6 +4781,10 @@ def main():
 
     total_kb = sum(len(h.encode("utf-8")) for h in pages.values()) / 1024
     print(f"\nTotal: {total_kb:.0f} KB across {len(pages)} pages")
+    if DEBUG:
+        print(f"  [{time.perf_counter() - t_render:7.1f}s] page rendering + write", flush=True)
+
+    copy_assets(out_dir)
 
 
 if __name__ == "__main__":

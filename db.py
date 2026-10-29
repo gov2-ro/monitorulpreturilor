@@ -194,6 +194,15 @@ def init_db(path="data/prices.db"):
     );
     CREATE INDEX IF NOT EXISTS idx_price_flags_lookup
         ON price_flags(product_id, store_id, price_date);
+    -- Per-day cheapest price per (basket product, network); survives raw `prices` retention trims.
+    -- Raw min only: B2B exclusion and outlier filtering are applied at read time (build_cpi).
+    CREATE TABLE IF NOT EXISTS price_daily_min (
+        price_date  TEXT NOT NULL,
+        product_id  INTEGER NOT NULL,
+        network_id  TEXT NOT NULL,
+        min_price   REAL NOT NULL,
+        PRIMARY KEY (price_date, product_id, network_id)
+    ) WITHOUT ROWID;
     """)
     conn.commit()
     # Migrate existing DBs that predate columns / indexes added after initial schema
