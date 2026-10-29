@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-10-29 — Local backup of VPS data + slimmed VPS prices.db (60-day retention)
+
+**Why:** VPS `/` was 100% full (`data/prices.db` 15.7 GB of 38 GB), so fetch/gas/backup crons were paused (`#PAUSED-TRIM`) and SQLite could not VACUUM or bulk-delete in place.
+
+- Mirrored VPS `data/` to `/Volumes/geana/bckpz/WRK/gov2/monitorulpreturilor/data/` (full `prices.db` via `rsync --inplace`; `quick_check` ok; per-table row counts identical to the VPS). This is now the only full copy — keep it. Added `scripts/sync_from_vps.sh` + `docs/local-backup.md` (ntfy notifications via `NTFY_TOPIC`).
+- Built a slim DB locally and swapped it onto the VPS: `prices` = last 60 days (from 2026-08-29), `prices_current` whole, plus new `price_daily_min` rollup (38 basket products, from all history, 12,932 rows) so `build_cpi.py` keeps its full history without raw rows. VPS `/` went 99% → 77%. Crons re-enabled (old crontab saved as `data/crontab.before-resume.<date>.bak`).
+- **Non-obvious:** a `DELETE` of 36.6M rows on the spinning backup disk ran ~7 h at ~100 IOPS without finishing — abandoned. Copying only the wanted rows into a fresh DB (`INSERT … SELECT … FROM src.prices NOT INDEXED WHERE price_date >= cutoff`) took ~30 min. For big trims, rebuild by copy, never `DELETE`. Open local DBs with `?immutable=1` (`mode=ro` fails on a WAL DB with no `-wal`/`-shm`). Do not `pgrep -f` over SSH without the `[x]` pattern trick: it matches its own remote command line.
+- Cost: ~13 h fetch gap (no `fetch_prices` between 2026-10-28 23:29 UTC and the cron re-enable at ~10:50 UTC the next day); the 2026-10-29 04:00 pass is missing.
+
 ### 2026-07-26 — `alert_red.py`: annotate paging with RED-streak length
 
 **Why:** `/pipeline-check` history showed overall verdict RED in 7/10 of the last 10 runs, but `scripts/alert_red.py` pages the same way whether it's a fresh one-day blip or a persistent multi-day failure — on-call has no way to tell from the alert alone whether this is new or already-known-and-ignored.

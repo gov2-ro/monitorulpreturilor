@@ -77,6 +77,10 @@ Health check was GREEN but the pipeline had no durability safety net. Found: `da
 
 ### Bugs / Known Issues
 
+- [ ] **VPS `prices.db` retention is manual** (2026-10-29) — the slim DB keeps 60 days of `prices` + `price_daily_min` rollup; nothing prunes older rows automatically, so it will grow back (~275k rows/day). Add a retention step (delete `prices` older than 60 days *after* `price_daily_min` is current, then incremental VACUUM or rebuild-by-copy) and watch `/` free space (alert before 90%). The old `.dump | gzip` weekly `backup_db.sh` needs ≥4 GB free and writes to the same partition — consider dropping it in favour of the local mirror (`scripts/sync_from_vps.sh`).
+- [ ] **Merge new VPS rows into the local full `prices.db`** (2026-10-29) — the VPS DB is slim now, so `sync_from_vps.sh` skips the DB. Local history must be topped up incrementally (e.g. `ATTACH` a fresh VPS snapshot and `INSERT OR IGNORE INTO prices SELECT … WHERE price_date > local max`, plus refresh `prices_current`). Until then the local full copy stops growing after 2026-10-28 04:00.
+- [ ] **Local mirror has no off-box copy** (2026-10-29) — the only full DB is on one external HFS disk (`/Volumes/geana`). Schedule `scripts/sync_from_vps.sh` (daily, with `hc_run.sh` for missed-run detection) and consider a second copy.
+
 - [x] **Stores with missing `network_id` but network name in store name** (2026-05-23) — `backfill_store_network_ids(conn)` in `db.py` uses 12 name-pattern rules (KAUFLAND/PROFI/SELGROS/CORA/AUCHAN/SUPECO/CARREFOUR/MEGA IMAGE/MI /SG /EXPRESS /SEGLROS typo) to fill `network_id IS NULL` rows. Ran on live DB: 85 stores tagged (72 Mega Image, 13 Carrefour). Called at `fetch_prices.py` startup so new stores get tagged immediately. 243 stores remain genuinely unidentifiable (city+street format, MARKET/SUPER prefix — no matching known-network store name pattern).
 
 - [x] **Audit and prune "Unknown" network stores** (2026-05-23) — audited 681 null-network stores. The active fetch run had already filled most (PROFI 265, Kaufland 17, Selgros 15, CORA 13, Auchan 12, Supeco 3) via `upsert_store`. `backfill_store_network_ids` recovered an additional 85 (Mega Image SG/MI prefix, Carrefour Express prefix). 243 remain: `MARKET *`, `SUPER *`, city+street-only names — likely stores where the API itself returns no `Networkid`. `is_active` + `deactivate_stale_stores` will naturally prune them if they stop returning prices. No bias fix yet since 243 genuinely unknown stores still skew the freshness denominator — see "Split store_freshness audit signal" for the proper fix.
@@ -178,3 +182,8 @@ Health check was GREEN but the pipeline had no durability safety net. Found: `da
 - [x] add disclaimer: Acesta nu este un proiect oficial al Guvernului României. Date preluate de pe [monitorulpreturilor.info](https://monitorulpreturilor.info/)
     - [x] add dismissable notification in header (Phase 1 UI redesign)
 - [ ] **Short network display name for stat tiles** — the first stat tile on the homepage shows the raw API name ("LIDL DISCOUNT SRL") which is verbose and 3 lines on mobile. Map to short names (e.g. "Lidl") using a lookup dict in `generate_site.py`; same dict used for the price-index spread chart labels. Requires `config/networks.json` (see Short network IDs config file item above).
+
+
+## misc / unfilled
+
+[cheap foodmap](https://cheapfoodmap.com/)
