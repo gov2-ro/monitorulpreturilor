@@ -4,6 +4,15 @@
 
 ## General
 
+### 2026-10-29 — Mac-side HAND-OFF (local mirror, merge state, to-dos)
+
+For the next session (Mac side; the VPS side has its own "VPS follow-up … HAND-OFF" entry).
+
+- **Git:** `main` contains the merge `939e6f3` of `origin/phase0-restore-publishing` (VPS `5fc1678`: `price_daily_min` rollup read by `build_cpi.py`), plus the audit fix `ae995d2`, docs `b457ea5` and CLAUDE.md follow-ups (`1fdce77`, `9588994`, hand-off commit). The VPS repo was fast-forwarded to `b457ea5`. When both sides push, `docs/activity-log.md` (and possibly `docs/backlog.md`) will conflict: keep both sides.
+- **Local full copy:** `/Volumes/geana/bckpz/WRK/gov2/monitorulpreturilor/data/prices.db` (15,745,298,432 B, WAL header, `quick_check` ok, table counts identical to the VPS before the swap) is the **only full history**. It covers `price_date` 2026-04-13 20:00 → **2026-10-28 04:00**; nothing newer. The rest of the VPS `data/` (logs, checkpoints, reference, `prices_ci.db`) is mirrored beside it; the old 981 MB dump is in `.../backups/`. Open it with `?immutable=1`. Never overwrite it with a VPS copy.
+- **`scripts/sync_from_vps.sh` does:** preflight (volume mounted, SSH ok, no fetch/backup running on the VPS), rsync of the small files (excl. `prices.db*`, `backups/`), ntfy notifications (topic in `~/.config/g2vps/ntfy`, test confirmed by pax). **Does not:** sync `prices.db` (opt-in `SKIP_DB=0`, which would destroy the full history because the VPS DB is now the 60-day slim DB), merge new rows, or run on a schedule (no launchd/cron set up; no `hc_run.sh` wrapper yet).
+- **To-do (see `CLAUDE.md` "Pending follow-ups" and `docs/backlog.md`):** (1) incremental merge of new VPS `prices`/`prices_current` rows into the local full DB (`ATTACH` a VPS snapshot, `INSERT OR IGNORE … WHERE price_date > local max`); (2) a second, off-box copy of the full DB (one external HFS disk today); (3) schedule the sync + a missed-run alert; (4) verify the daily fetch pass completes and tomorrow's audit/`alert_red` (06:30) run; (5) automated 60-day retention on the VPS (see `docs/vps-db-retention.md`); (6) CPI carry-forward fix for the pre-2026-09-28 coverage bias (`docs/data-notes.md`).
+
 ### 2026-10-29 — Local backup of VPS data + slimmed VPS prices.db (60-day retention)
 
 **Why:** VPS `/` was 100% full (`data/prices.db` 15.7 GB of 38 GB), so fetch/gas/backup crons were paused (`#PAUSED-TRIM`) and SQLite could not VACUUM or bulk-delete in place.
