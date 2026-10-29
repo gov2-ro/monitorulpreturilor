@@ -74,6 +74,16 @@ python fetch_official_cpi.py            # [--since YYYY-MM] [--debug]
   overlay + nowcast callout. All keys degrade gracefully if official data is
   absent. Comparison is **rate-of-change only** (HICP basket ≠ ours).
 
+#### Retention: VPS `prices.db` holds only the last 60 days of `prices`
+
+Since 2026-10-29 the VPS DB is slim (~7.5 GB); the **only full history** is the local Mac
+copy. `build_cpi.py` therefore reads the `price_daily_min` rollup (per date × basket product ×
+network raw minimum; basket products = all ids in `config/baskets.json`) and re-upserts it from
+raw `prices` on every run, so never trim `prices` before that has run. Nothing prunes
+automatically yet. When `/` > 85% follow `docs/vps-db-retention.md` (copy rows, never a big
+`DELETE`; `VACUUM` won't fit on a nearly full disk). Analyses needing history older than
+60 days must run on the local full copy.
+
 ### Gas
 ```bash
 python fetch_gas_reference.py    # one-shot: fetch gas networks + fuel product types

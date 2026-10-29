@@ -4,6 +4,19 @@
 
 ## General
 
+### 2026-10-29 — VPS follow-up: CPI rollup code, alert_red timing, retention docs; HAND-OFF
+
+**Why:** after the slimming below, `build_cpi.py` had to survive without raw history, and the alert path was found to be a no-op.
+
+- `5fc1678` (`db.py`, `build_cpi.py`): `price_daily_min(price_date, product_id, network_id, min_price)` created by `init_db`; `build_cpi` upserts it from `prices` for dates >= the last rolled-up date and builds the whole series from it (B2B/outlier filters still at read time). Verified: monthly `our_monthly` identical to the HEAD code run on the full local DB. Cosmetic change: `first_date`/`n_dates` in `cpi.json` now count only dates with basket rows (220 vs 257).
+- Live crontab: `alert_red.py` moved `2 6 * * *` → `30 6 * * *` (it ran before the audit finished: 136/136 log lines "no audit file yet"). Previous crontab: `data/crontab.before-alertred.bak` (untracked). VPS branch `phase0-restore-publishing` fast-forwarded to `origin/main` (it was fully merged).
+- `CLAUDE.md`: added the "Retention" section (60-day window, rollup, full history only on the Mac).
+- **Hand-off / next steps:**
+  - Site publishing is **paused on purpose** while the pipeline is tuned; `site/data/cpi.json` on the VPS is still the stale 2026-07-06 file — regenerate with `python build_cpi.py` when publishing resumes. Not in the live crontab yet: `publish_site.sh`, weekly sentinel refresh (in `scripts/crontab.template`) — pax decides.
+  - Check `data/logs/audit.log` and `alert-red.log` after 06:30: RED for a day or two is expected (04:00 pass of 10-29 missing, 13 h fetch gap). The September CPI dip (189 vs ~320) is a real fetch gap in the original data, not caused by the trim.
+  - Weekly `backup_db.sh` (Sun 10:00) is live again: ~1 GB dump on the same partition; backlog suggests dropping it for the local mirror.
+  - Open backlog: automated VPS retention (before `/` > 85%; follow `docs/vps-db-retention.md`), incremental merge of new VPS rows into the local full DB (it stops at 2026-10-28 04:00), second copy of the full history.
+
 ### 2026-10-29 — Local backup of VPS data + slimmed VPS prices.db (60-day retention)
 
 **Why:** VPS `/` was 100% full (`data/prices.db` 15.7 GB of 38 GB), so fetch/gas/backup crons were paused (`#PAUSED-TRIM`) and SQLite could not VACUUM or bulk-delete in place.
