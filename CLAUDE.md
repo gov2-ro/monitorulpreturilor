@@ -193,7 +193,7 @@ UAT polygons come as `POLYGON((lon1 lat1, lon2 lat2, ...))`. Centroid = average 
 Added 2026-10-29 after the VPS disk-full / slim-DB incident (see `docs/activity-log.md`, `docs/vps-db-retention.md`).
 
 - [ ] **Verify the daily fetch pass completed.** On 2026-10-29 ~14:20 UTC, 842/954 anchors done, ~5.6k units left. Check on the VPS: `grep -a "SUMMARY status=completed" data/logs/fetch-prices.log | tail -3` and `python status.py` (last ok < 1 d, `check_runs` OK). If it is still not completing, investigate slice budget vs the 4,055-store backlog (`fetch_prices.py`, `--max-runtime 1700`).
-- [ ] **Verify the audit now runs.** After the 06:00 cron: `data/logs/audit-<today>.json` exists and `alert-red.log` no longer says "no audit file" (needs `alert_red.py` moved to 06:30 in the live crontab — VPS session was asked to apply it).
+- [ ] **Verify the audit now runs.** After the 06:00 cron: `data/logs/audit-<today>.json` exists and `alert-red.log` no longer says "no audit file" (`alert_red.py` was moved to 06:30 in the live crontab on 2026-10-29, so the first real RED/OK verdict should show in `alert-red.log` on 2026-10-30).
 - [ ] **Confirm the ntfy test and local sync.** Topic is in `~/.config/g2vps/ntfy`; schedule `scripts/sync_from_vps.sh` (small files only; DB step is off by default) with `hc_run.sh`.
 - [ ] **Local full-history DB is frozen at 2026-10-28 04:00** (`/Volumes/geana/bckpz/WRK/gov2/monitorulpreturilor/data/prices.db`, the only full copy). Build the incremental merge from the VPS slim DB (`docs/backlog.md`). Never overwrite it with a VPS copy.
 - [ ] Open backlog from this incident: automated 60-day retention on the VPS, CPI carry-forward fix (Sept coverage artifact), second off-box copy, disk alert at 85%.
