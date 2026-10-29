@@ -75,3 +75,25 @@ SELGROS unit sizes are typically bulk/wholesale quantities, incomparable to cons
   `stores.name` (e.g. "Kaufland Oradea", "Supeco Craiova"). See backlog for backfill task.
 - Network IDs are inconsistent: some are clean strings (`PROFI`, `KAUFLAND`) while others
   are EAN-style codes (`5940475006709` = CARREFOUR).
+
+## Basket coverage before 2026-09-28 (CPI / inflation index caveat)
+
+Known data-quality issue, found 2026-10-29. **Do not read the pre-October CPI month-on-month
+figures at face value** (published `our_monthly`: 2026-09 cost 189.24, −42.3% MoM; 2026-10 +70.4%).
+
+- Cause: fetch coverage, not prices. Before the fetch fixes of 2026-09-28 (`0348e41`, `ce32994`: the
+  product-tier rule "tiered out 99% of the catalogue"; weekly-tier stores never fetched; frozen
+  sentinel `price_date`), only ~20 of the 38 basket products had a price on a typical day;
+  from 2026-09-28 it is ~33. The `price_daily_min` rollup shows it: 30–48 product×network rows/day
+  up to 27 Sep, 100–200 from 28 Sep.
+- Mechanism: `build_cpi.py` takes the **median of the daily basket costs** per month and drops items
+  without a price (no imputation). In September the heaviest `camara` item (Pâine Boierească Albă 700g,
+  `qty_per_week` 4, ~8–11 lei, ≈139 lei/month) had a price on only 13 of 28 days, so the monthly median
+  flipped to the "item missing" version. Other items (salt `1026100`, vinegar `1029251`, flour `1014679`)
+  were intermittent too. Aug and earlier were built on the same low coverage.
+- Dealing with it when analysing: compare months only on items present in both; or restrict to dates
+  ≥ 2026-09-28; check `items_found` per day in `site/data/cpi.json` (`baskets[].series[]`). A
+  carry-forward (LOCF ≤14 d) + weighted-coverage ≥80% "comparable" rule in `build_cpi.py` would fix the
+  index itself (not done: see `docs/backlog.md`).
+- Raw rows before 2026-08-29 are no longer on the VPS (slim DB); the rollup keeps basket history.
+  The full raw history is in the local mirror (`docs/local-backup.md`).

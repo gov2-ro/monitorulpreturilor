@@ -13,6 +13,8 @@ VPS="pax@78.46.142.169"
 SRC="g2-dev/monitorulpreturilor/data"
 DEST="${DEST:-/Volumes/geana/bckpz/WRK/gov2/monitorulpreturilor/data}"
 NTFY_SERVER="${NTFY_SERVER:-https://ntfy.sh}"
+# Topic lives outside the repo (ntfy.sh topics are public-by-name): ~/.config/g2vps/ntfy
+[ -z "${NTFY_TOPIC:-}" ] && [ -f "$HOME/.config/g2vps/ntfy" ] && . "$HOME/.config/g2vps/ntfy"
 
 notify() {  # notify <priority> <title> <message>
     echo "$(date -Is) [$2] $3"
