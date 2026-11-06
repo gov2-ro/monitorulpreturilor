@@ -4,6 +4,9 @@
 
 ## General
 
+### 2026-11-06 — Retail upstream outage: anchor circuit breaker + `retail_ingest` audit check
+Found via /pipeline-check: audit GREEN but ~305 slices/7d "interrupted" with `prices=0`. Cause is upstream — the price endpoint 500s (AutoMapper "Error mapping types") for any request containing a product that has prices in the buffer (from ~13:00 UTC; networks/gas endpoints fine). Splitting to 50 can't help, so one dense anchor (Bucharest, 109 batches × ~15 s) outlasted every 1700 s slice. Added `ANCHOR_ABORT_AFTER=5` in `fetch_prices.py`: after 5 consecutive failed batches with 0 prices the anchor is abandoned for the slice (remaining batches marked done, feeds the dead-anchor skiplist); verified live ("ABORT ANCHOR" in log). Added `check_retail_ingest` to `audit_pipeline.py` (RED if no prices written by `fetch_prices` runs finishing in the last 12 h) — the existing checks only look at freshness/run status and missed it. Tried basket-only bisect-to-single-ID recovery; reverted since every priced product fails, so nothing is recoverable. See backlog Retail → Bugs.
+
 ### 2026-10-29 — VPS follow-up: CPI rollup code, alert_red timing, retention docs; HAND-OFF
 
 **Why:** after the slimming below, `build_cpi.py` had to survive without raw history, and the alert path was found to be a no-op.

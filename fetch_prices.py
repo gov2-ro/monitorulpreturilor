@@ -75,6 +75,7 @@ CANARY_THRESHOLDS = {
 
 DEAD_ANCHOR_THRESHOLD = 3   # consecutive all-fail runs before skiplist
 DEAD_ANCHOR_SKIP_DAYS = 7   # days to keep on skiplist before retry
+ANCHOR_ABORT_AFTER = 5      # consecutive failed batches (0 prices so far) → abandon anchor this slice
 # Split-on-5xx floor. The API 500s after ~30s server-side when a dense anchor × large
 # batch is too slow (central Bucharest: 200 IDs → 500 @30.7s, 50 IDs → 200 @16s;
 # probed 2026-10-19). Batches above this are halved on 5xx/timeout instead of retried.
@@ -1000,6 +1001,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                 cap_hit_batches = 0
                 batch_total = 0
                 batch_failures = 0
+                consec_failures = 0
 
                 # Per-anchor product filtering:
                 # - Started anchors (resume): use global list for stable batch indices.
@@ -1042,6 +1044,18 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                 f"  WARN: skipping {name} batch {i} after all retries failed: {exc}"
                             )
                             batch_failures += 1
+                            consec_failures += 1
+                            # Circuit breaker: during the 2026-11-06 upstream outage the price
+                            # endpoint 500'd ("Error mapping types") on every batch holding priced
+                            # products; ~15s per failure → an anchor outlasted the slice (livelock).
+                            # Give up on it for today.
+                            if store_prices == 0 and consec_failures >= ANCHOR_ABORT_AFTER:
+                                tqdm.write(f"  ABORT ANCHOR: {name} — {consec_failures} consecutive "
+                                           f"failed batches, 0 prices; skipping rest until next run")
+                                for _j in range(batch_total):
+                                    done.add(f"{store_id}:{_j}")
+                                batch_failures = batch_total
+                                break
                             # Mark attempted: otherwise a slice that times out mid-anchor
                             # re-tries the same failing batches next slice, forever
                             # (2026-10-18: one anchor livelocked ~15 slices, 0 prices/day).
@@ -1084,6 +1098,7 @@ def _main_body(db_path, checkpoint_path, lock_path, order, limit_stores,
                                         canary_changed.add(net)
 
                         conn.commit()
+                        consec_failures = 0
                         store_prices += len(prices)
                         batch_bar.set_postfix(prices=store_prices)
 

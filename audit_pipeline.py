@@ -43,6 +43,7 @@ RUN_RECOVERY_WINDOW_MINUTES = 60  # a completed run of the same script starting 
                                    # window after a bad run's finished_at counts as recovered
 COVERAGE_GAP_DAYS = 7    # any network with no fresh prices in N days → red
 FLAG_DRIFT_MULT = 3.0    # today's price_flags count > N× the 30-day median → red
+INGEST_WINDOW_HOURS = 12  # retail runs finishing in the last N hours must have written prices
 DISK_RED_PCT = 90.0      # DB partition > N% used → red (a full disk crashed the audit 2026-10-26..29)
 
 
@@ -263,6 +264,24 @@ def check_outliers(conn):
     }
 
 
+def check_retail_ingest(conn):
+    """Retail prices actually written recently. Upstream outages (2026-11-06: price endpoint
+    500'd on every batch) leave runs 'interrupted' and run_history green, with 0 new data."""
+    runs, written = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(records_written), 0) FROM runs "
+        "WHERE script='fetch_prices' AND datetime(finished_at) >= datetime('now', ?)",
+        (f"-{INGEST_WINDOW_HOURS} hours",),
+    ).fetchone()
+    return {
+        "name": "retail_ingest",
+        "red": written == 0,
+        "summary": f"{written} prices written by {runs} fetch_prices run(s) in last {INGEST_WINDOW_HOURS}h",
+        "runs": runs,
+        "records_written": written,
+        "window_hours": INGEST_WINDOW_HOURS,
+    }
+
+
 def check_disk_space(db_path):
     """Partition holding the DB: SQLite writes fail at 100%, so alert well before that."""
     path = Path(db_path).resolve()
@@ -304,6 +323,7 @@ def run_audit(db_path, include_outliers=False):
             _safe(check_run_history, conn),
             _safe(check_coverage_gaps, conn),
             _safe(check_anomaly_drift, conn),
+            _safe(check_retail_ingest, conn),
             _safe(check_disk_space, db_path),
         ]
         if include_outliers:
