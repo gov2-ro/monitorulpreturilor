@@ -699,6 +699,11 @@ def propagate_network_prices(conn, source_store_id, target_store_ids, fetched_at
     if not target_store_ids:
         return 0
 
+    # TODO(retention): this INSERT OR IGNORE re-creates history rows that a retention job
+    # deleted (the key is product×store×price_date, and price_date can be months old for
+    # stable prices). After the 2026-10-29 slim it re-inserted ~3.5M rows dated Apr–Aug
+    # (mostly KAUFLAND/PENNY/LIDL). Make it change-based like insert_price (skip when the
+    # target's prices_current already has the same price/promo) before automating retention.
     updated = 0
     for target_id in target_store_ids:
         conn.execute(

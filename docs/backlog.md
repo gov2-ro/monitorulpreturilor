@@ -214,3 +214,15 @@ Health check was GREEN but the pipeline had no durability safety net. Found: `da
 ## misc / unfilled
 
 [cheap foodmap](https://cheapfoodmap.com/)
+## 2026-11-16 — VPS disk: prune and housekeeping (from the Hetzner/tempo move)
+
+Context: `/` on the VPS was 90% full; the API move needs ~4 GB free. Already done 2026-11-16: `data/backups` and `data/prices_ci.db` moved to `/mnt/HC_Volume_105444571/pax/g2-dev/monitorulpreturilor/data/` with symlinks left at the old paths. Owner has an off-box copy of the DB from 2026-11-16.
+
+- [ ] **Confirm Sunday backup works through the symlink** — after the first run (Sun 10:00 UTC), check `data/logs/backup.log` and `ls -l data/backups/`. `scripts/backup_db.sh` writes `data/backups` relative to the repo root and keeps 2 (`KEEP=2`, ~1.25 GB on the volume). The volume must be mounted or the `mkdir -p` aborts the job. Its free-space guard measures `/`, not the volume.
+- [ ] **`prices.db` is 9.9 GB and the main consumer of `/`** — decide on pruning: archive or drop old `prices` rows (older than N months) into a compressed file on the volume, then `VACUUM` (needs ~10 GB free temporary space; stop the cron first, `sudo`-free). Needs an owner decision on retention.
+- [ ] **`data/logs` is 155 MB** — logrotate runs daily at >50M; check it keeps the old copies compressed and bounded.
+- [ ] **Off-box copy**: the backup script has an unused "off-box copy" stub; backups only sit on the same VPS. Set a target.
+- [ ] prices.db fills the disk; backup skips runs; stale pipeline-check; wrong branch (brief: docs/briefs/2026-11-20-celi-disk-backup-branch.md)
+- [ ] **Sentinel propagation re-inserts deleted history rows** — `db.propagate_network_prices` does `INSERT OR IGNORE INTO prices … FROM prices_current` keyed on product×store×price_date. After the 2026-10-29 slim it re-inserted ~3.5M rows with price_date Apr–Aug (fetched_at 2026-10-30; KAUFLAND/PENNY/LIDL). Any retention job keyed on price_date will churn the same way. Make it change-based (compare with the target's `prices_current`) before automating retention. Also measure how much of the ~370k rows/day are propagated copies, not observations: Tier-A networks are ~55% of rows written 2026-11-13…20.
+- [x] ~~Add `fetch-gas-prices.log` to logrotate~~ (2026-11-20, brief item 5): not needed. `scripts/logrotate.conf` matches `data/logs/*.log` with `size 50M`, and the file was 38 MB, below the threshold.
+- [ ] **8 pre-existing test failures in `tests/test_audit_pipeline.py`** (suppressed/recovery-window tests: `result["suppressed"] == []`, `red is False`). They fail identically on `origin/main` and on `e00a393`, so they are not caused by the 2026-11-20 changes. Probably date-relative fixtures or the recovery-window logic drifted. Investigate.
