@@ -692,28 +692,30 @@ def propagate_network_prices(conn, source_store_id, target_store_ids, fetched_at
     Accuracy caveat: ~10-15% of products in Tier-A networks vary regionally; those
     products will get the sentinel's price until the weekly full-scan corrects them.
 
-    Writes to both prices (history, INSERT OR IGNORE) and prices_current (upsert).
+    Writes prices (history, only on price/promo change) and prices_current (upsert).
     Uses SQL-level INSERT … SELECT per target store for efficiency.
     Returns number of target stores updated.
     """
     if not target_store_ids:
         return 0
 
-    # TODO(retention): this INSERT OR IGNORE re-creates history rows that a retention job
-    # deleted (the key is product×store×price_date, and price_date can be months old for
-    # stable prices). After the 2026-10-29 slim it re-inserted ~3.5M rows dated Apr–Aug
-    # (mostly KAUFLAND/PENNY/LIDL). Make it change-based like insert_price (skip when the
-    # target's prices_current already has the same price/promo) before automating retention.
+    # History is change-based, like insert_price: write a `prices` row only when the target's
+    # prices_current is missing or differs in price/promo. A plain INSERT OR IGNORE (keyed on
+    # product×store×price_date, and price_date stays old for stable prices) re-created rows
+    # that retention had deleted: ~3.5M rows dated Apr–Aug came back after the 2026-10-29 slim.
     updated = 0
     for target_id in target_store_ids:
         conn.execute(
             """INSERT OR IGNORE INTO prices
                (product_id, store_id, price, price_date, promo, brand, unit,
                 retail_categ_id, retail_categ_name, fetched_at, last_checked_at)
-               SELECT product_id, ?, price, price_date, promo, brand, unit,
-                      retail_categ_id, retail_categ_name, ?, ?
-               FROM prices_current WHERE store_id = ?""",
-            (target_id, fetched_at, fetched_at, source_store_id),
+               SELECT s.product_id, ?, s.price, s.price_date, s.promo, s.brand, s.unit,
+                      s.retail_categ_id, s.retail_categ_name, ?, ?
+               FROM prices_current s
+               LEFT JOIN prices_current t ON t.product_id = s.product_id AND t.store_id = ?
+               WHERE s.store_id = ?
+                 AND (t.product_id IS NULL OR t.price IS NOT s.price OR t.promo IS NOT s.promo)""",
+            (target_id, fetched_at, fetched_at, target_id, source_store_id),
         )
         conn.execute(
             """INSERT INTO prices_current
