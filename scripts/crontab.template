@@ -57,6 +57,11 @@ SHELL=/bin/bash
 # lock-safe (sqlite3 .dump | gzip), keeps last 2. Restore + off-box notes in the script.
 0 10 * * 0 cd /home/pax/g2-dev/monitorulpreturilor && scripts/backup_db.sh >> data/logs/backup.log 2>&1
 
+# Retention — daily 12:00: keep 45 days of `prices`, archive older rows to data/archive
+# (HC volume), delete in batches for at most 50 min. NOT INSTALLED until the owner confirms
+# the HDD copies (2026-11-20 gate); then add a healthchecks.io UUID via scripts/hc_run.sh.
+# 0 12 * * * cd /home/pax/g2-dev/monitorulpreturilor && source venv/bin/activate && python retention.py --apply --max-runtime 3000 >> data/logs/retention.log 2>&1
+
 # Log rotation — daily 10:30, size-based (rotates only logs >50M). copytruncate keeps
 # the long-lived fetch_prices fd valid. See scripts/logrotate.conf.
 30 10 * * * cd /home/pax/g2-dev/monitorulpreturilor && /usr/sbin/logrotate -s data/logs/.logrotate.state scripts/logrotate.conf >> data/logs/logrotate.log 2>&1

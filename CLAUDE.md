@@ -74,15 +74,16 @@ python fetch_official_cpi.py            # [--since YYYY-MM] [--debug]
   overlay + nowcast callout. All keys degrade gracefully if official data is
   absent. Comparison is **rate-of-change only** (HICP basket ≠ ours).
 
-#### Retention: VPS `prices.db` holds only the last 60 days of `prices`
+#### Retention: VPS `prices.db` keeps 45 days of `prices` (`retention.py`)
 
-Since 2026-10-29 the VPS DB is slim (~7.5 GB); the **only full history** is the local Mac
-copy. `build_cpi.py` therefore reads the `price_daily_min` rollup (per date × basket product ×
-network raw minimum; basket products = all ids in `config/baskets.json`) and re-upserts it from
-raw `prices` on every run, so never trim `prices` before that has run. Nothing prunes
-automatically yet. When `/` > 85% follow `docs/vps-db-retention.md` (copy rows, never a big
-`DELETE`; `VACUUM` won't fit on a nearly full disk). Analyses needing history older than
-60 days must run on the local full copy.
+Full history lives off the VPS: the local Mac copy (through 2026-10-28) plus the monthly
+archives `data/archive/prices-YYYY-MM.<run>.sql.gz` (symlink to the HC volume) written by
+`retention.py`. That job MIN-merges old basket rows into the `price_daily_min` rollup
+(what `build_cpi.py` reads), exports rows older than 45 days, then deletes them in 5k-row
+batches. It defaults to `--dry-run`; `--export-only` archives without deleting; `--apply` deletes.
+Deleting does not shrink the file (freed pages are reused); shrinking needs the rebuild in
+`docs/vps-db-retention.md`. Analyses needing history older than 45 days must run on the
+local full copy or a restored archive.
 
 ### Gas
 ```bash

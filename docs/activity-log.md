@@ -4,6 +4,12 @@
 
 ## General
 
+### 2026-11-20 — 45-day retention job (`retention.py`), change-based sentinel propagation, server on `main`
+- **Branch:** the server now runs `main`. `phase0-restore-publishing` had origin/main merged in (a docs-only conflict in this file, resolved by keeping both sides), main was fast-forwarded to it, and both were pushed. `data/gas_checkpoint.json` and `data/prices_ci.db` are runtime or server-local and are tracked in git, so they are marked `git update-index --skip-worktree` instead of being committed.
+- **`db.propagate_network_prices`:** this function had a hidden bug. Its `INSERT OR IGNORE` keyed on product×store×price_date re-created every row a retention delete removed (price_date stays old for stable prices). About 3.5M Apr–Aug rows came back on 10-30. It now writes history only when the target's `prices_current` is missing or differs in price/promo. Tests: `tests/test_propagate.py`.
+- **`retention.py` (owner chose 45 days, no volume upgrade):** the job runs rollup MIN-merge → immutable per-month/per-run gzip archives (verified, sha256 manifest) → batched delete. Its state invariant `{cutoff, max_id}` prevents double exports. It is dry-run by default and has an `--export-only` mode. Dry run against the live DB: 12,561,155 rows < 2026-10-06, ≈351 MB of archives, 2,280 rollup minima, 2 min. Not scheduled: deletes wait for the owner's HDD-copy confirmation. The cron line is commented in `scripts/crontab.template` and is daily, not weekly, so the first ~12.6M-row backlog drains within a time budget.
+- Pre-existing: 8 failures in `tests/test_audit_pipeline.py`, the same on origin/main (in the backlog).
+
 ### 2026-11-20 — backup_db.sh tests the target filesystem; fresh dump; HDD pull manifest
 - `scripts/backup_db.sh` ran `df .` (on `/`), but `data/backups` has been a symlink to `/mnt/HC_Volume_105444571` since 11-16, and runs skipped while `/` was low. It now tests `$DEST/`. MIN_FREE went from 4 GB to 2 GB (a dump is about 0.75 GB), and `KEEP` can be set from env.
 - Ran `KEEP=99 scripts/backup_db.sh` (no pruning): `prices-2026-11-20.db.sql.gz`, 748 MB, 48 min, sha256 `1eaed4f4…`.
